@@ -654,8 +654,9 @@
     <string name="about_sponsors_desc">Abaixo estão todos os patrocinadores que apoiam o desenvolvimento, muito obrigado!</string>
     <string name="about_sponsors_amount">Tempo e Valor Total</string>
     <string name="about_button_support_development">Patrocinar o Desenvolvimento</string>
-    <string name="about_MovTery_desc">Principal autor do lançador</string>
+    <string name="about_MovTery_desc">Principal autor do Zalith Launcher</string>
     <string name="about_PojavLauncher_desc">Equipe de desenvolvimento do PojavLauncher, que desenvolveu e tornou o PojavLauncher de código aberto</string>
+    <string name="about_zalith_desc">%s é baseado no Zalith Launcher, o lançador de código aberto criado por MovTery e seus colaboradores</string>
     <string name="about_mcmod_desc">O lançador utiliza Mods da MC百科 e traduções de pacotes de integração</string>
     <string name="about_VeraFirefly_desc">Forneceu suporte técnico em renderização para o lançador</string>
     <string name="about_LingMuQiuZhu_desc">Forneceu suporte técnico para o lançador</string>

@@ -27,10 +27,14 @@ val getBuildType = {
     buildType
 }
 
+// Java/Kotlin package and Android namespace of the code (R, BuildConfig). Kept as is: renaming it
+// would touch every source file and changes nothing for users.
 val nameId = "com.movtery.zalithlauncher"
 val generatedZalithDir = file("$buildDir/generated/source/zalith/java")
 val launcherAPPName = project.findProperty("launcher_app_name") as? String ?: error("The \"launcher_app_name\" property is not set in gradle.properties.")
 val launcherName = project.findProperty("launcher_name") as? String ?: error("The \"launcher_name\" property is not set in gradle.properties.")
+// Package name of the installed app (what Android uses to tell apps apart).
+val launcherApplicationId = project.findProperty("launcher_application_id") as? String ?: error("The \"launcher_application_id\" property is not set in gradle.properties.")
 val launcherVersionCode = (project.findProperty("launcher_version_code") as? String)?.toIntOrNull() ?: error("The \"launcher_version_code\" property is not set as an integer in gradle.properties.")
 val launcherVersionName = project.findProperty("launcher_version_name") as? String ?: error("The \"launcher_version_name\" property is not set in gradle.properties.")
 
@@ -54,11 +58,15 @@ android {
 
     signingConfigs {
         create("releaseBuild") {
-            val pwd = System.getenv("MOVTERY_KEYSTORE_PASSWORD")
-            storeFile = file("movtery-key.jks")
+            // The release key is never stored in the repository. CI decodes it from the
+            // GURKHA_KEYSTORE_BASE64 secret into the file named by GURKHA_KEYSTORE_FILE
+            // (see .github/workflows/android.yml and RELEASING.md).
+            val keystorePath = System.getenv("GURKHA_KEYSTORE_FILE")
+            val pwd = System.getenv("GURKHA_KEYSTORE_PASSWORD")
+            if (!keystorePath.isNullOrBlank()) storeFile = file(keystorePath)
             storePassword = pwd
-            keyAlias = "mtp"
-            keyPassword = pwd
+            keyAlias = System.getenv("GURKHA_KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "gurkha"
+            keyPassword = System.getenv("GURKHA_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: pwd
         }
         create("customDebug") {
             storeFile = file("debug.keystore")
@@ -69,7 +77,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = nameId
+        applicationId = launcherApplicationId
         minSdk = 26
         targetSdk = 34
         versionCode = launcherVersionCode
@@ -79,7 +87,9 @@ android {
     }
 
     buildTypes {
-        val storageProviderId = "$nameId.storage_provider"
+        // Must be unique per installed app: two apps declaring the same provider authority cannot be
+        // installed side by side, so derive it from the application id (not from the code package).
+        val storageProviderId = "$launcherApplicationId.storage_provider"
 
         getByName("debug") {
             applicationIdSuffix = ".debug"

@@ -692,8 +692,9 @@
     <string name="about_sponsors_desc">以下是所有支持开发的赞助者们，万分感谢！</string>
     <string name="about_sponsors_amount">时间与总金额</string>
     <string name="about_button_support_development">赞助开发</string>
-    <string name="about_MovTery_desc">启动器的主要作者</string>
+    <string name="about_MovTery_desc">Zalith Launcher 的主要作者</string>
     <string name="about_PojavLauncher_desc">PojavLauncher 的开发团队，开发并开源了 PojavLauncher</string>
+    <string name="about_zalith_desc">%s 基于 Zalith Launcher 开发，它是由墨北MovTery 及其贡献者创建的开源启动器</string>
     <string name="about_mcmod_desc">启动器使用了来自 MC 百科的模组以及整合包中文翻译</string>
     <string name="about_VeraFirefly_desc">为启动器提供渲染方面的技术支持</string>
     <string name="about_LingMuQiuZhu_desc">为启动器提供了技术支持</string>

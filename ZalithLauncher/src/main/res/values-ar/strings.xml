@@ -654,8 +654,9 @@
     <string name="about_sponsors_desc">هؤلاء هم جميع الرعاة الذين يدعمون التطوير، شكرًا جزيلًا لكم!</string>
     <string name="about_sponsors_amount">الوقت والإجمالي</string>
     <string name="about_button_support_development">دعم التطوير</string>
-    <string name="about_MovTery_desc">المؤلف الرئيسي للمشغل</string>
+    <string name="about_MovTery_desc">المؤلف الرئيسي لـ Zalith Launcher</string>
     <string name="about_PojavLauncher_desc">فريق تطوير PojavLauncher، الذي طور وفتح مصدر PojavLauncher</string>
+    <string name="about_zalith_desc">%s مبني على Zalith Launcher، المشغل مفتوح المصدر الذي أنشأه MovTery والمساهمون</string>
     <string name="about_mcmod_desc">المشغل يستخدم الترجمات الصينية لـ Mod وحزم التكامل من MC Wiki</string>
     <string name="about_VeraFirefly_desc">قدّم دعمًا تقنيًا في مجال العرض للمشغل</string>
     <string name="about_LingMuQiuZhu_desc">قدّم دعمًا تقنيًا للمشغل</string>
