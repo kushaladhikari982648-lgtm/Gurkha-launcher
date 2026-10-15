@@ -16,6 +16,7 @@ import java.util.Objects
 class CheckSponsor {
     companion object {
         private var sponsorMeta: SponsorMeta? = null
+        @Volatile
         private var isChecking = false
 
         @JvmStatic
@@ -47,6 +48,8 @@ class CheckSponsor {
                 override fun onResponse(call: Call?, response: Response?) {
                     if (!response!!.isSuccessful) {
                         Logging.e("CheckSponsor", "Unexpected code ${response.code}")
+                        //例如 GitHub API 限流 (403)：必须通知界面，否则加载动画会一直转
+                        listener.onFailure()
                     } else {
                         runCatching {
                             Objects.requireNonNull(response.body)
@@ -57,11 +60,14 @@ class CheckSponsor {
                             //base64解码，因为这里读取的是一个经过Base64加密后的文本
                             val rawJson = StringUtils.decodeBase64(rawBase64)
 
-                            sponsorMeta = Tools.GLOBAL_GSON.fromJson(rawJson, SponsorMeta::class.java).takeIf { it.sponsors.isNotEmpty() } ?: run {
+                            val meta: SponsorMeta? = Tools.GLOBAL_GSON.fromJson(rawJson, SponsorMeta::class.java)
+                            if (meta?.sponsors.isNullOrEmpty()) {
+                                //不要在这里 return：那会跳过下面的 isChecking = false
                                 listener.onFailure()
-                                return
+                            } else {
+                                sponsorMeta = meta
+                                listener.onSuccessful(meta)
                             }
-                            listener.onSuccessful(sponsorMeta)
                         }.getOrElse { e ->
                             Logging.e("Load Sponsor Data", "Failed to resolve sponsor list.", e)
                             listener.onFailure()

@@ -119,7 +119,12 @@ android {
                         task.doLast {
                             val arch = System.getProperty("arch", "all")
                             val assetsDir = task.outputDir.get().asFile
-                            val jreList = listOf("jre-8", "jre-17", "jre-21")
+                            // Every bundled runtime (jre-8, jre-17, jre-21, jre-25, ...) must be stripped,
+                            // otherwise per-architecture APKs ship binaries for the other CPUs too.
+                            val jreList = File("$assetsDir/components").listFiles()
+                                ?.filter { it.isDirectory && it.name.startsWith("jre-") }
+                                ?.map { it.name }
+                                ?: emptyList()
                             println("arch:$arch")
                             jreList.forEach { jreVersion ->
                                 val runtimeDir = File("$assetsDir/components/$jreVersion")

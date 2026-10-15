@@ -40,7 +40,7 @@ public final class UpdateLauncher {
     private final String destinationFilePath;
     private final Call call;
     private ProgressDialog dialog;
-    private Timer timer;
+    private volatile Timer timer;
     private boolean isCanceled = false;
 
     public UpdateLauncher(Context context, LauncherVersion launcherVersion) {
@@ -132,7 +132,7 @@ public final class UpdateLauncher {
 
     private void finish(File outputFile) {
         handleDialog(Dialog::dismiss);
-        timer.cancel();
+        cancelTimer();
 
         UpdateUtils.installApk(context, outputFile);
     }
@@ -151,7 +151,7 @@ public final class UpdateLauncher {
 
         handleDialog(Dialog::dismiss);
         runInUIThread(() -> Tools.showError(context, R.string.update_fail, e));
-        timer.cancel();
+        cancelTimer();
         FileUtils.deleteQuietly(UpdateUtils.sApkFile);
         Logging.e("Update Launcher", "There was an exception downloading the update!", e);
     }
@@ -159,7 +159,14 @@ public final class UpdateLauncher {
     private void stop() {
         this.isCanceled = true;
         this.call.cancel();
-        this.timer.cancel();
+        cancelTimer();
         FileUtils.deleteQuietly(UpdateUtils.sApkFile);
+    }
+
+    // The progress timer is created on the network thread, so the user can cancel
+    // (or an error can happen) before it exists: never assume it is non-null.
+    private void cancelTimer() {
+        Timer currentTimer = this.timer;
+        if (currentTimer != null) currentTimer.cancel();
     }
 }

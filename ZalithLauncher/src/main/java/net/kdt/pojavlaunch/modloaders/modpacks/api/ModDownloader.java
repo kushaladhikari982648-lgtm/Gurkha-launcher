@@ -7,6 +7,7 @@ import com.movtery.zalithlauncher.setting.AllSettings;
 
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.utils.DownloadUtils;
+import net.kdt.pojavlaunch.utils.FileUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -53,7 +54,17 @@ public class ModDownloader {
     public void submitDownload(int fileSize, String relativePath, @Nullable String downloadHash, String... url) {
         if(mUseFileCount) mTotalSize += 1;
         else mTotalSize += fileSize;
-        mDownloadPool.execute(new DownloadTask(url, new File(mDestinationDirectory, relativePath), downloadHash));
+        File destination;
+        try {
+            // The path comes from the modpack index (e.g. modrinth.index.json), which is untrusted:
+            // "../../" must never let a modpack write outside of the instance directory.
+            destination = FileUtils.resolveSafeChild(mDestinationDirectory, relativePath);
+        } catch (IOException e) {
+            Logging.e("ModDownloader", "Refusing to download a modpack file: " + e.getMessage());
+            downloadFailed(e);
+            return;
+        }
+        mDownloadPool.execute(new DownloadTask(url, destination, downloadHash));
     }
 
     public void submitDownload(FileInfoProvider infoProvider) {
@@ -117,7 +128,7 @@ public class ModDownloader {
                 FileInfo fileInfo = mFileInfoProvider.getFileInfo();
                 if(fileInfo == null) return;
                 new DownloadTask(new String[]{fileInfo.url},
-                        new File(mDestinationDirectory, fileInfo.relativePath), fileInfo.sha1).run();
+                        FileUtils.resolveSafeChild(mDestinationDirectory, fileInfo.relativePath), fileInfo.sha1).run();
             }catch (IOException e) {
                 downloadFailed(e);
             }
@@ -139,6 +150,8 @@ public class ModDownloader {
 
         @Override
         public void run() {
+            // Try every mirror in order; the download only fails if all of them fail.
+            IOException lastException = null;
             for(String sourceUrl : mDownloadUrls) {
                 try {
                     DownloadUtils.ensureSha1(mDestination, mSha1, (Callable<Void>) () -> {
@@ -148,11 +161,12 @@ public class ModDownloader {
                         }
                         return null;
                     });
-
+                    return;
                 } catch (IOException e) {
-                    downloadFailed(e);
+                    lastException = e;
                 }
             }
+            if(lastException != null) downloadFailed(lastException);
         }
 
         private IOException tryDownload(String sourceUrl) throws InterruptedIOException {

@@ -10,19 +10,24 @@ import java.util.zip.ZipFile
 class UnpackWorldZipHelper {
     companion object {
         fun unpackFile(zipFile: File, targetPath: File) {
-            val path = extractLevelPath(zipFile) ?: throw IOException()
-            Logging.i("UnpackWorldZipHelper", "Found the level of the level.data file: $path")
-            ZipFile(zipFile).use {
-                val fileName = zipFile.name.removeSuffix(".${zipFile.extension}")
-                ZipUtils.zipExtract(ZipFile(zipFile), path, File(targetPath, fileName))
-                Logging.i("UnpackWorldZipHelper", "Decompression is complete")
+            val levelPath = extractLevelPath(zipFile)
+                ?: throw IOException("level.dat was not found in ${zipFile.name}")
+            Logging.i("UnpackWorldZipHelper", "Found the level of the level.data file: \"$levelPath\"")
+            val fileName = zipFile.name.removeSuffix(".${zipFile.extension}")
+            //只打开一次压缩包，并确保在解压完成后关闭它
+            ZipFile(zipFile).use { zip ->
+                ZipUtils.zipExtract(zip, levelPath, File(targetPath, fileName))
             }
+            Logging.i("UnpackWorldZipHelper", "Decompression is complete")
             FileUtils.deleteQuietly(zipFile)
         }
 
         /**
-         * 读取zip文件，并找到level.data文件所在的路径
+         * 读取zip文件，并找到level.dat文件所在的路径
+         * Find the folder inside the archive that contains the world's level.dat.
          * @param file 压缩包文件
+         * @return "" if level.dat is at the root of the archive, otherwise the folder path ending with "/",
+         *         or null if the archive does not contain a world
          */
         private fun extractLevelPath(file: File): String? {
             if (!file.exists() || !file.isFile) {
@@ -34,14 +39,17 @@ class UnpackWorldZipHelper {
             }
 
             ZipFile(file).use { zip ->
-                val entries = zip.entries().asSequence() //转换为序列，方便过滤
-                val levelDatEntry = entries.find { it.name.endsWith("level.dat", ignoreCase = true) }
-                if (levelDatEntry == null) {
-                    return null
-                }
+                val levelDatEntry = zip.entries().asSequence()
+                    .filter { !it.isDirectory }
+                    //只匹配真正的 level.dat（不匹配 xxxlevel.dat）
+                    .filter { it.name.substringAfterLast('/').equals("level.dat", ignoreCase = true) }
+                    //最浅的 level.dat 才是存档根目录（避免匹配到存档内的备份）
+                    .minByOrNull { entry -> entry.name.count { it == '/' } }
+                    ?: return null
                 val path = levelDatEntry.name
-                val levelPath = path.substringBeforeLast("/")
-                return levelPath
+                val lastSlash = path.lastIndexOf('/')
+                //level.dat 位于压缩包根目录时，返回空字符串（解压全部内容）
+                return if (lastSlash < 0) "" else path.substring(0, lastSlash + 1)
             }
         }
     }

@@ -80,4 +80,33 @@ public class FileUtils {
         if(parentFile == null) throw new IOException("targetFile does not have a parent");
         ensureDirectory(parentFile);
     }
+
+    /**
+     * Resolve an untrusted relative path (a zip/tar entry name, a path from a modpack index...)
+     * against a destination directory, and make sure the result stays inside that directory.
+     * This blocks "zip slip" style attacks, where an entry such as "../../files/x" or a symlinked
+     * parent directory would make us write files outside of the destination.
+     * @param parent the directory that must contain the result
+     * @param relativePath the untrusted path to resolve
+     * @return the resolved file (it may be the parent directory itself, e.g. for a "./" entry)
+     * @throws IOException if the resolved path is outside of the parent directory
+     */
+    public static File resolveSafeChild(File parent, String relativePath) throws IOException {
+        return resolveSafeChild(parent.getCanonicalPath(), parent, relativePath);
+    }
+
+    /**
+     * Same as {@link #resolveSafeChild(File, String)}, but reuses an already computed canonical
+     * path of the parent directory (useful when extracting many entries into the same directory).
+     */
+    public static File resolveSafeChild(String canonicalParent, File parent, String relativePath) throws IOException {
+        if (relativePath == null) throw new IOException("Missing path");
+        File child = new File(parent, relativePath);
+        String canonicalChild = child.getCanonicalPath();
+        if (!canonicalChild.equals(canonicalParent)
+                && !canonicalChild.startsWith(canonicalParent.endsWith(File.separator) ? canonicalParent : canonicalParent + File.separator)) {
+            throw new IOException("Blocked unsafe path \"" + relativePath + "\": it points outside of " + canonicalParent);
+        }
+        return child;
+    }
 }
