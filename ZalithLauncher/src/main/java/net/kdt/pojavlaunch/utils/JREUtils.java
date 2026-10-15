@@ -364,6 +364,7 @@ public final class JREUtils {
             final AppCompatActivity activity,
             String runtimeHome,
             Version gameVersion,
+            final List<String> runtimeFixArgs,
             final List<String> JVMArgs,
             final String userArgsString
     ) {
@@ -396,6 +397,10 @@ public final class JREUtils {
 
         // Some phones are not using the right number of cores, fix that
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());
+
+        // Runtime specific JVM fixes (see getArm32MathFixArgs). They must stay before JVMArgs,
+        // which end with the main class.
+        userArgs.addAll(runtimeFixArgs);
 
         userArgs.addAll(JVMArgs);
         activity.runOnUiThread(() -> Toast.makeText(activity, activity.getString(R.string.autoram_info_msg, AllSettings.getRamAllocation().getValue().getValue()), Toast.LENGTH_SHORT).show());
@@ -440,7 +445,49 @@ public final class JREUtils {
 
         initGraphicAndSoundEngine(gameVersion != null);
 
-        launchJavaVM(activity, runtimeHome, gameVersion, JVMArgs, userArgsString);
+        List<String> runtimeFixArgs = getArm32MathFixArgs(runtime);
+        if (!runtimeFixArgs.isEmpty()) {
+            Logger.appendToLog("Info: 32-bit ARM Java " + runtime.javaVersion
+                    + " detected, disabling the broken interpreter math intrinsics (1.20.5+ 32-bit fix)");
+        }
+
+        launchJavaVM(activity, runtimeHome, gameVersion, runtimeFixArgs, JVMArgs, userArgsString);
+    }
+
+    /**
+     * Port of PojavLauncher's "Fixed 1.20.5+ versions on 32-bit devices" (foxglove-20241124 build).
+     * <p>
+     * Pojav fixed it inside its Java 21 build, not in the launcher: commit 8cb72d3 of
+     * PojavLauncherTeam/android-openjdk-build-multiarch ("Fix[arm32]: Disable InlineIntrinsics on
+     * arm32 by default") changes the default of InlineIntrinsics to false in
+     * src/hotspot/cpu/arm/c1_globals_arm.hpp and c2_globals_arm.hpp.
+     * <p>
+     * Why: since JDK 18 (JDK-8271128) the 32-bit ARM template interpreter has fast paths for
+     * Math.sin/cos/tan/log/log10/exp/pow that call the VM runtime with the argument in a VFP register
+     * (hard-float calling convention). Android's armeabi-v7a uses the softfp convention, where the C
+     * runtime reads and returns doubles in core registers, so these methods return garbage while they
+     * are interpreted. Minecraft 1.20.5+ needs Java 21, so on 32-bit ARM the title screen panorama and
+     * the world render incorrectly or not at all.
+     * <p>
+     * InlineIntrinsics is a "develop" flag: release JVMs refuse to start with -XX:-InlineIntrinsics.
+     * We therefore disable exactly the affected intrinsics with the diagnostic DisableIntrinsic flag,
+     * which the interpreter honours too (vmIntrinsics::is_intrinsic_available). Math.abs and Math.sqrt
+     * are computed inline without a runtime call and stay enabled. This fixes the bundled Java 21 and
+     * Java 25 (both built without Pojav's patch) as well as runtimes imported by the user, and is
+     * harmless on runtimes that already contain the patch.
+     *
+     * @param runtime the runtime that is about to be started
+     * @return the extra JVM arguments, or an empty list if the runtime is not affected
+     */
+    public static List<String> getArm32MathFixArgs(Runtime runtime) {
+        List<String> args = new ArrayList<>();
+        int runtimeArch = runtime.arch != null ? Architecture.archAsInt(runtime.arch) : Tools.DEVICE_ARCHITECTURE;
+        // JDK 8 (aarch32 port) and JDK 17 are not affected: the interpreter math entries appeared in JDK 18.
+        if (runtimeArch != Architecture.ARCH_ARM || runtime.javaVersion < 18) return args;
+        // The unlock option must come before the diagnostic option, or the JVM refuses to start.
+        args.add("-XX:+UnlockDiagnosticVMOptions");
+        args.add("-XX:DisableIntrinsic=_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow");
+        return args;
     }
 
     /**
