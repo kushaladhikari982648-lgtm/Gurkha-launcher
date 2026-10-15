@@ -62,13 +62,18 @@ jobs:
 
       - name: Inspect APK
         run: |
-          ls -l ZalithLauncher/build/outputs/apk/release/
           APK=ZalithLauncher/build/outputs/apk/release/GurkhaLauncher-1.0.0-beta.1-armeabi-v7a.apk
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          echo "build-tools: $BT"
-          "$BT"/apksigner verify --verbose --print-certs "$APK" | grep -E "Verified|Signer #1 certificate DN|scheme"
-          "$BT"/aapt2 dump badging "$APK" | grep -E "^package:|^application-label:|^native-code:|^sdkVersion:|^targetSdkVersion:"
-          unzip -l "$APK" | grep -E "assets/components/jre-[0-9]+/" | awk '{print $4}'
+          {
+            ls -l ZalithLauncher/build/outputs/apk/release/ | awk 'NR>1 {print $5, $9}'
+            "$BT"/apksigner verify --verbose --print-certs "$APK" | grep -E "^Verified using|^Signer #1 certificate DN"
+            "$BT"/aapt2 dump badging "$APK" | grep -E "^package:|^application-label:|^native-code:|^sdkVersion:|^targetSdkVersion:"
+            unzip -l "$APK" | awk '{print $4}' | grep -E "^assets/components/jre-[0-9]+/"
+          } > "$RUNNER_TEMP/inspect.txt"
+          cat "$RUNNER_TEMP/inspect.txt"
+          # Logs are not always reachable, annotations are: report everything as one notice.
+          MSG=$(python3 -c 'import sys; print(sys.stdin.read().strip().replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))' < "$RUNNER_TEMP/inspect.txt")
+          echo "::notice title=APK inspection::$MSG"
 
       - name: Remove keystore
         if: always()
