@@ -101,7 +101,10 @@ jobs:
           run() {
             local v=$1; shift
             local d="$RUNNER_TEMP/jre-$v"
-            timeout 900 qemu-arm-static -L "$ROOT" -E LD_LIBRARY_PATH="$d/lib:$d/lib/server:/system/lib" \
+            # lib/server must come first, or the java launcher re-executes itself (RequiresSetenv)
+            # through binfmt_misc, which needs QEMU_LD_PREFIX to find the Android root.
+            QEMU_LD_PREFIX="$ROOT" timeout 900 qemu-arm-static -L "$ROOT" \
+              -E LD_LIBRARY_PATH="$d/lib/server:$d/lib:/system/lib" -E QEMU_LD_PREFIX="$ROOT" \
               "$d/bin/java" -Xms256M -Xmx256M "$@" 2>&1
             echo "exit=$?"
           }
