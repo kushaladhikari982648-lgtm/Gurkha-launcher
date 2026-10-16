@@ -1,0 +1,128 @@
+name: ARM32 JVM check (temporary)
+
+# One-off check of the 32-bit ARM JVM options used by the launcher, on the bundled armeabi-v7a
+# runtimes, run under qemu-arm with the libraries of an Android 32-bit system image.
+# This file is removed again right after the check.
+
+on:
+  push:
+    branches: [ 'arena/1d667cb8-gurkha-launcher' ]
+    paths: [ '.github/workflows/arm32-jvm-check.yml' ]
+
+permissions:
+  contents: read
+
+jobs:
+  Check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout (runtimes only)
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            ZalithLauncher/src/main/assets/components/jre-17
+            ZalithLauncher/src/main/assets/components/jre-21
+            ZalithLauncher/src/main/assets/components/jre-25
+            ZalithLauncher/src/main/jniLibs/armeabi-v7a
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user-static android-sdk-libsparse-utils > /dev/null
+          qemu-arm-static --version | head -1
+
+      - name: Android 32-bit system libraries
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          IMG=""
+          for pkg in "system-images;android-25;default;armeabi-v7a" "system-images;android-24;default;armeabi-v7a" \
+                     "system-images;android-25;google_apis;armeabi-v7a" "system-images;android-24;google_apis;armeabi-v7a"; do
+            if yes | "$SDKMANAGER" --install "$pkg" > /dev/null 2>&1; then
+              dir="$ANDROID_HOME/$(echo "$pkg" | tr ';' '/')"
+              if [ -f "$dir/system.img" ]; then IMG="$dir/system.img"; echo "Using $pkg"; echo "IMAGE_PKG=$pkg" >> "$GITHUB_ENV"; break; fi
+            fi
+          done
+          [ -n "$IMG" ] || { echo "::error::No armeabi-v7a system image could be installed"; exit 1; }
+          file "$IMG"
+          if [ "$(head -c4 "$IMG" | od -An -tx1 | tr -d ' \n')" = "3aff26ed" ]; then
+            simg2img "$IMG" "$RUNNER_TEMP/system.raw" && IMG="$RUNNER_TEMP/system.raw"
+          fi
+          ROOT="$RUNNER_TEMP/android-root"
+          mkdir -p "$ROOT/system" "$ROOT/dev"
+          SRC=""
+          if debugfs -R "stat /system/bin/linker" "$IMG" 2>/dev/null | grep -q "Inode"; then SRC="/system"; fi
+          debugfs -R "rdump $SRC/bin $SRC/lib $ROOT/system" "$IMG" 2>&1 | tail -3
+          ls -la "$ROOT/system/bin/linker" "$ROOT/system/lib/libc.so" "$ROOT/system/lib/libm.so" "$ROOT/system/lib/libz.so"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Runtimes and test program
+        run: |
+          for v in 17 21 25; do
+            d="$RUNNER_TEMP/jre-$v"; mkdir -p "$d"
+            tar -xJf "ZalithLauncher/src/main/assets/components/jre-$v/universal.tar.xz" -C "$d"
+            tar -xJf "ZalithLauncher/src/main/assets/components/jre-$v/bin-arm.tar.xz" -C "$d"
+          done
+          cp ZalithLauncher/src/main/jniLibs/armeabi-v7a/libc++_shared.so "$RUNNER_TEMP/jre-25/lib/"
+          mkdir -p "$RUNNER_TEMP/t"
+          cat > "$RUNNER_TEMP/t/MathCheck.java" <<'EOF'
+          public class MathCheck {
+              static int bad = 0;
+              public static void main(String[] args) {
+                  double[] xs = {0.5, 1.0, 2.0, 3.0, 10.0, 100.0, -0.7};
+                  for (double x : xs) {
+                      check("sin", x, Math.sin(x), StrictMath.sin(x));
+                      check("cos", x, Math.cos(x), StrictMath.cos(x));
+                      check("tan", x, Math.tan(x), StrictMath.tan(x));
+                      check("exp", x, Math.exp(x), StrictMath.exp(x));
+                      check("pow", x, Math.pow(Math.abs(x), 1.5), StrictMath.pow(Math.abs(x), 1.5));
+                      if (x > 0) {
+                          check("log", x, Math.log(x), StrictMath.log(x));
+                          check("log10", x, Math.log10(x), StrictMath.log10(x));
+                      }
+                  }
+                  System.out.println(bad == 0 ? "MATH OK" : "MATH BROKEN (" + bad + " wrong results)");
+              }
+              static void check(String f, double x, double got, double want) {
+                  boolean ok = Double.compare(got, want) == 0 || Math.abs(got - want) <= Math.abs(want) * 1e-9 + 1e-12;
+                  if (!ok) {
+                      if (bad < 3) System.out.println("  " + f + "(" + x + ") = " + got + ", expected " + want);
+                      bad++;
+                  }
+              }
+          }
+          EOF
+          javac --release 17 -d "$RUNNER_TEMP/t" "$RUNNER_TEMP/t/MathCheck.java"
+
+      - name: Run checks
+        run: |
+          FIX="-XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow"
+          run() {
+            local v=$1; shift
+            local d="$RUNNER_TEMP/jre-$v"
+            timeout 900 qemu-arm-static -L "$ROOT" -E LD_LIBRARY_PATH="$d/lib:$d/lib/server:/system/lib" \
+              "$d/bin/java" -Xms256M -Xmx256M "$@" 2>&1
+            echo "exit=$?"
+          }
+          flags() { grep -E " (UseSerialGC|UseG1GC|CICompilerCount|ReservedCodeCacheSize|ProfileInterpreter|NeverActAsServerClassMachine|TieredCompilation) " | awk '{print $2"="$4" "$NF}' | tr '\n' ' '; }
+          report() {
+            local title=$1 file=$2
+            cat "$file"
+            local msg
+            msg=$(python3 -c 'import sys; print(sys.stdin.read().strip().replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))' < "$file")
+            echo "::notice title=$title::$msg"
+          }
+          for v in 17 21 25; do
+            out="$RUNNER_TEMP/report-$v.txt"
+            {
+              echo "image: $IMAGE_PKG"
+              echo "version: $(run $v -version | grep -m1 -i 'version')"
+              echo "flags, default:          $(run $v -XX:+PrintFlagsFinal -version | flags)"
+              echo "flags, launcher options: $(run $v -XX:+NeverActAsServerClassMachine $FIX -XX:+PrintFlagsFinal -version | flags)"
+              echo "interpreter only, no fix:   $(run $v -Xint -cp "$RUNNER_TEMP/t" MathCheck | tr '\n' ' ')"
+              echo "interpreter only, with fix: $(run $v -Xint $FIX -cp "$RUNNER_TEMP/t" MathCheck | tr '\n' ' ')"
+              echo "launcher options (JIT on):  $(run $v -XX:+NeverActAsServerClassMachine $FIX -cp "$RUNNER_TEMP/t" MathCheck | tr '\n' ' ')"
+            } > "$out"
+            report "Java $v (armeabi-v7a)" "$out"
+          done
