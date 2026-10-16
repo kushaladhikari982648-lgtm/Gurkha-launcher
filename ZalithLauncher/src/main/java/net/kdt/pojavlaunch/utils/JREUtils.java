@@ -363,8 +363,8 @@ public final class JREUtils {
     private static void launchJavaVM(
             final AppCompatActivity activity,
             String runtimeHome,
+            final Runtime runtime,
             Version gameVersion,
-            final List<String> runtimeFixArgs,
             final List<String> JVMArgs,
             final String userArgsString
     ) {
@@ -398,8 +398,13 @@ public final class JREUtils {
         // Some phones are not using the right number of cores, fix that
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());
 
-        // Runtime specific JVM fixes (see getArm32MathFixArgs). They must stay before JVMArgs,
+        // Runtime specific JVM fixes (see getArm32FixArgs). They must stay before JVMArgs,
         // which end with the main class.
+        List<String> runtimeFixArgs = getArm32FixArgs(runtime, userArgs);
+        if (!runtimeFixArgs.isEmpty()) {
+            Logger.appendToLog("Info: 32-bit ARM runtime (Java " + runtime.javaVersion + "), adding: "
+                    + String.join(" ", runtimeFixArgs));
+        }
         userArgs.addAll(runtimeFixArgs);
 
         userArgs.addAll(JVMArgs);
@@ -445,48 +450,64 @@ public final class JREUtils {
 
         initGraphicAndSoundEngine(gameVersion != null);
 
-        List<String> runtimeFixArgs = getArm32MathFixArgs(runtime);
-        if (!runtimeFixArgs.isEmpty()) {
-            Logger.appendToLog("Info: 32-bit ARM Java " + runtime.javaVersion
-                    + " detected, disabling the broken interpreter math intrinsics (1.20.5+ 32-bit fix)");
-        }
-
-        launchJavaVM(activity, runtimeHome, gameVersion, runtimeFixArgs, JVMArgs, userArgsString);
+        launchJavaVM(activity, runtimeHome, runtime, gameVersion, JVMArgs, userArgsString);
     }
 
     /**
-     * Port of PojavLauncher's "Fixed 1.20.5+ versions on 32-bit devices" (foxglove-20241124 build).
+     * JVM options for 32-bit ARM runtimes, reproducing what PojavLauncher changed in its own arm32 Java
+     * builds (those changes live in PojavLauncherTeam/android-openjdk-build-multiarch, not in the
+     * launcher, so the runtimes bundled with this launcher do not have them).
      * <p>
-     * Pojav fixed it inside its Java 21 build, not in the launcher: commit 8cb72d3 of
-     * PojavLauncherTeam/android-openjdk-build-multiarch ("Fix[arm32]: Disable InlineIntrinsics on
-     * arm32 by default") changes the default of InlineIntrinsics to false in
-     * src/hotspot/cpu/arm/c1_globals_arm.hpp and c2_globals_arm.hpp.
+     * <b>Client VM (Java 17+).</b> Pojav builds its arm32 runtimes as the "client" VM since February 2025
+     * (android-openjdk-build-multiarch PR #29, "After testing by me and several other people on arm32,
+     * the VM appears to run more stable with this"). The bundled arm32 runtimes are "server" VMs, which on
+     * 32-bit ARM run the interpreter plus the C2 compiler only (TieredCompilation is off by default
+     * there): C2 is slow to kick in and needs a lot of memory, which a 32-bit process does not have.
+     * -XX:+NeverActAsServerClassMachine makes HotSpot emulate the client VM
+     * (CompilerConfig::set_client_emulation_mode_flags: C1 only, one compiler thread, 32 MB code cache,
+     * and Serial GC through the GC ergonomics), as it does by default on 32-bit Windows. A compilation
+     * mode or garbage collector chosen in the user's JVM arguments still takes precedence.
      * <p>
-     * Why: since JDK 18 (JDK-8271128) the 32-bit ARM template interpreter has fast paths for
-     * Math.sin/cos/tan/log/log10/exp/pow that call the VM runtime with the argument in a VFP register
+     * <b>Math intrinsics (Java 18+).</b> Port of PojavLauncher's "Fixed 1.20.5+ versions on 32-bit
+     * devices": android-openjdk-build-multiarch commit 8cb72d3 ("Fix[arm32]: Disable InlineIntrinsics on
+     * arm32 by default"). Since JDK 18 (JDK-8271128) the 32-bit ARM template interpreter has fast paths
+     * for Math.sin/cos/tan/log/log10/exp/pow that call the VM runtime with the argument in a VFP register
      * (hard-float calling convention). Android's armeabi-v7a uses the softfp convention, where the C
      * runtime reads and returns doubles in core registers, so these methods return garbage while they
-     * are interpreted. Minecraft 1.20.5+ needs Java 21, so on 32-bit ARM the title screen panorama and
-     * the world render incorrectly or not at all.
+     * are interpreted: Minecraft 1.20.5+ (Java 21) renders the title screen and the world incorrectly.
+     * InlineIntrinsics is a "develop" flag that release JVMs refuse, so exactly the affected intrinsics
+     * are disabled with the diagnostic DisableIntrinsic flag, which the interpreter honours too
+     * (TemplateInterpreterGenerator::generate_intrinsic_entry -> vmIntrinsics::is_intrinsic_available).
      * <p>
-     * InlineIntrinsics is a "develop" flag: release JVMs refuse to start with -XX:-InlineIntrinsics.
-     * We therefore disable exactly the affected intrinsics with the diagnostic DisableIntrinsic flag,
-     * which the interpreter honours too (vmIntrinsics::is_intrinsic_available). Math.abs and Math.sqrt
-     * are computed inline without a runtime call and stay enabled. This fixes the bundled Java 21 and
-     * Java 25 (both built without Pojav's patch) as well as runtimes imported by the user, and is
-     * harmless on runtimes that already contain the patch.
+     * Both are harmless on runtimes that already contain Pojav's changes.
      *
-     * @param runtime the runtime that is about to be started
-     * @return the extra JVM arguments, or an empty list if the runtime is not affected
+     * @param runtime  the runtime that is about to be started
+     * @param userArgs the JVM arguments collected so far (including the user's custom arguments)
+     * @return the extra JVM arguments, or an empty list if the runtime is not a 32-bit ARM runtime
      */
-    public static List<String> getArm32MathFixArgs(Runtime runtime) {
+    public static List<String> getArm32FixArgs(Runtime runtime, List<String> userArgs) {
         List<String> args = new ArrayList<>();
         int runtimeArch = runtime.arch != null ? Architecture.archAsInt(runtime.arch) : Tools.DEVICE_ARCHITECTURE;
+        if (runtimeArch != Architecture.ARCH_ARM) return args;
+
+        // Java 8 for arm32 is already a client VM; the client emulation mode exists since JDK 17.
+        boolean userChoseServerClass = false;
+        for (String arg : userArgs) {
+            if (arg.contains("NeverActAsServerClassMachine") || arg.contains("AlwaysActAsServerClassMachine")) {
+                userChoseServerClass = true;
+                break;
+            }
+        }
+        if (runtime.javaVersion >= 17 && !userChoseServerClass) {
+            args.add("-XX:+NeverActAsServerClassMachine");
+        }
+
         // JDK 8 (aarch32 port) and JDK 17 are not affected: the interpreter math entries appeared in JDK 18.
-        if (runtimeArch != Architecture.ARCH_ARM || runtime.javaVersion < 18) return args;
-        // The unlock option must come before the diagnostic option, or the JVM refuses to start.
-        args.add("-XX:+UnlockDiagnosticVMOptions");
-        args.add("-XX:DisableIntrinsic=_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow");
+        if (runtime.javaVersion >= 18) {
+            // The unlock option must come before the diagnostic option, or the JVM refuses to start.
+            args.add("-XX:+UnlockDiagnosticVMOptions");
+            args.add("-XX:DisableIntrinsic=_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow");
+        }
         return args;
     }
 

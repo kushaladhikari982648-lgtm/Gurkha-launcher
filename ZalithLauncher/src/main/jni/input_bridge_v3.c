@@ -92,8 +92,11 @@ ADD_CALLBACK_WWIN(WindowSize)
 
 #undef ADD_CALLBACK_WWIN
 
-void handleFramebufferSizeJava(long window, int w, int h) {
-    (*pojav_environ->runtimeJNIEnvPtr_JRE)->CallStaticVoidMethod(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, pojav_environ->method_internalWindowSizeChanged, (long)window, w, h);
+void handleFramebufferSizeJava(jlong window, jint w, jint h) {
+    // internalWindowSizeChanged is "(JII)V": the window must be passed as a 64-bit jlong. On 32-bit
+    // devices a C long is only 32 bits, so passing (long)window shifted every vararg and Java received a
+    // garbage window and size, which broke resizing and crashed the game (PojavLauncher b5de32d3b).
+    (*pojav_environ->runtimeJNIEnvPtr_JRE)->CallStaticVoidMethod(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, pojav_environ->method_internalWindowSizeChanged, window, w, h);
 }
 
 void pojavPumpEvents(void* window) {
@@ -348,7 +351,7 @@ jboolean noncritical_send_char_mods(__attribute__((unused)) JNIEnv* env, __attri
 /*
 JNIEXPORT void JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeSendCursorEnter(JNIEnv* env, jclass clazz, jint entered) {
     if (pojav_environ->GLFW_invoke_CursorEnter && pojav_environ->isInputReady) {
-        pojav_environ->GLFW_invoke_CursorEnter(pojav_environ->showingWindow, entered);
+        pojav_environ->GLFW_invoke_CursorEnter((void*) pojav_environ->showingWindow, entered);
     }
 }
 */
@@ -463,7 +466,7 @@ void noncritical_send_scroll(__attribute__((unused)) JNIEnv* env, __attribute__(
 
 
 JNIEXPORT void JNICALL Java_org_lwjgl_glfw_GLFW_nglfwSetShowingWindow(__attribute__((unused)) JNIEnv* env, __attribute__((unused)) jclass clazz, jlong window) {
-    pojav_environ->showingWindow = (long) window;
+    pojav_environ->showingWindow = (jlong) window;
 }
 
 JNIEXPORT void JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeSetWindowAttrib(__attribute__((unused)) JNIEnv* env, __attribute__((unused)) jclass clazz, jint attrib, jint value) {
