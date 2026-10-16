@@ -470,14 +470,18 @@ public final class JREUtils {
      * <p>
      * <b>Math intrinsics (Java 18+).</b> Port of PojavLauncher's "Fixed 1.20.5+ versions on 32-bit
      * devices": android-openjdk-build-multiarch commit 8cb72d3 ("Fix[arm32]: Disable InlineIntrinsics on
-     * arm32 by default"). Since JDK 18 (JDK-8271128) the 32-bit ARM template interpreter has fast paths
-     * for Math.sin/cos/tan/log/log10/exp/pow that call the VM runtime with the argument in a VFP register
-     * (hard-float calling convention). Android's armeabi-v7a uses the softfp convention, where the C
-     * runtime reads and returns doubles in core registers, so these methods return garbage while they
-     * are interpreted: Minecraft 1.20.5+ (Java 21) renders the title screen and the world incorrectly.
-     * InlineIntrinsics is a "develop" flag that release JVMs refuse, so exactly the affected intrinsics
-     * are disabled with the diagnostic DisableIntrinsic flag, which the interpreter honours too
+     * arm32 by default"). Since JDK 18 (JDK-8271128) the 32-bit ARM template interpreter has math entries
+     * (templateInterpreterGenerator_arm.cpp, generate_math_entry) written for the hard-float calling
+     * convention: Math.abs/sqrt leave their result in VFP register D0, and Math.sin/cos/tan/log/log10/
+     * exp/pow pass their argument in D0 to the C runtime. Android's armeabi-v7a uses the softfp
+     * convention, where doubles travel in core registers, so all of them return garbage while they are
+     * interpreted. The pure-Java StrictMath code (FdLibm) relies on Math.abs and then fails with
+     * ArrayIndexOutOfBoundsException in FdLibm$RemPio2, so Minecraft 1.20.5+ (Java 21) crashes or renders
+     * garbage. Verified on the bundled Java 21 and 25 under qemu-arm with Android's 32-bit libraries.
+     * InlineIntrinsics is a "develop" flag that release JVMs refuse, so all the intrinsics that have such
+     * an entry are disabled with the diagnostic DisableIntrinsic flag, which the interpreter honours too
      * (TemplateInterpreterGenerator::generate_intrinsic_entry -> vmIntrinsics::is_intrinsic_available).
+     * Every name in the list exists since JDK 18; an unknown name would stop the JVM from starting.
      * <p>
      * Both are harmless on runtimes that already contain Pojav's changes.
      *
@@ -506,7 +510,7 @@ public final class JREUtils {
         if (runtime.javaVersion >= 18) {
             // The unlock option must come before the diagnostic option, or the JVM refuses to start.
             args.add("-XX:+UnlockDiagnosticVMOptions");
-            args.add("-XX:DisableIntrinsic=_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow");
+            args.add("-XX:DisableIntrinsic=_dabs,_dsqrt,_dsqrt_strict,_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow");
         }
         return args;
     }
