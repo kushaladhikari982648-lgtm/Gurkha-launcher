@@ -83,6 +83,25 @@ jobs:
                       }
                   }
                   System.out.println(bad == 0 ? "MATH OK" : "MATH BROKEN (" + bad + " wrong results)");
+                  if (args.length > 0) {
+                      // Hot loop: gets compiled by the JIT, then compared with StrictMath again.
+                      int hotBad = 0;
+                      for (int round = 0; round < 3; round++) hotBad += hot(20000);
+                      System.out.println(hotBad == 0 ? "HOT LOOP OK" : "HOT LOOP BROKEN (" + hotBad + " wrong results)");
+                  }
+              }
+              static int hot(int n) {
+                  int wrong = 0;
+                  for (int i = 1; i <= n; i++) {
+                      double x = i * 0.001;
+                      if (Math.sin(x) != StrictMath.sin(x) && Math.abs(Math.sin(x) - StrictMath.sin(x)) > 1e-12) wrong++;
+                      if (Math.abs(Math.cos(x) - StrictMath.cos(x)) > 1e-12) wrong++;
+                      if (Math.abs(Math.sqrt(x) - StrictMath.sqrt(x)) > 1e-12) wrong++;
+                      if (Math.abs(Math.abs(-x) - x) > 0) wrong++;
+                      if (Math.abs(Math.log(x) - StrictMath.log(x)) > 1e-9) wrong++;
+                      if (Math.abs(Math.pow(x, 0.75) - StrictMath.pow(x, 0.75)) > 1e-9) wrong++;
+                  }
+                  return wrong;
               }
               static void check(String f, double x, double got, double want) {
                   boolean ok = Double.compare(got, want) == 0 || Math.abs(got - want) <= Math.abs(want) * 1e-9 + 1e-12;
@@ -97,7 +116,9 @@ jobs:
 
       - name: Run checks
         run: |
-          FIX="-XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow"
+          FIX="-XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_dabs,_dsqrt,_dsqrt_strict,_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow"
+          # Same as JREUtils.getArm32FixArgs: client VM emulation for Java 17+, math fix for Java 18+.
+          launcher_opts() { if [ "$1" -ge 18 ]; then echo "-XX:+NeverActAsServerClassMachine $FIX"; else echo "-XX:+NeverActAsServerClassMachine"; fi; }
           run() {
             local v=$1; shift
             local d="$RUNNER_TEMP/jre-$v"
@@ -122,10 +143,13 @@ jobs:
               echo "image: $IMAGE_PKG"
               echo "version: $(run $v -version | grep -m1 -i 'version')"
               echo "flags, default:          $(run $v -XX:+PrintFlagsFinal -version | flags)"
-              echo "flags, launcher options: $(run $v -XX:+NeverActAsServerClassMachine $FIX -XX:+PrintFlagsFinal -version | flags)"
-              echo "interpreter only, no fix:   $(run $v -Xint -cp "$RUNNER_TEMP/t" MathCheck | tr '\n' ' ')"
-              echo "interpreter only, with fix: $(run $v -Xint $FIX -cp "$RUNNER_TEMP/t" MathCheck | tr '\n' ' ')"
-              echo "launcher options (JIT on):  $(run $v -XX:+NeverActAsServerClassMachine $FIX -cp "$RUNNER_TEMP/t" MathCheck | tr '\n' ' ')"
+              OPTS=$(launcher_opts $v)
+              echo "launcher options: $OPTS"
+              echo "flags, launcher options: $(run $v $OPTS -XX:+PrintFlagsFinal -version | flags)"
+              echo "interpreter only, no fix:        $(run $v -Xint -cp "$RUNNER_TEMP/t" MathCheck | grep -v bionic | tr '\n' ' ')"
+              echo "interpreter only, launcher opts: $(run $v -Xint $OPTS -cp "$RUNNER_TEMP/t" MathCheck | grep -v bionic | tr '\n' ' ')"
+              echo "JIT on, launcher opts:           $(run $v $OPTS -cp "$RUNNER_TEMP/t" MathCheck hot | grep -v bionic | tr '\n' ' ')"
+              echo "JIT on, default server VM:       $(run $v -cp "$RUNNER_TEMP/t" MathCheck hot | grep -v bionic | tr '\n' ' ')"
             } > "$out"
             report "Java $v (armeabi-v7a)" "$out"
           done
