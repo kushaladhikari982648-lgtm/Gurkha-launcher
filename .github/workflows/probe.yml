@@ -15,6 +15,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build the GLFW stub jars (as the Android CI does)
+        run: |
+          chmod +x gradlew
+          ./gradlew jre_lwjgl3glfw:build --no-daemon -q
+          ls -la ZalithLauncher/src/main/assets/components/lwjgl3/
+
       - name: LWJGL linkage of Minecraft 26.x against the bundled LWJGL
         run: |
           python3 - <<'PY'
@@ -87,20 +99,13 @@ jobs:
               return any(has_member(bundle, s, name, desc, seen) for s in ([c[1]] if c[1] else []) + c[2])
 
           A = "ZalithLauncher/src/main/assets/components"
-          # The launcher's own GLFW stub classes (module jre_lwjgl3glfw), without the merged LWJGL 3.3.6 jars
-          import os
-          own = {os.path.relpath(os.path.join(r, f[:-5]), "jre_lwjgl3glfw/src/main/java")
-                 for r, _, fs in os.walk("jre_lwjgl3glfw/src/main/java") for f in fs if f.endswith(".java")}
-          own = {o for o in own if not o.startswith("net/java/") and o != "org/lwjgl/input/InfdevMouse"}
-          src = zipfile.ZipFile(f"{A}/lwjgl3/lwjgl-glfw-classes.jar")
-          with zipfile.ZipFile("/tmp/stub.jar", "w") as z:
-              for n in src.namelist():
-                  if n.endswith(".class") and n.split("$")[0].removesuffix(".class") in own:
-                      z.writestr(n, src.read(n))
+          # The jars built by module jre_lwjgl3glfw in the previous step, like the launcher uses them
           official341 = sorted(j for j in glob.glob(f"{A}/lwjgl3-sdl/*.jar") if not j.endswith("/lwjgl-sdl.jar"))
+          stub = load_bundle([f"{A}/lwjgl3/lwjgl-glfw-stub.jar"])
+          print("stub classes:", len(stub), sorted(c for c in stub if "$" not in c))
           bundles = {
               "glfw-3.3.6 (lwjgl3)": load_bundle([f"{A}/lwjgl3/lwjgl-glfw-classes.jar"]),
-              "glfw-3.4.1 (stub + lwjgl3-sdl jars)": load_bundle(["/tmp/stub.jar"] + official341),
+              "glfw-3.4.1 (stub + lwjgl3-sdl jars)": load_bundle([f"{A}/lwjgl3/lwjgl-glfw-stub.jar"] + official341),
               "sdl-3.4.1 (lwjgl3-sdl)": load_bundle(sorted(glob.glob(f"{A}/lwjgl3-sdl/*.jar"))),
           }
           def check(vid, sdl, bname, bundle, jar):
@@ -131,6 +136,11 @@ jobs:
                           for pre in prefixes:
                               if c.startswith(pre): found[pre].add(name.removesuffix(".class"))
               return found
+
+          b341 = bundles["glfw-3.4.1 (stub + lwjgl3-sdl jars)"]
+          bad = sorted({f"{o}.{m}{d}" for c in stub for o, m, d in b341[c][4] if o.startswith("org/lwjgl/") and not has_member(b341, o, m, d)}
+                       | {r for c in stub for r in b341[c][5] if r.startswith("org/lwjgl/") and r.lstrip("[").removeprefix("L").removesuffix(";") not in b341})
+          print(f"::notice title=GLFW stub on LWJGL 3.4.1::{len(stub)} stub classes, unresolved references into LWJGL 3.4.1: {len(bad)} " + " ".join(bad[:10]))
 
           manifest = json.loads(get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
           by_id = {v["id"]: v for v in manifest["versions"]}
