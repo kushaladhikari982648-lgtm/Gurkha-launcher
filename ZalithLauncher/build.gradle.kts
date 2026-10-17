@@ -86,6 +86,9 @@ android {
         versionName = launcherVersionName
         multiDexEnabled = true //important
         manifestPlaceholders["launcher_name"] = launcherAPPName
+        // Only the languages the launcher is translated into (res/values-*): the libraries (Material, AppCompat,
+        // ...) bring texts for ~80 more, which made resources.arsc twice as big for nothing
+        resourceConfigurations += listOf("en", "ar", "de", "fr", "pt-rBR", "ru", "vi", "zh-rCN", "zh-rTW")
     }
 
     buildTypes {
@@ -145,6 +148,11 @@ android {
                                     if (arch != "all" && it.name != "version" && !it.name.contains("universal") && it.name != "bin-${arch}.tar.xz") {
                                         println("delete:${it} : ${it.delete()}")
                                     }
+                                }
+                                // A runtime that has no build for this CPU (Java 25 has no 32-bit x86 build) is useless
+                                // here: drop its shared part too instead of shipping it (UnpackJreTask skips it).
+                                if (arch != "all" && !File(runtimeDir, "bin-${arch}.tar.xz").exists()) {
+                                    println("delete (no bin-${arch}.tar.xz):${runtimeDir} : ${runtimeDir.deleteRecursively()}")
                                 }
                             }
                             // LWJGL 3.4.1 natives (Minecraft 26.3+, from lwjgl-3.4.1-natives-release.aar): keep only this ABI

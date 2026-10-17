@@ -55,11 +55,22 @@ object Renderers {
                     File(context.applicationInfo.nativeLibraryDir, LTWRenderer.LIBRARY).exists()
         }
 
+        val nativeLibraryDir = context.applicationInfo.nativeLibraryDir
+
         val compatibleRenderers1: MutableList<RendererInterface> = mutableListOf()
         renderers.forEach { renderer ->
             if (renderer.getRendererId().contains("vulkan") && !deviceHasVulkan) return@forEach
             if (renderer.getRendererId().contains("zink") && !deviceHasZinkBinary) return@forEach
             if (renderer.getRendererId() == LTWRenderer.ID && !deviceSupportsLtw) return@forEach
+            // Freedreno drives Qualcomm Adreno GPUs and Panfrost drives ARM Mali GPUs: neither exists on x86
+            // devices, whose APKs don't ship these drivers (libOSMesa_2300d.so is left out of them)
+            if ((renderer is FreedrenoRenderer || renderer is PanfrostRenderer) && Architecture.isx86Device()) return@forEach
+            // A built-in renderer whose library is not in this APK would only fail when the game starts
+            // (renderer plugins bring their own libraries, so they are not checked here)
+            if (renderer.isBuiltIn() && !File(nativeLibraryDir, renderer.getRendererLibrary()).exists()) {
+                Logging.i("Renderers", "${renderer.getRendererName()} is not available: ${renderer.getRendererLibrary()} is not in this APK")
+                return@forEach
+            }
             compatibleRenderers1.add(renderer)
         }
 
@@ -131,4 +142,9 @@ object Renderers {
      * 当前是否设置了渲染器
      */
     fun isCurrentRendererValid(): Boolean = isInitialized && this.currentRenderer != null
+
+    /** The renderers that come with the launcher: their libraries are part of its APK. */
+    private fun RendererInterface.isBuiltIn(): Boolean =
+        this is GL4ESRenderer || this is LTWRenderer || this is VulkanZinkRenderer ||
+                this is VirGLRenderer || this is FreedrenoRenderer || this is PanfrostRenderer
 }
