@@ -41,23 +41,31 @@ jobs:
 
       - name: Build JRE JAR files
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew jre_lwjgl3glfw:build --no-daemon
+          ./gradlew jre_lwjgl3glfw:build --no-daemon 2>&1 | tee "$RUNNER_TEMP/build.log"
 
       - name: Build Debug ${{ matrix.arch }}
         run: |
           set -o pipefail
-          ./gradlew ZalithLauncher:assembleDebug -Darch=${{ matrix.arch }} 2>&1 | tee "$RUNNER_TEMP/build.log"
+          ./gradlew ZalithLauncher:assembleDebug -Darch=${{ matrix.arch }} 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Report build errors
         if: failure()
         run: |
-          # Compiler errors as one annotation, so they show up on the run page without opening the log
+          # Errors of the failed Gradle step as one annotation, so they show up on the run page without opening the log
           python3 - "$RUNNER_TEMP/build.log" <<'PY'
-          import re, sys
-          lines = open(sys.argv[1], errors="replace").read().splitlines()
-          keep = [l for l in lines if re.search(r"^e: |error:|\berror\b.*\.(java|kt|c|h):|What went wrong|Execution failed|cannot find symbol|Unresolved reference|^> ", l)]
-          msg = "\n".join(keep[:80]) or "\n".join(lines[-40:])
+          import os, re, sys
+          path = sys.argv[1]
+          lines = open(path, errors="replace").read().splitlines() if os.path.exists(path) else []
+          idx = set()
+          for i, l in enumerate(lines):
+              if re.search(r"^e: |error:|\berror\b.*\.(java|kt|c|h):|What went wrong|Execution failed|cannot find symbol|Unresolved reference|^> ", l):
+                  idx.add(i)
+              if "What went wrong" in l:  # Gradle prints the reason on the following lines
+                  idx.update(range(i + 1, min(i + 5, len(lines))))
+          keep = [lines[i] for i in sorted(idx) if lines[i].strip()]
+          msg = "\n".join(keep[:80]) or "\n".join(lines[-40:]) or "No Gradle output: a step before the Gradle builds failed."
           print("::error title=Build failed::" + msg.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
           PY
 
