@@ -1,15 +1,15 @@
 {
-  "version_code": 100003,
-  "version_name": "1.0.0-beta.4",
+  "version_code": 100004,
+  "version_name": "1.0.0-beta.5",
   "title": {
-    "en_us": "Gurkha Launcher 1.0.0-beta.4",
-    "zh_cn": "Gurkha Launcher 1.0.0-beta.4",
-    "zh_tw": "Gurkha Launcher 1.0.0-beta.4"
+    "en_us": "Gurkha Launcher 1.0.0-beta.5",
+    "zh_cn": "Gurkha Launcher 1.0.0-beta.5",
+    "zh_tw": "Gurkha Launcher 1.0.0-beta.5"
   },
   "description": {
-    "en_us": "First pre-release of Gurkha Launcher: a new khukuri logo, Minecraft 26.3+ support, the LTW renderer and fixes for 32-bit devices. See https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases",
-    "zh_cn": "Gurkha Launcher 的第一个预发布版本：支持 Minecraft 26.3+、LTW 渲染器，并修复了 32 位设备上的问题。详见 https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases",
-    "zh_tw": "Gurkha Launcher 的第一個預發布版本：支援 Minecraft 26.3+、LTW 渲染器，並修復了 32 位元裝置上的問題。詳見 https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases"
+    "en_us": "First pre-release of Gurkha Launcher: Minecraft 26.1 to 26.4 support (SDL3, LWJGL 3.4), working CurseForge downloads, smaller APKs, the LTW renderer, fixes for 32-bit devices and a new khukuri logo. See https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases",
+    "zh_cn": "Gurkha Launcher 的第一个预发布版本：支持 Minecraft 26.1 至 26.4（SDL3、LWJGL 3.4）、可用的 CurseForge 下载、更小的安装包、LTW 渲染器、32 位设备修复以及全新的廓尔喀弯刀图标。详见 https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases",
+    "zh_tw": "Gurkha Launcher 的第一個預發布版本：支援 Minecraft 26.1 至 26.4（SDL3、LWJGL 3.4）、可用的 CurseForge 下載、更小的安裝包、LTW 渲染器、32 位元裝置修復以及全新的廓爾喀彎刀圖示。詳見 https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases"
   },
   "published_at": "2026-10-17T00:00:00Z",
   "file_size": {
