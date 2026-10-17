@@ -10,11 +10,13 @@ plugins {
 apply(plugin = "stringfog")
 
 val getCFApiKey = {
-    System.getenv("CURSEFORGE_API_KEY") ?: run {
+    // CI passes an unset secret as an empty string, which must count as "no key" too
+    System.getenv("CURSEFORGE_API_KEY")?.trim()?.takeIf { it.isNotEmpty() } ?: run {
         val curseforgeKeyFile = File(rootDir, "curseforge_key.txt")
-        if (curseforgeKeyFile.canRead() && curseforgeKeyFile.isFile) {
-            curseforgeKeyFile.readText()
+        if (curseforgeKeyFile.canRead() && curseforgeKeyFile.isFile && curseforgeKeyFile.readText().isNotBlank()) {
+            curseforgeKeyFile.readText().trim()
         } else {
+            // The app checks for this value and tells the user that CurseForge is unavailable (Modrinth still works)
             logger.warn("BUILD: You have no CurseForge key, the curseforge api will get disabled !")
             "DUMMY"
         }

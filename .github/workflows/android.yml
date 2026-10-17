@@ -46,9 +46,41 @@ jobs:
           ./gradlew jre_lwjgl3glfw:build --no-daemon 2>&1 | tee "$RUNNER_TEMP/build.log"
 
       - name: Build Debug ${{ matrix.arch }}
+        env:
+          # Without it the CurseForge tab of the launcher can't work (the API rejects every request)
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
         run: |
           set -o pipefail
+          if [ -z "$CURSEFORGE_API_KEY" ] && [ "${{ matrix.arch }}" = "all" ]; then
+            echo "::warning title=No CurseForge API key::The CURSEFORGE_API_KEY secret is not set, so CurseForge downloads are disabled in these APKs (Modrinth still works). See RELEASING.md."
+          fi
           ./gradlew ZalithLauncher:assembleDebug -Darch=${{ matrix.arch }} 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - name: APK size report
+        run: |
+          # What takes the space in the APK: shown on the run page, so size changes are visible in every build
+          python3 - ZalithLauncher/build/outputs/apk/debug/*.apk <<'PY'
+          import collections, os, sys, zipfile
+          for apk in sys.argv[1:]:
+              groups, entries = collections.Counter(), []
+              for i in zipfile.ZipFile(apk).infolist():
+                  parts = i.filename.split("/")
+                  if parts[0] == "assets" and len(parts) > 2: key = "/".join(parts[:3])
+                  elif parts[0] == "lib": key = "lib (native libraries)"
+                  elif i.filename.endswith(".dex"): key = "classes*.dex"
+                  else: key = parts[0] if len(parts) > 1 else i.filename
+                  groups[key] += i.compress_size
+                  entries.append((i.compress_size, i.file_size, i.filename))
+              lines = [f"{os.path.basename(apk)}: {os.path.getsize(apk) / 1e6:.1f} MB"]
+              lines += [f"{v / 1e6:7.2f} MB  {k}" for k, v in groups.most_common(16)]
+              lines.append("Largest entries (in APK / unpacked):")
+              lines += [f"{c / 1e6:7.2f} / {u / 1e6:7.2f} MB  {n}" for c, u, n in sorted(entries, reverse=True)[:20]]
+              msg = "\n".join(lines)
+              print(msg)
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+                  f.write("```\n" + msg + "\n```\n")
+              print(f"::notice title=APK size {os.path.basename(apk)}::" + msg.replace("%", "%25").replace("\n", "%0A"))
+          PY
 
       - name: Report build errors
         if: failure()
