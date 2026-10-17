@@ -155,6 +155,13 @@ android {
                                     println("delete (no bin-${arch}.tar.xz):${runtimeDir} : ${runtimeDir.deleteRecursively()}")
                                 }
                             }
+                            // Component jars (LWJGL, Caciocavallo, authlib-injector, ...) go into the APK as xz-compressed
+                            // uncompressed jars: their classes compress far better together than one by one (lwjgl-vulkan.jar
+                            // 7.95 MB -> 1.52 MB, 11.5 MB less in total). UnpackComponentsTask restores the .jar.
+                            File("$assetsDir/components").walkTopDown()
+                                .filter { it.isFile && it.name.endsWith(".jar") }
+                                .toList()
+                                .forEach { packJarAsXz(it) }
                             // LWJGL 3.4.1 natives (Minecraft 26.3+, from lwjgl-3.4.1-natives-release.aar): keep only this ABI
                             val abiName = mapOf("arm" to "armeabi-v7a", "arm64" to "arm64-v8a", "x86" to "x86", "x86_64" to "x86_64")[arch]
                             if (abiName != null) {
@@ -220,6 +227,40 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+}
+
+/**
+ * Replaces [jar] by "<name>.jar.xz": the same jar with all entries stored uncompressed, then xz-compressed (LZMA2
+ * dictionary no larger than needed, at most 8 MiB like the Java runtimes, so unpacking needs little memory).
+ * Entry order, names, data and times are kept, so signatures and the manifest position stay valid.
+ */
+fun packJarAsXz(jar: File) {
+    val stored = java.io.ByteArrayOutputStream()
+    java.util.zip.ZipFile(jar).use { zip ->
+        java.util.zip.ZipOutputStream(stored).use { out ->
+            for (entry in zip.entries()) {
+                val data = zip.getInputStream(entry).use { it.readBytes() }
+                val copy = java.util.zip.ZipEntry(entry.name).apply {
+                    method = java.util.zip.ZipEntry.STORED
+                    size = data.size.toLong()
+                    compressedSize = data.size.toLong()
+                    crc = java.util.zip.CRC32().apply { update(data) }.value
+                    time = entry.time
+                }
+                out.putNextEntry(copy)
+                out.write(data)
+                out.closeEntry()
+            }
+        }
+    }
+    val bytes = stored.toByteArray()
+    val options = org.tukaani.xz.LZMA2Options(6).apply {
+        dictSize = maxOf(org.tukaani.xz.LZMA2Options.DICT_SIZE_MIN, minOf(8 shl 20, Integer.highestOneBit(maxOf(bytes.size, 1)) shl 1))
+    }
+    File(jar.parentFile, jar.name + ".xz").outputStream().buffered().use { file ->
+        org.tukaani.xz.XZOutputStream(file, options).use { it.write(bytes) }
+    }
+    println("packed:${jar.name} ${jar.length()} -> ${File(jar.parentFile, jar.name + ".xz").length()} : ${jar.delete()}")
 }
 
 fun generateJavaClass(sourceOutputDir: File, packageName: String, className: String, constantMap: Map<String, String>) {

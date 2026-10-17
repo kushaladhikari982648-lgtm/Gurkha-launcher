@@ -4,15 +4,25 @@ import com.movtery.zalithlauncher.feature.update.UpdateUtils
 import com.movtery.zalithlauncher.launch.SdlSupport
 import android.content.Context
 import android.content.res.AssetManager
+import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.feature.log.Logging.i
 import com.movtery.zalithlauncher.utils.path.PathManager
 import net.kdt.pojavlaunch.Tools
 import org.apache.commons.io.FileUtils
+import org.tukaani.xz.XZInputStream
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStream
 
 class UnpackComponentsTask(val context: Context, val component: Components) : AbstractUnpackTask() {
+    companion object {
+        /** Jars packed by the build (build.gradle.kts, packJarAsXz) end with this. */
+        const val PACKED_JAR_SUFFIX = ".jar.xz"
+    }
+
     private lateinit var am: AssetManager
     private lateinit var rootDir: String
     private lateinit var versionFile: File
@@ -59,12 +69,39 @@ class UnpackComponentsTask(val context: Context, val component: Components) : Ab
 
     override fun run() {
         listener?.onTaskStart()
-        val fileList = am.list("components/${component.component}")
-        for (fileName in fileList!!) {
-            Tools.copyAssetFile(context, "components/${component.component}/$fileName", "$rootDir/${component.component}", true)
+        runCatching {
+            val assetDir = "components/${component.component}"
+            val targetDir = "$rootDir/${component.component}"
+            val fileList = am.list(assetDir) ?: emptyArray()
+            for (fileName in fileList) {
+                if (fileName == "version") continue
+                if (fileName.endsWith(PACKED_JAR_SUFFIX)) {
+                    // A jar packed by the build as an xz-compressed uncompressed jar (see packJarAsXz in
+                    // build.gradle.kts); it stays uncompressed on the device, which also loads its classes faster
+                    unpackXz("$assetDir/$fileName", File(targetDir, fileName.removeSuffix(".xz")))
+                } else {
+                    Tools.copyAssetFile(context, "$assetDir/$fileName", targetDir, true)
+                }
+            }
+            if (component == Components.LWJGL3_SDL) unpackSdlNatives()
+            // The version file comes last: if unpacking is interrupted (app closed, storage full), the next start
+            // still sees an outdated component and unpacks it again, instead of using a half-copied one
+            Tools.copyAssetFile(context, "$assetDir/version", targetDir, true)
+        }.onFailure { e ->
+            // Thrown on the unpack thread, this used to crash the launcher
+            Logging.e("UnpackComponents", "Failed to unpack ${component.component}", e)
         }
-        if (component == Components.LWJGL3_SDL) unpackSdlNatives()
         listener?.onTaskEnd()
+    }
+
+    private fun unpackXz(assetPath: String, target: File) {
+        target.parentFile?.mkdirs()
+        val temp = File(target.parentFile, target.name + ".part")
+        XZInputStream(BufferedInputStream(am.open(assetPath), 64 * 1024)).use { input ->
+            FileOutputStream(temp).use { output -> input.copyTo(output, 64 * 1024) }
+        }
+        if (target.exists()) target.delete()
+        if (!temp.renameTo(target)) throw IOException("Could not move $temp to $target")
     }
 
     /**

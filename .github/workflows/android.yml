@@ -82,6 +82,40 @@ jobs:
               print(f"::notice title=APK size {os.path.basename(apk)}::" + msg.replace("%", "%25").replace("\n", "%0A"))
           PY
 
+      - name: Check the packed component jars
+        run: |
+          # The build packs component jars as xz-compressed uncompressed jars (packJarAsXz in build.gradle.kts).
+          # Every packed jar must unpack to a valid jar with exactly the entries of the jar in the repository.
+          python3 - ZalithLauncher/build/outputs/apk/debug/*.apk <<'PY'
+          import glob, io, lzma, os, sys, zipfile
+          repo = {}
+          for path in glob.glob("ZalithLauncher/src/main/assets/components/**/*.jar", recursive=True):
+              repo["assets/components/" + os.path.relpath(path, "ZalithLauncher/src/main/assets/components")] = path
+          for path in glob.glob("ZalithLauncher/src/main/assets/components/lwjgl3/*.jar"):  # built by jre_lwjgl3glfw
+              repo["assets/components/lwjgl3/" + os.path.basename(path)] = path
+          checked = 0
+          for apk in sys.argv[1:]:
+              z = zipfile.ZipFile(apk)
+              leftover = [n for n in z.namelist() if n.startswith("assets/components/") and n.endswith(".jar")]
+              if leftover:
+                  sys.exit(f"::error title=Unpacked jars in the APK::{apk}: {leftover}")
+              for name in z.namelist():
+                  if not (name.startswith("assets/components/") and name.endswith(".jar.xz")):
+                      continue
+                  jar = zipfile.ZipFile(io.BytesIO(lzma.decompress(z.read(name))))
+                  bad = jar.testzip()
+                  if bad or any(i.compress_type != zipfile.ZIP_STORED for i in jar.infolist()):
+                      sys.exit(f"::error title=Broken packed jar::{apk}: {name} ({bad or 'compressed entries'})")
+                  original = repo.get(name[:-3])
+                  if original:
+                      want = zipfile.ZipFile(original)
+                      if [i.filename for i in want.infolist()] != [i.filename for i in jar.infolist()] or \
+                              any(want.read(i.filename) != jar.read(i.filename) for i in want.infolist()):
+                          sys.exit(f"::error title=Packed jar differs::{apk}: {name} does not match {original}")
+                  checked += 1
+          print(f"{checked} packed jars checked")
+          PY
+
       - name: Report build errors
         if: failure()
         run: |
