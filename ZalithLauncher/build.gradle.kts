@@ -1,6 +1,13 @@
 import com.android.build.api.variant.FilterConfiguration.FilterType.ABI
 import com.android.build.gradle.tasks.MergeSourceSetFolders
 import com.github.megatronking.stringfog.plugin.StringFogExtension
+import org.tukaani.xz.LZMA2Options
+import org.tukaani.xz.XZOutputStream
+import java.io.ByteArrayOutputStream
+import java.util.zip.CRC32
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 plugins {
     id("com.android.application")
@@ -235,16 +242,16 @@ android {
  * Entry order, names, data and times are kept, so signatures and the manifest position stay valid.
  */
 fun packJarAsXz(jar: File) {
-    val stored = java.io.ByteArrayOutputStream()
-    java.util.zip.ZipFile(jar).use { zip ->
-        java.util.zip.ZipOutputStream(stored).use { out ->
+    val stored = ByteArrayOutputStream()
+    ZipFile(jar).use { zip ->
+        ZipOutputStream(stored).use { out ->
             for (entry in zip.entries()) {
                 val data = zip.getInputStream(entry).use { it.readBytes() }
-                val copy = java.util.zip.ZipEntry(entry.name).apply {
-                    method = java.util.zip.ZipEntry.STORED
+                val copy = ZipEntry(entry.name).apply {
+                    method = ZipEntry.STORED
                     size = data.size.toLong()
                     compressedSize = data.size.toLong()
-                    crc = java.util.zip.CRC32().apply { update(data) }.value
+                    crc = CRC32().apply { update(data) }.value
                     time = entry.time
                 }
                 out.putNextEntry(copy)
@@ -254,11 +261,11 @@ fun packJarAsXz(jar: File) {
         }
     }
     val bytes = stored.toByteArray()
-    val options = org.tukaani.xz.LZMA2Options(6).apply {
-        dictSize = maxOf(org.tukaani.xz.LZMA2Options.DICT_SIZE_MIN, minOf(8 shl 20, Integer.highestOneBit(maxOf(bytes.size, 1)) shl 1))
+    val options = LZMA2Options(6).apply {
+        dictSize = maxOf(LZMA2Options.DICT_SIZE_MIN, minOf(8 shl 20, Integer.highestOneBit(maxOf(bytes.size, 1)) shl 1))
     }
     File(jar.parentFile, jar.name + ".xz").outputStream().buffered().use { file ->
-        org.tukaani.xz.XZOutputStream(file, options).use { it.write(bytes) }
+        XZOutputStream(file, options).use { it.write(bytes) }
     }
     println("packed:${jar.name} ${jar.length()} -> ${File(jar.parentFile, jar.name + ".xz").length()} : ${jar.delete()}")
 }
