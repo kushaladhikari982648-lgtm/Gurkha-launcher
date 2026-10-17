@@ -578,6 +578,7 @@
     <string name="download_info_dependencies">Dependency Type:</string>
     <string name="download_info_load_screenshot">Show Screenshot</string>
     <string name="download_search_failed">Failed to search for resources!</string>
+    <string name="download_curseforge_no_api_key">CurseForge is not available in this build of the launcher: it was built without a CurseForge API key. Modrinth still works.</string>
     <string name="download_search_no_result">No related resources found!</string>
     <string name="download_search_platform_not_supported">The current platform does not support downloading this type of resource, or does not support this category filter!</string>
     <string name="download_install_custom_name">Custom File Name</string>

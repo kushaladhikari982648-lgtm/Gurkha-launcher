@@ -57,7 +57,23 @@ Optional secrets:
 - `GURKHA_KEY_ALIAS`: only needed if your key alias is not `gurkha`.
 - `GURKHA_KEY_PASSWORD`: only needed if the key password differs from the keystore password
   (PKCS12 keystores always use the same password).
-- `CURSEFORGE_API_KEY`: enables CurseForge downloads inside the launcher.
+- `CURSEFORGE_API_KEY`: enables CurseForge inside the launcher (see below). Without it, CurseForge
+  shows "CurseForge is not available in this build" and the download pages start on Modrinth.
+
+### CurseForge API key
+
+CurseForge only answers apps that send an API key, and each app needs its own: keys of other launchers
+must not be reused. Builds without a key can't use CurseForge at all (every request is rejected), so:
+
+1. Sign in at <https://console.curseforge.com/> with a CurseForge account and request an API key for
+   this launcher (free; CurseForge reviews requests for third-party apps, which can take a few days).
+2. Add the key as a repository secret named `CURSEFORGE_API_KEY` (**Settings > Secrets and variables >
+   Actions > New repository secret**).
+3. Push a commit or re-run the latest workflow run: debug builds and releases both include the key from
+   then on. A debug build run shows a "No CurseForge API key" warning while the secret is missing.
+
+For a local build, put the key into a file named `curseforge_key.txt` in the repository root (it is
+ignored by Git).
 
 ## Publishing a new version
 

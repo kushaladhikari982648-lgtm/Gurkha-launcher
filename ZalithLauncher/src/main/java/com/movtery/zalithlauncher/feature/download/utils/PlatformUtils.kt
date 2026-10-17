@@ -17,6 +17,14 @@ class PlatformUtils {
         )
 
         /**
+         * Whether this build has a CurseForge API key. Builds made without one (the CURSEFORGE_API_KEY secret
+         * or curseforge_key.txt, see RELEASING.md) get "DUMMY", which the API rejects for every request.
+         */
+        @JvmStatic
+        fun hasCurseForgeApiKey(): Boolean =
+            InfoDistributor.CURSEFORGE_API_KEY.let { it.isNotBlank() && it != "DUMMY" }
+
+        /**
          * 修改自源代码：[HMCL Github](https://github.com/HMCL-dev/HMCL/blob/main/HMCL/src/main/java/org/jackhuang/hmcl/game/LocalizedRemoteModRepository.java#L44-#L104)
          * 原项目版权归原作者所有，遵循GPL v3协议
          */

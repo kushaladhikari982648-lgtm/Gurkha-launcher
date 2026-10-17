@@ -603,6 +603,7 @@
     <string name="download_info_dependencies">依赖类型:</string>
     <string name="download_info_load_screenshot">展示屏幕截图</string>
     <string name="download_search_failed">搜索资源时失败！</string>
+    <string name="download_curseforge_no_api_key">此启动器版本无法使用 CurseForge：构建时未提供 CurseForge API 密钥。Modrinth 仍可正常使用。</string>
     <string name="download_search_no_result">未找到相关资源！</string>
     <string name="download_search_platform_not_supported">当前平台不支持下载这类资源，或不支持此类别筛选！</string>
     <string name="download_install_custom_name">自定义文件名称</string>

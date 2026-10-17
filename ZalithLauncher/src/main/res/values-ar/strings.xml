@@ -572,6 +572,7 @@
     <string name="download_info_dependencies">نوع الاعتماد:</string>
     <string name="download_info_load_screenshot">إظهار لقطة الشاشة</string>
     <string name="download_search_failed">فشل في البحث عن الموارد!</string>
+    <string name="download_curseforge_no_api_key">‏CurseForge غير متاح في هذا الإصدار من المشغّل: تم بناؤه بدون مفتاح API الخاص بـ CurseForge. لا يزال Modrinth يعمل.</string>
     <string name="download_search_no_result">لم يتم العثور على موارد ذات صلة!</string>
     <string name="download_search_platform_not_supported">المنصة الحالية لا تدعم تنزيل هذا النوع من الموارد، أو لا تدعم تصفية الفئات هذه!</string>
     <string name="download_install_custom_name">اسم ملف مخصص</string>

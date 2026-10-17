@@ -572,6 +572,7 @@
     <string name="download_info_dependencies">Abhängigkeitsart:</string>
     <string name="download_info_load_screenshot">Bildschirmfoto anzeigen</string>
     <string name="download_search_failed">Fehler beim Suchen nach Ressourcen!</string>
+    <string name="download_curseforge_no_api_key">CurseForge ist in diesem Build des Launchers nicht verfügbar: Er wurde ohne CurseForge-API-Schlüssel gebaut. Modrinth funktioniert weiterhin.</string>
     <string name="download_search_no_result">Keine verwandten Ressourcen gefunden!</string>
     <string name="download_search_platform_not_supported">Die aktuelle Plattform unterstützt das Herunterladen dieses Typs von Ressourcen oder diese Kategoriefilterung nicht!</string>
     <string name="download_install_custom_name">Benutzerdefinierter Dateiname</string>

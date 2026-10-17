@@ -30,6 +30,8 @@ import com.movtery.zalithlauncher.feature.download.enums.Sort
 import com.movtery.zalithlauncher.feature.download.item.InfoItem
 import com.movtery.zalithlauncher.feature.download.item.SearchResult
 import com.movtery.zalithlauncher.feature.download.platform.PlatformNotSupportedException
+import com.movtery.zalithlauncher.feature.download.platform.curseforge.CurseForgeApiKeyMissingException
+import com.movtery.zalithlauncher.feature.download.utils.PlatformUtils
 import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.task.TaskExecutors
 import com.movtery.zalithlauncher.ui.dialog.SelectVersionDialog
@@ -57,7 +59,15 @@ abstract class AbstractResourceDownloadFragment(
     private lateinit var mSortAdapter: ObjectSpinnerAdapter<Sort>
     private lateinit var mCategoryAdapter: ObjectSpinnerAdapter<Category>
     private lateinit var mModLoaderAdapter: ObjectSpinnerAdapter<ModLoader>
-    private var mCurrentPlatform: Platform = Platform.CURSEFORGE
+    /**
+     * The platform shown first. A build without a CurseForge API key can't use CurseForge at all, so it starts on
+     * Modrinth, except for worlds, which only CurseForge has (the page then explains the missing key).
+     */
+    private val mStartPlatform: Platform =
+        if (recommendedPlatform == Platform.CURSEFORGE && !PlatformUtils.hasCurseForgeApiKey() && classify != Classify.WORLD) {
+            Platform.MODRINTH
+        } else recommendedPlatform
+    private var mCurrentPlatform: Platform = mStartPlatform
     private val mFilters: Filters = Filters()
 
     private val mInfoAdapter = InfoAdapter(parentFragment,
@@ -200,7 +210,7 @@ abstract class AbstractResourceDownloadFragment(
 
     private fun initSpinnerIndex() {
         binding.apply {
-            platformSpinner.selectItemByIndex(recommendedPlatform.ordinal)
+            platformSpinner.selectItemByIndex(mStartPlatform.ordinal)
             sortSpinner.selectItemByIndex(0)
             categorySpinner.selectItemByIndex(0)
             if (showModloader) modloaderSpinner.selectItemByIndex(0)
@@ -231,6 +241,7 @@ abstract class AbstractResourceDownloadFragment(
             statusText.text = when (error) {
                 ERROR_INTERNAL -> getString(R.string.download_search_failed)
                 ERROR_PLATFORM_NOT_SUPPORTED -> getString(R.string.download_search_platform_not_supported)
+                ERROR_NO_API_KEY -> getString(R.string.download_curseforge_no_api_key)
                 else -> getString(R.string.download_search_no_result)
             }
         }
@@ -371,11 +382,14 @@ abstract class AbstractResourceDownloadFragment(
                 TaskExecutors.runInUIThread {
                     mInfoAdapter.setItems(MOD_ITEMS_EMPTY)
                     Logging.e("SearchTask", Tools.printToString(e))
-                    if (e is PlatformNotSupportedException) {
-                        onSearchError(ERROR_PLATFORM_NOT_SUPPORTED)
-                    } else {
-                        onSearchError(ERROR_NO_RESULTS)
-                    }
+                    // A failed request is not the same as an empty result: say that the search failed
+                    onSearchError(
+                        when (e) {
+                            is CurseForgeApiKeyMissingException -> ERROR_NO_API_KEY
+                            is PlatformNotSupportedException -> ERROR_PLATFORM_NOT_SUPPORTED
+                            else -> ERROR_INTERNAL
+                        }
+                    )
                 }
             }
         }
@@ -387,5 +401,6 @@ abstract class AbstractResourceDownloadFragment(
         const val ERROR_INTERNAL: Int = 0
         const val ERROR_NO_RESULTS: Int = 1
         const val ERROR_PLATFORM_NOT_SUPPORTED: Int = 2
+        const val ERROR_NO_API_KEY: Int = 3
     }
 }

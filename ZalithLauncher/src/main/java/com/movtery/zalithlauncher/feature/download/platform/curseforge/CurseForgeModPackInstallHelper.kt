@@ -7,6 +7,7 @@ import com.movtery.zalithlauncher.feature.download.install.InstallHelper
 import com.movtery.zalithlauncher.feature.download.item.ModLoaderWrapper
 import com.movtery.zalithlauncher.feature.download.item.VersionItem
 import com.movtery.zalithlauncher.feature.download.platform.curseforge.CurseForgeCommonUtils.Companion.getDownloadSha1
+import com.movtery.zalithlauncher.feature.download.platform.curseforge.CurseForgeCommonUtils.Companion.stringOrNull
 import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.feature.mod.modpack.install.ModPackUtils
 import com.movtery.zalithlauncher.utils.ZHTools
@@ -78,16 +79,24 @@ class CurseForgeModPackInstallHelper {
             curseManifest: CurseManifest
         ): ModDownloader {
             val modDownloader = ModDownloader(File(instanceDestination, "mods"), true)
-            val fileCount = curseManifest.files.size
-            for (i in 0 until fileCount) {
-                val curseFile = curseManifest.files[i]
+            // Download link, file name and SHA-1 of all the files with one request per 100 files (POST
+            // /v1/mods/files) instead of two or three requests per file, which made big modpacks slow to start
+            // downloading and ran into the API's rate limit. Files missing from the answer use the single requests.
+            val knownFiles = CurseForgeCommonUtils.getFilesByIds(api, curseManifest.files.map { it.fileID })
+            Logging.i("CurseForgeModPackInstallHelper", "File info of ${knownFiles.size}/${curseManifest.files.size} files loaded in batches")
+            for (curseFile in curseManifest.files) {
                 modDownloader.submitDownload {
-                    val url = CurseForgeCommonUtils.getDownloadUrl(api, curseFile.projectID, curseFile.fileID)
+                    val known = knownFiles[curseFile.fileID]
+                    val url = known?.let { CurseForgeCommonUtils.getDownloadUrl(it) }
+                        ?: CurseForgeCommonUtils.getDownloadUrl(api, curseFile.projectID, curseFile.fileID)
                     if (url == null && curseFile.required) throw IOException(
                         "Failed to obtain download URL for ${StringUtils.insertSpace(curseFile.projectID, curseFile.fileID)}"
                     )
                     else if (url == null) return@submitDownload null
-                    ModDownloader.FileInfo(url, FileUtils.getFileName(url), getDownloadSha1(api, curseFile.projectID, curseFile.fileID))
+                    val fileName = known?.stringOrNull("fileName")?.takeIf { it.isNotBlank() } ?: FileUtils.getFileName(url)
+                    val sha1 = if (known != null) CurseForgeCommonUtils.getSha1FromData(known)
+                        else getDownloadSha1(api, curseFile.projectID, curseFile.fileID)
+                    ModDownloader.FileInfo(url, fileName, sha1)
                 }
             }
             return modDownloader

@@ -19,6 +19,11 @@ import com.movtery.zalithlauncher.feature.download.utils.PlatformUtils
 import java.io.File
 
 class CurseForgeHelper : AbstractPlatformHelper(PlatformUtils.createCurseForgeApi()) {
+    /** Every request would be rejected without an API key: say so instead of showing "no results". */
+    private fun requireApiKey() {
+        if (!PlatformUtils.hasCurseForgeApiKey()) throw CurseForgeApiKeyMissingException()
+    }
+
     override fun copy(): AbstractPlatformHelper {
         return CurseForgeHelper()
     }
@@ -38,56 +43,68 @@ class CurseForgeHelper : AbstractPlatformHelper(PlatformUtils.createCurseForgeAp
     }
 
     override fun getScreenshots(projectId: String): List<ScreenshotItem> {
+        // Secondary content: the version list already explains a missing API key
+        if (!PlatformUtils.hasCurseForgeApiKey()) return emptyList()
         return CurseForgeCommonUtils.getScreenshots(api, projectId)
     }
 
     @Throws(Throwable::class)
     override fun searchMod(filters: Filters, lastResult: SearchResult): SearchResult? {
+        requireApiKey()
         return CurseForgeModHelper.modLikeSearch(api, lastResult, filters, CURSEFORGE_MOD_CLASS_ID, Classify.MOD)
     }
 
     @Throws(Throwable::class)
     override fun searchModPack(filters: Filters, lastResult: SearchResult): SearchResult? {
+        requireApiKey()
         return CurseForgeModHelper.modLikeSearch(api, lastResult, filters, CURSEFORGE_MODPACK_CLASS_ID, Classify.MODPACK)
     }
 
     @Throws(Throwable::class)
     override fun searchResourcePack(filters: Filters, lastResult: SearchResult): SearchResult? {
+        requireApiKey()
         return CurseForgeCommonUtils.getResults(api, lastResult, filters, 12, Classify.RESOURCE_PACK)
     }
 
     @Throws(Throwable::class)
     override fun searchWorld(filters: Filters, lastResult: SearchResult): SearchResult? {
+        requireApiKey()
         return CurseForgeCommonUtils.getResults(api, lastResult, filters, 17, Classify.WORLD)
     }
 
     @Throws(Throwable::class)
     override fun searchShaderPack(filters: Filters, lastResult: SearchResult): SearchResult? {
+        requireApiKey()
         return CurseForgeCommonUtils.getResults(api, lastResult, filters, 6552, Classify.SHADER_PACK)
     }
 
     @Throws(Throwable::class)
     override fun getModVersions(infoItem: InfoItem, force: Boolean): List<VersionItem>? {
+        requireApiKey()
         return CurseForgeModHelper.getModVersions(api, infoItem, force)
     }
 
     @Throws(Throwable::class)
     override fun getModPackVersions(infoItem: InfoItem, force: Boolean): List<VersionItem>? {
+        requireApiKey()
         return CurseForgeModHelper.getModPackVersions(api, infoItem, force)
     }
 
     @Throws(Throwable::class)
     override fun getResourcePackVersions(infoItem: InfoItem, force: Boolean): List<VersionItem>? {
+        requireApiKey()
         return CurseForgeCommonUtils.getVersions(api, infoItem, force)
     }
 
     @Throws(Throwable::class)
     override fun getWorldVersions(infoItem: InfoItem, force: Boolean): List<VersionItem>? {
+        requireApiKey()
         return CurseForgeCommonUtils.getVersions(api, infoItem, force)
     }
 
     @Throws(Throwable::class)
     override fun getShaderPackVersions(infoItem: InfoItem, force: Boolean): List<VersionItem>? {
+        requireApiKey()
         return CurseForgeCommonUtils.getVersions(api, infoItem, force)
     }
 
@@ -98,6 +115,7 @@ class CurseForgeHelper : AbstractPlatformHelper(PlatformUtils.createCurseForgeAp
 
     @Throws(Throwable::class)
     override fun installModPack(version: VersionItem, customName: String): ModLoaderWrapper? {
+        requireApiKey()
         return CurseForgeModPackInstallHelper.startInstall(api, version, customName)
     }
 
