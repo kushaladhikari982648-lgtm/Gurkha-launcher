@@ -62,20 +62,20 @@ Optional secrets:
 ## Publishing a new version
 
 1. In `ZalithLauncher/gradle.properties`, raise `launcher_version_code` (it must always increase, for
-   example `100002` -> `100003`) and set `launcher_version_name` (for example `1.0.0-beta.4`, or
+   example `100003` -> `100004`) and set `launcher_version_name` (for example `1.0.0-beta.5`, or
    `1.0.0` for a stable release).
 2. Write the release notes in `.github/release-notes/v<version_name>.md` (Markdown).
 3. Commit and push, then create and push the tag:
 
    ```sh
-   git tag v1.0.0-beta.4
-   git push origin v1.0.0-beta.4
+   git tag v1.0.0-beta.5
+   git push origin v1.0.0-beta.5
    ```
 
    The tag must be exactly `v` + `launcher_version_name`, otherwise the workflow stops with an error.
 4. Wait for the **Android CI** run of the tag to finish (about 10-15 minutes). It publishes a GitHub
    release with five APKs (universal, `armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`), `SHA256SUMS.txt` and
-   `launcher_version.json`. Versions with a `-` (like `1.0.0-beta.4`) are marked as pre-releases.
+   `launcher_version.json`. Versions with a `-` (like `1.0.0-beta.5`) are marked as pre-releases.
 5. To make installed copies offer the update, copy the release's `launcher_version.json` into
    `launcher-info/` on the `main` branch (see [launcher-info/README.md](launcher-info/README.md)).
 
