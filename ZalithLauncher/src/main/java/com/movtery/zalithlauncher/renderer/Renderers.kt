@@ -4,11 +4,14 @@ import android.content.Context
 import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.renderer.renderers.FreedrenoRenderer
 import com.movtery.zalithlauncher.renderer.renderers.GL4ESRenderer
+import com.movtery.zalithlauncher.renderer.renderers.LTWRenderer
 import com.movtery.zalithlauncher.renderer.renderers.PanfrostRenderer
 import com.movtery.zalithlauncher.renderer.renderers.VirGLRenderer
 import com.movtery.zalithlauncher.renderer.renderers.VulkanZinkRenderer
 import net.kdt.pojavlaunch.Architecture
 import net.kdt.pojavlaunch.Tools
+import net.kdt.pojavlaunch.utils.JREUtils
+import java.io.File
 
 /**
  * 启动器所有渲染器总管理者，启动器内置的渲染器与渲染器插件加载的渲染器，都会加载到这里
@@ -31,6 +34,7 @@ object Renderers {
 
         addRenderers(
             GL4ESRenderer(),
+            LTWRenderer(),
             VulkanZinkRenderer(),
             VirGLRenderer(),
             FreedrenoRenderer(),
@@ -45,11 +49,17 @@ object Renderers {
         val deviceHasVulkan = Tools.checkVulkanSupport(context.packageManager)
         // Currently, only 32-bit x86 does not have the Zink binary
         val deviceHasZinkBinary = !(Architecture.is32BitsDevice() && Architecture.isx86Device())
+        // LTW needs OpenGL ES 3 (and its library, which is missing from builds without ltw-release.aar)
+        val deviceSupportsLtw by lazy {
+            JREUtils.getDetectedVersion() >= 3 &&
+                    File(context.applicationInfo.nativeLibraryDir, LTWRenderer.LIBRARY).exists()
+        }
 
         val compatibleRenderers1: MutableList<RendererInterface> = mutableListOf()
         renderers.forEach { renderer ->
             if (renderer.getRendererId().contains("vulkan") && !deviceHasVulkan) return@forEach
             if (renderer.getRendererId().contains("zink") && !deviceHasZinkBinary) return@forEach
+            if (renderer.getRendererId() == LTWRenderer.ID && !deviceSupportsLtw) return@forEach
             compatibleRenderers1.add(renderer)
         }
 

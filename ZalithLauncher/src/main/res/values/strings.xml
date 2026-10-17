@@ -694,4 +694,8 @@
     <!-- Sponsorship Related -->
     <string name="request_sponsorship_title">Support My Development</string>
     <string name="request_sponsorship_message">Most of the content in this software is developed and maintained by me alone. If you find this software helpful and are in a position to do so, I hope you will consider sponsoring me to give me more motivation to continue developing and improving it. Thank you for your support!</string>
+    <string name="renderer_policy_use_ltw">%1$s needs the LTW renderer, so it is used for this launch.</string>
+    <string name="renderer_policy_use_gl4es">%1$s needs the GL4ES renderer (LTW only runs Minecraft 1.17 and newer), so it is used for this launch.</string>
+    <string name="renderer_policy_ltw_unsupported">%1$s needs the LTW renderer, but your device doesn\'t support it (it needs OpenGL ES 3). The game will probably not start.</string>
+    <string name="ltw_render_distance_warning_msg">Your GPU can\'t render this version above 7 chunks of render distance without Sodium or a similar mod. The render distance will be lowered to 7 when you tap \"OK\".</string>
 </resources>

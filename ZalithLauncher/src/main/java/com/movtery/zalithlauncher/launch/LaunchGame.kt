@@ -123,6 +123,8 @@ class LaunchGame {
             if (!Renderers.isCurrentRendererValid()) {
                 Renderers.setCurrentRenderer(activity, AllSettings.renderer.getValue())
             }
+            // Switch to a renderer that can run this version (LTW for 1.21.5+, GL4ES before 1.17, ...)
+            if (!RendererPolicy.apply(activity, minecraftVersion)) return
 
             var account = AccountsManager.currentAccount!!
             if (minecraftVersion.offlineAccountLogin) {
