@@ -34,8 +34,13 @@ class LaunchArgs(
         argsList.addAll(getJavaArgs())
         argsList.addAll(getMinecraftJVMArgs())
         argsList.add("-cp")
-        // Minecraft 26.3+ (SDL3) gets LWJGL 3.4.1 instead of the launcher's LWJGL 3.3.6 + GLFW stub
-        val lwjglClassPath = if (MinecraftGLSurface.sdlVersion) SdlSupport.getClassPath() else Tools.getLWJGL3ClassPath()
+        // Minecraft 26.3+ (SDL3) gets LWJGL 3.4.1 instead of the launcher's LWJGL 3.3.6 + GLFW stub, and so do the
+        // GLFW versions that need LWJGL 3.4.1 (26.2, see SdlSupport.usesLwjgl341WithGlfw), with the GLFW stub
+        val lwjglClassPath = when {
+            MinecraftGLSurface.sdlVersion -> SdlSupport.getClassPath()
+            SdlSupport.lwjgl341Glfw -> SdlSupport.getGlfwClassPath()
+            else -> Tools.getLWJGL3ClassPath()
+        }
         argsList.add("$lwjglClassPath:$launchClassPath")
 
         if (runtime.javaVersion > 8) {
@@ -135,7 +140,7 @@ class LaunchArgs(
                 versionInfo.minecraftArguments ?:
                 Tools.fromStringArray(minecraftArgs.toTypedArray())
             ), verArgMap
-        )
+        ) + GraphicsBackend.getGameArgs(versionInfo, gameDirPath).toTypedArray()
     }
 
     private fun setLauncherInfo(verArgMap: MutableMap<String, String>) {

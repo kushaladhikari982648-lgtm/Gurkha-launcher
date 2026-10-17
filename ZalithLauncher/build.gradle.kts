@@ -252,6 +252,8 @@ tasks.named("preBuild") {
     dependsOn("generateInfoDistributor")
     // The lwjgl3-sdl component needs lwjgl-sdl-patches.jar and its version file (module jre_lwjgl3sdl)
     dependsOn(":jre_lwjgl3sdl:jar")
+    // GLFW versions on LWJGL 3.4.1 (Minecraft 26.2) need the GLFW stub without the 3.3.6 jars (module jre_lwjgl3glfw)
+    dependsOn(":jre_lwjgl3glfw:stubJar")
 }
 
 dependencies {

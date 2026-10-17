@@ -199,6 +199,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             isInputStackCall = mVersionInfo.arguments != null;
             // Minecraft 26.3+ uses SDL3 instead of GLFW: the surface must host SDL (see SdlSupport)
             MinecraftGLSurface.sdlVersion = SdlSupport.usesSdl(mVersionInfo);
+            // Minecraft 26.2 still uses GLFW but needs LWJGL 3.4.1 (see SdlSupport.usesLwjgl341WithGlfw)
+            SdlSupport.lwjgl341Glfw = SdlSupport.usesLwjgl341WithGlfw(mVersionInfo);
             MinecraftGLSurface.sdlEnabled = false;
             CallbackBridge.nativeSetUseInputStackQueue(isInputStackCall);
 

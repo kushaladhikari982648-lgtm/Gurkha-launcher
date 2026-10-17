@@ -8,7 +8,10 @@ import static net.kdt.pojavlaunch.Architecture.is64BitsDevice;
 import static net.kdt.pojavlaunch.Tools.currentDisplayMetrics;
 
 import android.content.Context;
+import android.content.Intent;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.util.ArrayMap;
@@ -39,10 +42,12 @@ import com.oracle.dalvik.VMLauncher;
 
 import net.kdt.pojavlaunch.Architecture;
 import net.kdt.pojavlaunch.Logger;
+import net.kdt.pojavlaunch.MainActivity;
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.multirt.MultiRTUtils;
 import net.kdt.pojavlaunch.multirt.Runtime;
 import net.kdt.pojavlaunch.plugins.FFmpegPlugin;
+import net.kdt.pojavlaunch.services.GameService;
 
 import org.greenrobot.eventbus.EventBus;
 import org.lwjgl.glfw.CallbackBridge;
@@ -398,8 +403,9 @@ public final class JREUtils {
         // Force LWJGL to use the Freetype library intended for it, instead of using the one
         // that we ship with Java (since it may be older than what's needed)
         userArgs.add("-Dorg.lwjgl.freetype.libname="+ DIR_NATIVE_LIB +"/libfreetype.so");
-        // Minecraft 26.3+ (SDL3): LWJGL 3.4.1 uses its own natives (overrides the freetype path above)
-        if (MinecraftGLSurface.sdlVersion) userArgs.addAll(SdlSupport.getJvmArgs(DIR_NATIVE_LIB));
+        // Minecraft 26.3+ (SDL3) and the GLFW versions on LWJGL 3.4.1 (26.2): LWJGL 3.4.1 uses its own natives
+        // (overrides the freetype path above)
+        if (MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw) userArgs.addAll(SdlSupport.getJvmArgs(DIR_NATIVE_LIB));
 
         // Some phones are not using the right number of cores, fix that
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());
@@ -435,6 +441,27 @@ public final class JREUtils {
             ErrorActivity.showExitMessage(activity, exitCode, false);
         }
         EventBus.getDefault().post(new JvmExitEvent(exitCode));
+        if (activity instanceof MainActivity) endGameProcess(activity, exitCode);
+    }
+
+    /**
+     * The game returned from main() instead of calling System.exit() (Minecraft 26.2 and newer can do that when
+     * "Quit Game" is used). Only System.exit() is caught by the exit hook (nominal_exit in jni/stdio_is.c), so
+     * nothing ended the process: the game screen stayed on a JVM that had finished (it can't be started again
+     * in the same process) and its foreground service kept running. End the process the same way the exit
+     * hook does. System.exit() can't be used here: it would run into the exit hook again, which waits forever.
+     * Same idea as upstream ZalithLauncher PR #758 ("stuck Quit Game 26.2-snapshot-1").
+     */
+    private static void endGameProcess(AppCompatActivity activity, int exitCode) {
+        Logging.i("JREUtils", "The game returned from main() (exit code " + exitCode + "), ending the process");
+        try {
+            activity.stopService(new Intent(activity, GameService.class));
+        } catch (Exception e) {
+            Logging.w("JREUtils", "Failed to stop the game service: " + e);
+        }
+        // Give the error screen (started above for a non-zero exit code) a moment to be handed to the system,
+        // which shows it in a new process, like the exit hook's "hat trick"
+        new Handler(Looper.getMainLooper()).postDelayed(ZHTools::killProcess, exitCode != 0 ? 500 : 100);
     }
 
     public static void launchWithUtils(

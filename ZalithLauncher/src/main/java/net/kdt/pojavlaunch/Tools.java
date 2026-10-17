@@ -30,6 +30,7 @@ import androidx.fragment.app.FragmentActivity;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.movtery.zalithlauncher.InfoDistributor;
+import com.movtery.zalithlauncher.launch.SdlSupport;
 import com.movtery.zalithlauncher.R;
 import com.movtery.zalithlauncher.context.ContextExecutor;
 import com.movtery.zalithlauncher.utils.LauncherProfiles;
@@ -163,7 +164,9 @@ public final class Tools {
         File[] lwjgl3Files = lwjgl3Folder.listFiles();
         if (lwjgl3Files != null) {
             for (File file: lwjgl3Files) {
-                if (file.getName().endsWith(".jar")) {
+                // The GLFW stub alone is for the LWJGL 3.4.1 classpath (SdlSupport.getGlfwClassPath), its classes
+                // are part of lwjgl-glfw-classes.jar already
+                if (file.getName().endsWith(".jar") && !file.getName().equals(SdlSupport.GLFW_STUB_JAR)) {
                     libStr.append(file.getAbsolutePath()).append(":");
                 }
             }

@@ -20,12 +20,31 @@ object SdlSupport {
     const val COMPONENT = "lwjgl3-sdl"
     const val NATIVES_COMPONENT = "lwjgl-3.4.1-natives"
     private const val PATCHES_JAR = "lwjgl-sdl-patches.jar"
+    const val GLFW_STUB_JAR = "lwjgl-glfw-stub.jar"
     private const val EGL_FRONT_FOR_LTW = "libltw_sdl_egl.so"
 
     /** Whether the version uses SDL3 instead of GLFW (its libraries include LWJGL's SDL module). */
     @JvmStatic
-    fun usesSdl(versionInfo: JMinecraftVersionList.Version?): Boolean =
-        versionInfo?.libraries?.any { it?.name?.startsWith("org.lwjgl:lwjgl-sdl:") == true } == true
+    fun usesSdl(versionInfo: JMinecraftVersionList.Version?): Boolean = hasLibrary(versionInfo, "org.lwjgl:lwjgl-sdl:")
+
+    /**
+     * Whether the version still uses GLFW but needs LWJGL 3.4.1: Minecraft 26.2 (and the 26.3 snapshots before
+     * SDL3) added a Vulkan renderer, and with it LWJGL's Vulkan, VMA, SPIRV-Cross and shaderc bindings, which are
+     * referenced from 165 classes of the game, its native library bootstrap included. The launcher's LWJGL 3.3.6
+     * set doesn't have them, so these versions failed with NoClassDefFoundError. They get the launcher's GLFW
+     * stub with the official LWJGL 3.4.1 jars and natives of the lwjgl3-sdl component instead.
+     */
+    @JvmStatic
+    fun usesLwjgl341WithGlfw(versionInfo: JMinecraftVersionList.Version?): Boolean =
+        !usesSdl(versionInfo) && hasLibrary(versionInfo, "org.lwjgl:lwjgl-vulkan:")
+
+    /** Set when a GLFW version on LWJGL 3.4.1 is started (see [usesLwjgl341WithGlfw]). */
+    @JvmField
+    @Volatile
+    var lwjgl341Glfw = false
+
+    private fun hasLibrary(versionInfo: JMinecraftVersionList.Version?, prefix: String): Boolean =
+        versionInfo?.libraries?.any { it?.name?.startsWith(prefix) == true } == true
 
     @JvmStatic
     fun getComponentDir(): File = File(PathManager.DIR_GAME_HOME, COMPONENT)
@@ -43,6 +62,24 @@ object SdlSupport {
             "The $COMPONENT component is incomplete, restart the launcher to unpack it again"
         }
         return jars.joinToString(":") { it.absolutePath }
+    }
+
+    /**
+     * The classpath of GLFW versions on LWJGL 3.4.1: the launcher's GLFW stub (lwjgl-glfw-stub.jar of the lwjgl3
+     * component, built by module jre_lwjgl3glfw) before the official LWJGL 3.4.1 jars, so that its GLFW classes
+     * replace LWJGL's; without the SDL module and the SDL patches.
+     */
+    @JvmStatic
+    fun getGlfwClassPath(): String {
+        val stub = File(File(PathManager.DIR_GAME_HOME, "lwjgl3"), GLFW_STUB_JAR)
+        check(stub.isFile) { "${stub.name} is missing, restart the launcher to unpack the LWJGL components again" }
+        val jars = getComponentDir().listFiles { file ->
+            file.name.endsWith(".jar") && file.name != PATCHES_JAR && file.name != "lwjgl-sdl.jar"
+        }?.sortedBy { it.name } ?: emptyList()
+        check(jars.any { it.name == "lwjgl.jar" }) {
+            "The $COMPONENT component is incomplete, restart the launcher to unpack it again"
+        }
+        return (listOf(stub) + jars).joinToString(":") { it.absolutePath }
     }
 
     /** JVM arguments pointing LWJGL 3.4.1 at its own natives. */
