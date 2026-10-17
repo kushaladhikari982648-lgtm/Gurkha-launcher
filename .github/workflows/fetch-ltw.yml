@@ -1,0 +1,55 @@
+name: Fetch LTW (temporary)
+
+# One-off: downloads the newest LTW build of MojoLauncher/LTW (master) and commits it to this branch,
+# like MojoLauncher's own CI does at build time. Removed again right after it ran.
+
+on:
+  push:
+    branches: [ 'arena/1d667cb8-gurkha-launcher' ]
+    paths: [ '.github/workflows/fetch-ltw.yml' ]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  Fetch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download the latest LTW build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN=$(gh api "repos/MojoLauncher/LTW/actions/runs?branch=master&status=success&per_page=1" --jq '.workflow_runs[0].id')
+          SHA=$(gh api "repos/MojoLauncher/LTW/actions/runs/$RUN" --jq .head_sha)
+          DATE=$(gh api "repos/MojoLauncher/LTW/actions/runs/$RUN" --jq .created_at)
+          echo "LTW run $RUN, commit $SHA ($DATE)"
+          gh run download "$RUN" -R MojoLauncher/LTW -n output-aar -D "$RUNNER_TEMP/ltw"
+          AAR=$(find "$RUNNER_TEMP/ltw" -name '*.aar' | head -1)
+          unzip -l "$AAR"
+          if unzip -l "$AAR" | grep -q "libc++_shared.so"; then
+            echo "::error::The LTW aar contains libc++_shared.so, which would clash with the launcher's copy"
+            exit 1
+          fi
+          cp "$AAR" ZalithLauncher/libs/ltw-release.aar
+          {
+            echo "ltw-release.aar: LTW (Large Thin Wrapper) OpenGL renderer"
+            echo "Source:  https://github.com/MojoLauncher/LTW (LGPL-3.0)"
+            echo "Commit:  $SHA"
+            echo "Build:   https://github.com/MojoLauncher/LTW/actions/runs/$RUN ($DATE)"
+            echo "Update:  replace the aar with a newer output-aar artifact of that repository and update this file."
+          } > ZalithLauncher/libs/ltw-release.txt
+          cat ZalithLauncher/libs/ltw-release.txt
+          echo "LTW_SHA=$SHA" >> "$GITHUB_ENV"
+
+      - name: Commit to the branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ZalithLauncher/libs/ltw-release.aar ZalithLauncher/libs/ltw-release.txt
+          git commit -m "chore: add the LTW renderer library (MojoLauncher/LTW@${LTW_SHA:0:9})"
+          git pull --rebase origin arena/1d667cb8-gurkha-launcher
+          git push origin HEAD:arena/1d667cb8-gurkha-launcher
