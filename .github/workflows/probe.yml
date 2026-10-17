@@ -69,30 +69,41 @@ jobs:
                           classes.setdefault(c[0], c)   # first jar wins, like the classpath
               return classes
 
+          # Methods that LWJGL classes really inherit from JDK supertypes (Object, AutoCloseable, Iterable)
+          JDK_INHERITED = {"equals", "hashCode", "toString", "getClass", "clone", "finalize", "notify", "notifyAll",
+                           "wait", "close", "iterator", "forEach", "spliterator", "ordinal", "name", "compareTo",
+                           "getDeclaringClass", "getMessage", "getLocalizedMessage", "getCause", "printStackTrace",
+                           "getStackTrace", "apply", "accept", "test", "get", "run", "call", "values", "valueOf"}
           def has_member(bundle, owner, name, desc, seen=None):
-              seen = seen or set()
+              seen = seen if seen is not None else set()
               if owner in seen: return False
               seen.add(owner)
               c = bundle.get(owner)
-              if c is None: return not owner.startswith("org/lwjgl/")  # JDK class: assume fine
+              if c is None:
+                  # A JDK supertype: constructors and fields are never inherited from there
+                  return not owner.startswith("org/lwjgl/") and "(" in desc and name in JDK_INHERITED
               if (name, desc) in c[3]: return True
+              if name == "<init>" or name == "<clinit>": return False
               return any(has_member(bundle, s, name, desc, seen) for s in ([c[1]] if c[1] else []) + c[2])
 
           A = "ZalithLauncher/src/main/assets/components"
+          # The launcher's own GLFW stub classes (module jre_lwjgl3glfw), without the merged LWJGL 3.3.6 jars
+          import os
+          own = {os.path.relpath(os.path.join(r, f[:-5]), "jre_lwjgl3glfw/src/main/java")
+                 for r, _, fs in os.walk("jre_lwjgl3glfw/src/main/java") for f in fs if f.endswith(".java")}
+          own = {o for o in own if not o.startswith("net/java/") and o != "org/lwjgl/input/InfdevMouse"}
+          src = zipfile.ZipFile(f"{A}/lwjgl3/lwjgl-glfw-classes.jar")
+          with zipfile.ZipFile("/tmp/stub.jar", "w") as z:
+              for n in src.namelist():
+                  if n.endswith(".class") and n.split("$")[0].removesuffix(".class") in own:
+                      z.writestr(n, src.read(n))
+          official341 = sorted(j for j in glob.glob(f"{A}/lwjgl3-sdl/*.jar") if not j.endswith("/lwjgl-sdl.jar"))
           bundles = {
               "glfw-3.3.6 (lwjgl3)": load_bundle([f"{A}/lwjgl3/lwjgl-glfw-classes.jar"]),
+              "glfw-3.4.1 (stub + lwjgl3-sdl jars)": load_bundle(["/tmp/stub.jar"] + official341),
               "sdl-3.4.1 (lwjgl3-sdl)": load_bundle(sorted(glob.glob(f"{A}/lwjgl3-sdl/*.jar"))),
           }
-          manifest = json.loads(get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
-          by_id = {v["id"]: v for v in manifest["versions"]}
-          latest = manifest["latest"]
-          print("latest:", latest)
-          for vid in ["1.21.11", "26.1.2", "26.2", "26.3", latest["snapshot"]]:
-              meta = json.loads(get(by_id[vid]["url"]))
-              sdl = any(l["name"].startswith("org.lwjgl:lwjgl-sdl:") for l in meta["libraries"])
-              bname = "sdl-3.4.1 (lwjgl3-sdl)" if sdl else "glfw-3.3.6 (lwjgl3)"
-              bundle = bundles[bname]
-              jar = zipfile.ZipFile(io.BytesIO(get(meta["downloads"]["client"]["url"])))
+          def check(vid, sdl, bname, bundle, jar):
               missing_cls, missing_mem, users = collections.Counter(), collections.Counter(), collections.defaultdict(set)
               for name in jar.namelist():
                   if not name.endswith(".class"): continue
@@ -110,5 +121,30 @@ jobs:
               lines += ["  " + k + "   <- " + ", ".join(sorted(users[k])[:2]) for k, _ in missing_mem.most_common(25)]
               msg = "\n".join(lines)
               print(msg)
-              print(f"::notice title=Linkage {vid}::" + msg.replace("%", "%25").replace("\n", "%0A"))
+              print(f"::notice title=Linkage {vid} / {bname.split(' ')[0]}::" + msg.replace("%", "%25").replace("\n", "%0A"))
+
+          def users_of(jar, prefixes):
+              found = collections.defaultdict(set)
+              for name in jar.namelist():
+                  if name.endswith(".class"):
+                      for c in parse(jar.read(name))[5]:
+                          for pre in prefixes:
+                              if c.startswith(pre): found[pre].add(name.removesuffix(".class"))
+              return found
+
+          manifest = json.loads(get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
+          by_id = {v["id"]: v for v in manifest["versions"]}
+          latest = manifest["latest"]
+          print("latest:", latest)
+          for vid in ["1.21.11", "26.1.2", "26.2", "26.3", latest["snapshot"]]:
+              meta = json.loads(get(by_id[vid]["url"]))
+              sdl = any(l["name"].startswith("org.lwjgl:lwjgl-sdl:") for l in meta["libraries"])
+              jar = zipfile.ZipFile(io.BytesIO(get(meta["downloads"]["client"]["url"])))
+              for bname in (["sdl-3.4.1 (lwjgl3-sdl)"] if sdl else ["glfw-3.3.6 (lwjgl3)", "glfw-3.4.1 (stub + lwjgl3-sdl jars)"]):
+                  check(vid, sdl, bname, bundles[bname], jar)
+              if vid == "26.2":
+                  u = users_of(jar, ("org/lwjgl/util/shaderc", "org/lwjgl/util/spvc", "org/lwjgl/util/vma"))
+                  msg = "\n".join(f"{k}: " + ", ".join(sorted(v)) for k, v in u.items())
+                  print(msg)
+                  print("::notice title=26.2 users of shaderc/spvc/vma::" + msg.replace("%", "%25").replace("\n", "%0A"))
           PY
