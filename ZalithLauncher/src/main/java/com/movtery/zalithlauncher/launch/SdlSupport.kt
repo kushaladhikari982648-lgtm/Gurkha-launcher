@@ -28,15 +28,23 @@ object SdlSupport {
     fun usesSdl(versionInfo: JMinecraftVersionList.Version?): Boolean = hasLibrary(versionInfo, "org.lwjgl:lwjgl-sdl:")
 
     /**
-     * Whether the version still uses GLFW but needs LWJGL 3.4.1: Minecraft 26.2 (and the 26.3 snapshots before
-     * SDL3) added a Vulkan renderer, and with it LWJGL's Vulkan, VMA, SPIRV-Cross and shaderc bindings, which are
-     * referenced from 165 classes of the game, its native library bootstrap included. The launcher's LWJGL 3.3.6
-     * set doesn't have them, so these versions failed with NoClassDefFoundError. They get the launcher's GLFW
-     * stub with the official LWJGL 3.4.1 jars and natives of the lwjgl3-sdl component instead.
+     * Whether the version still uses GLFW but is built against LWJGL 3.4 (Minecraft 26.1, 26.2 and the 26.3
+     * snapshots before SDL3). 26.2 added a Vulkan renderer, and with it LWJGL's Vulkan, VMA, SPIRV-Cross and
+     * shaderc bindings, referenced from 165 classes of the game (its native library bootstrap included): the
+     * launcher's LWJGL 3.3.6 set doesn't have them, so 26.2 failed with NoClassDefFoundError. 26.1 calls a
+     * TinyFileDialogs method whose signature changed in 3.4. These versions get the launcher's GLFW stub with the
+     * official LWJGL 3.4.1 jars and natives of the lwjgl3-sdl component, which resolve all their LWJGL references.
      */
     @JvmStatic
-    fun usesLwjgl341WithGlfw(versionInfo: JMinecraftVersionList.Version?): Boolean =
-        !usesSdl(versionInfo) && hasLibrary(versionInfo, "org.lwjgl:lwjgl-vulkan:")
+    fun usesLwjgl341WithGlfw(versionInfo: JMinecraftVersionList.Version?): Boolean {
+        if (usesSdl(versionInfo)) return false
+        val version = versionInfo?.libraries?.firstOrNull { it?.name?.startsWith("org.lwjgl:lwjgl:") == true }
+            ?.name?.split(':')?.getOrNull(2) ?: return false
+        val numbers = version.split('.', '-').mapNotNull { it.toIntOrNull() }
+        val major = numbers.getOrElse(0) { 0 }
+        val minor = numbers.getOrElse(1) { 0 }
+        return major > 3 || (major == 3 && minor >= 4)
+    }
 
     /** Set when a GLFW version on LWJGL 3.4.1 is started (see [usesLwjgl341WithGlfw]). */
     @JvmField
