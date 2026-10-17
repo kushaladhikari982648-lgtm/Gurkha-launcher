@@ -296,6 +296,44 @@ JNIEXPORT jstring JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeClipboard(JNI
     return pasteDst;
 }
 
+/**
+ * Called from the JRE side (org.lwjgl.glfw.CallbackBridge of the lwjgl3-sdl component, for example right
+ * before SDL_Init) to notify the launcher: calls the launcher's CallbackBridge.notifyLauncher(int, int[]).
+ */
+JNIEXPORT jboolean JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeNotifyLauncher(JNIEnv* env, __attribute__((unused)) jclass clazz, jint type, jintArray action) {
+    JavaVM* dalvikVM = pojav_environ->dalvikJavaVMPtr;
+    if (dalvikVM == NULL || pojav_environ->bridgeClazz == NULL) return JNI_FALSE;
+
+    JNIEnv* dalvikEnv = NULL;
+    bool attachedHere = false;
+    if ((*dalvikVM)->GetEnv(dalvikVM, (void**) &dalvikEnv, JNI_VERSION_1_4) == JNI_EDETACHED) {
+        if ((*dalvikVM)->AttachCurrentThread(dalvikVM, &dalvikEnv, NULL) != JNI_OK) return JNI_FALSE;
+        attachedHere = true;
+    }
+
+    jsize count = action != NULL ? (*env)->GetArrayLength(env, action) : 0;
+    jintArray dalvikAction = (*dalvikEnv)->NewIntArray(dalvikEnv, count);
+    if (count > 0) {
+        jint* values = (*env)->GetIntArrayElements(env, action, NULL);
+        (*dalvikEnv)->SetIntArrayRegion(dalvikEnv, dalvikAction, 0, count, values);
+        (*env)->ReleaseIntArrayElements(env, action, values, JNI_ABORT);
+    }
+
+    jboolean result = JNI_FALSE;
+    jmethodID notifyLauncher = (*dalvikEnv)->GetStaticMethodID(dalvikEnv, pojav_environ->bridgeClazz, "notifyLauncher", "(I[I)Z");
+    if (notifyLauncher != NULL) {
+        result = (*dalvikEnv)->CallStaticBooleanMethod(dalvikEnv, pojav_environ->bridgeClazz, notifyLauncher, type, dalvikAction);
+    }
+    if ((*dalvikEnv)->ExceptionCheck(dalvikEnv)) {
+        (*dalvikEnv)->ExceptionDescribe(dalvikEnv);
+        (*dalvikEnv)->ExceptionClear(dalvikEnv);
+        result = JNI_FALSE;
+    }
+    (*dalvikEnv)->DeleteLocalRef(dalvikEnv, dalvikAction);
+    if (attachedHere) (*dalvikVM)->DetachCurrentThread(dalvikVM);
+    return result;
+}
+
 JNIEXPORT jboolean JNICALL JavaCritical_org_lwjgl_glfw_CallbackBridge_nativeSetInputReady(jboolean inputReady) {
 #ifdef DEBUG
     LOGD("Debug: Changing input state, isReady=%d, pojav_environ->isUseStackQueueCall=%d\n", inputReady, pojav_environ->isUseStackQueueCall);

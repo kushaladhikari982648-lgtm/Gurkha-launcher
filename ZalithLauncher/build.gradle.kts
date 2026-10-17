@@ -145,6 +145,13 @@ android {
                                     }
                                 }
                             }
+                            // LWJGL 3.4.1 natives (Minecraft 26.3+, from lwjgl-3.4.1-natives-release.aar): keep only this ABI
+                            val abiName = mapOf("arm" to "armeabi-v7a", "arm64" to "arm64-v8a", "x86" to "x86", "x86_64" to "x86_64")[arch]
+                            if (abiName != null) {
+                                File("$assetsDir/components/lwjgl-3.4.1-natives").listFiles()?.forEach {
+                                    if (it.isDirectory && it.name != abiName) println("delete:${it} : ${it.deleteRecursively()}")
+                                }
+                            }
                         }
                     }
 
@@ -241,6 +248,8 @@ tasks.register("generateInfoDistributor") {
 
 tasks.named("preBuild") {
     dependsOn("generateInfoDistributor")
+    // The lwjgl3-sdl component needs lwjgl-sdl-patches.jar and its version file (module jre_lwjgl3sdl)
+    dependsOn(":jre_lwjgl3sdl:jar")
 }
 
 dependencies {

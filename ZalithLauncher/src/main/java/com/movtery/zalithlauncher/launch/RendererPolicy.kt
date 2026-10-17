@@ -15,6 +15,7 @@ import com.movtery.zalithlauncher.ui.dialog.TipDialog
 import com.movtery.zalithlauncher.utils.ZHTools
 import net.kdt.pojavlaunch.JMinecraftVersionList
 import net.kdt.pojavlaunch.Logger
+import net.kdt.pojavlaunch.MinecraftGLSurface
 import net.kdt.pojavlaunch.Tools
 import java.io.File
 import java.text.SimpleDateFormat
@@ -62,6 +63,21 @@ object RendererPolicy {
         val gl4es = compatible.find { it.getRendererId() == GL4ES_ID }
         val current = Renderers.getCurrentRenderer()
         val versionName = version.getVersionName()
+
+        // Minecraft 26.3+ (SDL3): SDL creates the EGL context itself, which among the launcher's renderers
+        // only LTW supports (through libltw_sdl_egl.so, see SdlSupport)
+        if (MinecraftGLSurface.sdlVersion) {
+            if (current.getRendererId() != LTWRenderer.ID) {
+                if (ltw != null) {
+                    switchTo(activity, ltw, activity.getString(R.string.renderer_policy_sdl_use_ltw, versionName))
+                } else {
+                    val message = activity.getString(R.string.renderer_policy_ltw_unsupported, versionName)
+                    Logger.appendToLog("Warning: $message")
+                    showToast(activity, message)
+                }
+            }
+            return true
+        }
 
         when (current.getRendererId()) {
             LTWRenderer.ID -> {

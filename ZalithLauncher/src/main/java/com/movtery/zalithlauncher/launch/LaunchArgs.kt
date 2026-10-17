@@ -1,5 +1,6 @@
 package com.movtery.zalithlauncher.launch
 
+import net.kdt.pojavlaunch.MinecraftGLSurface
 import androidx.collection.ArrayMap
 import com.movtery.zalithlauncher.InfoDistributor
 import com.movtery.zalithlauncher.feature.accounts.AccountUtils
@@ -33,7 +34,9 @@ class LaunchArgs(
         argsList.addAll(getJavaArgs())
         argsList.addAll(getMinecraftJVMArgs())
         argsList.add("-cp")
-        argsList.add("${Tools.getLWJGL3ClassPath()}:$launchClassPath")
+        // Minecraft 26.3+ (SDL3) gets LWJGL 3.4.1 instead of the launcher's LWJGL 3.3.6 + GLFW stub
+        val lwjglClassPath = if (MinecraftGLSurface.sdlVersion) SdlSupport.getClassPath() else Tools.getLWJGL3ClassPath()
+        argsList.add("$lwjglClassPath:$launchClassPath")
 
         if (runtime.javaVersion > 8) {
             argsList.add("--add-exports")

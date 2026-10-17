@@ -1,5 +1,6 @@
 package net.kdt.pojavlaunch;
 
+import com.movtery.zalithlauncher.launch.SdlSupport;
 import static net.kdt.pojavlaunch.Tools.currentDisplayMetrics;
 import static org.lwjgl.glfw.CallbackBridge.sendKeyPress;
 import static org.lwjgl.glfw.CallbackBridge.windowHeight;
@@ -196,6 +197,9 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             // Minecraft 1.13+
             JMinecraftVersionList.Version mVersionInfo = Tools.getVersionInfo(minecraftVersion);
             isInputStackCall = mVersionInfo.arguments != null;
+            // Minecraft 26.3+ uses SDL3 instead of GLFW: the surface must host SDL (see SdlSupport)
+            MinecraftGLSurface.sdlVersion = SdlSupport.usesSdl(mVersionInfo);
+            MinecraftGLSurface.sdlEnabled = false;
             CallbackBridge.nativeSetUseInputStackQueue(isInputStackCall);
 
             Tools.getDisplayMetrics(this);

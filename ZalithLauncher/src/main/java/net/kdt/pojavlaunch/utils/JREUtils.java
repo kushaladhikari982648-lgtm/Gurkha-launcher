@@ -1,5 +1,7 @@
 package net.kdt.pojavlaunch.utils;
 
+import net.kdt.pojavlaunch.MinecraftGLSurface;
+import com.movtery.zalithlauncher.launch.SdlSupport;
 import static com.movtery.zalithlauncher.utils.path.PathManager.DIR_NATIVE_LIB;
 import static net.kdt.pojavlaunch.Architecture.ARCH_X86;
 import static net.kdt.pojavlaunch.Architecture.is64BitsDevice;
@@ -253,6 +255,8 @@ public final class JREUtils {
         if (eglName != null) envMap.put("POJAVEXEC_EGL", eglName);
 
         envMap.put("POJAV_RENDERER", rendererId);
+        // Minecraft 26.3+: SDL creates the GL context itself and needs the renderer's libraries
+        if (MinecraftGLSurface.sdlVersion) envMap.putAll(SdlSupport.getRendererEnv(currentRenderer, DIR_NATIVE_LIB));
 
         if (RendererPluginManager.getSelectedRendererPlugin() != null) return;
 
@@ -394,6 +398,8 @@ public final class JREUtils {
         // Force LWJGL to use the Freetype library intended for it, instead of using the one
         // that we ship with Java (since it may be older than what's needed)
         userArgs.add("-Dorg.lwjgl.freetype.libname="+ DIR_NATIVE_LIB +"/libfreetype.so");
+        // Minecraft 26.3+ (SDL3): LWJGL 3.4.1 uses its own natives (overrides the freetype path above)
+        if (MinecraftGLSurface.sdlVersion) userArgs.addAll(SdlSupport.getJvmArgs(DIR_NATIVE_LIB));
 
         // Some phones are not using the right number of cores, fix that
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());

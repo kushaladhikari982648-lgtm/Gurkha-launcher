@@ -1,5 +1,7 @@
 package com.movtery.zalithlauncher.feature.unpack
 
+import com.movtery.zalithlauncher.feature.update.UpdateUtils
+import com.movtery.zalithlauncher.launch.SdlSupport
 import android.content.Context
 import android.content.res.AssetManager
 import com.movtery.zalithlauncher.feature.log.Logging.i
@@ -32,6 +34,10 @@ class UnpackComponentsTask(val context: Context, val component: Components) : Ab
 
     override fun isNeedUnpack(): Boolean {
         if (isCheckFailed) return false
+        if (component == Components.LWJGL3_SDL && !File(SdlSupport.getNativesDir(), "liblwjgl.so").exists()) {
+            requestEmptyParentDir(versionFile)
+            return true
+        }
 
         if (!versionFile.exists()) {
             requestEmptyParentDir(versionFile)
@@ -57,7 +63,23 @@ class UnpackComponentsTask(val context: Context, val component: Components) : Ab
         for (fileName in fileList!!) {
             Tools.copyAssetFile(context, "components/${component.component}/$fileName", "$rootDir/${component.component}", true)
         }
+        if (component == Components.LWJGL3_SDL) unpackSdlNatives()
         listener?.onTaskEnd()
+    }
+
+    /**
+     * The LWJGL 3.4.1 natives for this device (assets of lwjgl-3.4.1-natives-release.aar), into a private
+     * directory: they have the same names as the LWJGL 3.3.x natives packaged with the app.
+     */
+    private fun unpackSdlNatives() {
+        val abi = UpdateUtils.getArchModel() ?: return
+        val assetDir = "components/${SdlSupport.NATIVES_COMPONENT}/$abi"
+        val target = SdlSupport.getNativesDir()
+        if (target.exists()) FileUtils.deleteDirectory(target)
+        target.mkdirs()
+        am.list(assetDir)?.forEach { name ->
+            Tools.copyAssetFile(context, "$assetDir/$name", target.absolutePath, true)
+        }
     }
 
     private fun requestEmptyParentDir(file: File) {
