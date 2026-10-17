@@ -894,6 +894,25 @@ public class GLFW
         return 1L;
     }
 
+    /**
+     * The name of the only monitor, the device screen. Minecraft 26.2 calls it while setting up its monitors;
+     * without it the game failed with NoSuchMethodError (this class replaces LWJGL's GLFW class).
+     */
+    @Nullable
+    @NativeType("char const *")
+    public static String glfwGetMonitorName(@NativeType("GLFWmonitor *") long monitor) {
+        return "Android";
+    }
+
+    /**
+     * GLFW 3.4 IME API: where the input method should show its candidate window. Minecraft 26.1+ calls it for
+     * focused text fields (com.mojang.blaze3d.platform.TextInputManager); without it typing in a text field
+     * failed with NoSuchMethodError. Text input goes through the launcher's own keyboard here, so there is
+     * nothing to place.
+     */
+    public static void glfwSetPreeditCursorRectangle(@NativeType("GLFWwindow *") long window, int x, int y, int w, int h) {
+    }
+
     public static void glfwGetMonitorPos(@NativeType("GLFWmonitor *") long monitor, @Nullable @NativeType("int *") IntBuffer xpos, @Nullable @NativeType("int *") IntBuffer ypos) {
         if (CHECKS) {
             checkSafe(xpos, 1);

@@ -42,6 +42,15 @@ endif
 include $(BUILD_SHARED_LIBRARY)
 
 
+# EGL front for the LTW renderer under SDL3 (Minecraft 26.3+), see ltw_sdl_egl.c
+include $(CLEAR_VARS)
+LOCAL_MODULE := ltw_sdl_egl
+LOCAL_SRC_FILES := ltw_sdl_egl.c
+LOCAL_LDLIBS := -ldl -llog
+LOCAL_CFLAGS += -fvisibility=hidden
+include $(BUILD_SHARED_LIBRARY)
+
+
 include $(CLEAR_VARS)
 LOCAL_MODULE := exithook
 LOCAL_LDLIBS := -ldl -llog

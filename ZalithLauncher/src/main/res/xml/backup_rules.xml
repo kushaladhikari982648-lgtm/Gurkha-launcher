@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 6 - 11 (android:fullBackupContent). Everything else is still backed up. -->
+<full-backup-content>
+    <!-- Microsoft / third-party login tokens must never be copied into backups -->
+    <exclude domain="file" path="accounts/" />
+</full-backup-content>

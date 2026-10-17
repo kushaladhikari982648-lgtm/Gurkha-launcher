@@ -123,6 +123,8 @@ class LaunchGame {
             if (!Renderers.isCurrentRendererValid()) {
                 Renderers.setCurrentRenderer(activity, AllSettings.renderer.getValue())
             }
+            // Switch to a renderer that can run this version (LTW for 1.21.5+, GL4ES before 1.17, ...)
+            if (!RendererPolicy.apply(activity, minecraftVersion)) return
 
             var account = AccountsManager.currentAccount!!
             if (minecraftVersion.offlineAccountLogin) {
@@ -220,7 +222,7 @@ class LaunchGame {
             javaRuntime: String,
             customArgs: String
         ) {
-            checkMemory(activity)
+            if (!checkMemory(activity)) return
 
             val runtime = MultiRTUtils.forceReread(javaRuntime)
 
@@ -246,32 +248,36 @@ class LaunchGame {
             JREUtils.launchWithUtils(activity, runtime, minecraftVersion, launchArgs, customArgs)
         }
 
-        private fun checkMemory(activity: AppCompatActivity) {
-            var freeDeviceMemory = Tools.getFreeDeviceMemory(activity)
-            val freeAddressSpace =
-                if (Architecture.is32BitsDevice())
-                    Tools.getMaxContinuousAddressSpaceSize()
-                else -1
-            Logging.i("MemStat",
-                "Free RAM: $freeDeviceMemory Addressable: $freeAddressSpace")
+        /**
+         * Warns when the RAM allocation is higher than the free RAM.
+         * @return false if the game must not be launched (the activity was destroyed while the warning
+         * was shown), so that it can be started again once the activity is shown again
+         */
+        private fun checkMemory(activity: AppCompatActivity): Boolean {
+            val freeDeviceMemory = Tools.getFreeDeviceMemory(activity)
+            val allocation = AllSettings.ramAllocation.value.getValue()
+            Logging.i("MemStat", "Free RAM: $freeDeviceMemory")
 
-            val stringId: Int = if (freeDeviceMemory > freeAddressSpace && freeAddressSpace != -1) {
-                freeDeviceMemory = freeAddressSpace
-                R.string.address_memory_warning_msg
-            } else R.string.memory_warning_msg
+            if (Architecture.is32BitsDevice()) {
+                // The 32-bit address space check is bypassed: it held the launch with a "will cause a
+                // crash" warning based on an estimate of the free address space in this process. The
+                // estimate is only written to the game log, to help reading crash reports.
+                Logger.appendToLog("Info: 32-bit device, largest free address space block: " +
+                        "${Tools.getMaxContinuousAddressSpaceSize()} MB (RAM allocation: $allocation MB)")
+            }
 
-            if (AllSettings.ramAllocation.value.getValue() > freeDeviceMemory) {
+            if (allocation > freeDeviceMemory) {
                 val builder = TipDialog.Builder(activity)
                     .setTitle(R.string.generic_warning)
-                    .setMessage(activity.getString(stringId, freeDeviceMemory, AllSettings.ramAllocation.value.getValue()))
+                    .setMessage(activity.getString(R.string.memory_warning_msg, freeDeviceMemory, allocation))
                     .setWarning()
                     .setCenterMessage(false)
                     .setShowCancel(false)
-                if (LifecycleAwareTipDialog.haltOnDialog(activity.lifecycle, builder)) return
-                // If the dialog's lifecycle has ended, return without
-                // actually launching the game, thus giving us the opportunity
-                // to start after the activity is shown again
+                // If the dialog's lifecycle has ended, don't launch the game, thus giving us the
+                // opportunity to start after the activity is shown again
+                if (LifecycleAwareTipDialog.haltOnDialog(activity.lifecycle, builder)) return false
             }
+            return true
         }
     }
 }

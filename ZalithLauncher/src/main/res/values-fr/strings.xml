@@ -572,6 +572,7 @@
     <string name="download_info_dependencies">Type de dépendance:</string>
     <string name="download_info_load_screenshot">Afficher la capture d\'écran</string>
     <string name="download_search_failed">Échec de la recherche de ressources!</string>
+    <string name="download_curseforge_no_api_key">CurseForge n\'est pas disponible dans cette version du launcher : elle a été compilée sans clé d\'API CurseForge. Modrinth fonctionne toujours.</string>
     <string name="download_search_no_result">Aucune ressource correspondante trouvée!</string>
     <string name="download_search_platform_not_supported">La plateforme actuelle ne prend pas en charge le téléchargement de ce type de ressource ou ce filtre de catégorie!</string>
     <string name="download_install_custom_name">Nom de Fichier Personnalisé</string>
@@ -654,8 +655,9 @@
     <string name="about_sponsors_desc">Voici tous les sponsors qui soutiennent le développement, un grand merci !</string>
     <string name="about_sponsors_amount">Temps et Montant Total</string>
     <string name="about_button_support_development">Soutenir le développement</string>
-    <string name="about_MovTery_desc">Auteur principal du lanceur</string>
+    <string name="about_MovTery_desc">Auteur principal de Zalith Launcher</string>
     <string name="about_PojavLauncher_desc">Équipe de développement de PojavLauncher, qui a développé et open-sourcé PojavLauncher</string>
+    <string name="about_zalith_desc">%s est basé sur Zalith Launcher, le lanceur open source créé par MovTery et ses contributeurs</string>
     <string name="about_mcmod_desc">Le lanceur utilise des Mods de MC 百科 ainsi que des traductions en chinois pour les packs d\'intégration</string>
     <string name="about_VeraFirefly_desc">Support technique pour le lanceur en matière de rendu</string>
     <string name="about_LingMuQiuZhu_desc">Support technique pour le lanceur</string>

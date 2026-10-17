@@ -4,11 +4,14 @@ import android.content.Context
 import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.renderer.renderers.FreedrenoRenderer
 import com.movtery.zalithlauncher.renderer.renderers.GL4ESRenderer
+import com.movtery.zalithlauncher.renderer.renderers.LTWRenderer
 import com.movtery.zalithlauncher.renderer.renderers.PanfrostRenderer
 import com.movtery.zalithlauncher.renderer.renderers.VirGLRenderer
 import com.movtery.zalithlauncher.renderer.renderers.VulkanZinkRenderer
 import net.kdt.pojavlaunch.Architecture
 import net.kdt.pojavlaunch.Tools
+import net.kdt.pojavlaunch.utils.JREUtils
+import java.io.File
 
 /**
  * 启动器所有渲染器总管理者，启动器内置的渲染器与渲染器插件加载的渲染器，都会加载到这里
@@ -31,6 +34,7 @@ object Renderers {
 
         addRenderers(
             GL4ESRenderer(),
+            LTWRenderer(),
             VulkanZinkRenderer(),
             VirGLRenderer(),
             FreedrenoRenderer(),
@@ -45,11 +49,28 @@ object Renderers {
         val deviceHasVulkan = Tools.checkVulkanSupport(context.packageManager)
         // Currently, only 32-bit x86 does not have the Zink binary
         val deviceHasZinkBinary = !(Architecture.is32BitsDevice() && Architecture.isx86Device())
+        // LTW needs OpenGL ES 3 (and its library, which is missing from builds without ltw-release.aar)
+        val deviceSupportsLtw by lazy {
+            JREUtils.getDetectedVersion() >= 3 &&
+                    File(context.applicationInfo.nativeLibraryDir, LTWRenderer.LIBRARY).exists()
+        }
+
+        val nativeLibraryDir = context.applicationInfo.nativeLibraryDir
 
         val compatibleRenderers1: MutableList<RendererInterface> = mutableListOf()
         renderers.forEach { renderer ->
             if (renderer.getRendererId().contains("vulkan") && !deviceHasVulkan) return@forEach
             if (renderer.getRendererId().contains("zink") && !deviceHasZinkBinary) return@forEach
+            if (renderer.getRendererId() == LTWRenderer.ID && !deviceSupportsLtw) return@forEach
+            // Freedreno drives Qualcomm Adreno GPUs and Panfrost drives ARM Mali GPUs: neither exists on x86
+            // devices, whose APKs don't ship these drivers (libOSMesa_2300d.so is left out of them)
+            if ((renderer is FreedrenoRenderer || renderer is PanfrostRenderer) && Architecture.isx86Device()) return@forEach
+            // A built-in renderer whose library is not in this APK would only fail when the game starts
+            // (renderer plugins bring their own libraries, so they are not checked here)
+            if (renderer.isBuiltIn() && !File(nativeLibraryDir, renderer.getRendererLibrary()).exists()) {
+                Logging.i("Renderers", "${renderer.getRendererName()} is not available: ${renderer.getRendererLibrary()} is not in this APK")
+                return@forEach
+            }
             compatibleRenderers1.add(renderer)
         }
 
@@ -121,4 +142,9 @@ object Renderers {
      * 当前是否设置了渲染器
      */
     fun isCurrentRendererValid(): Boolean = isInitialized && this.currentRenderer != null
+
+    /** The renderers that come with the launcher: their libraries are part of its APK. */
+    private fun RendererInterface.isBuiltIn(): Boolean =
+        this is GL4ESRenderer || this is LTWRenderer || this is VulkanZinkRenderer ||
+                this is VirGLRenderer || this is FreedrenoRenderer || this is PanfrostRenderer
 }

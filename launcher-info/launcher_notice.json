@@ -1,0 +1,14 @@
+{
+  "title": {
+    "en_us": "Welcome to Gurkha Launcher",
+    "zh_cn": "欢迎使用 Gurkha Launcher",
+    "zh_tw": "歡迎使用 Gurkha Launcher"
+  },
+  "content": {
+    "en_us": "Thanks for trying the first pre-release of Gurkha Launcher! It is based on Zalith Launcher and PojavLauncher, and adds a fix for Minecraft 1.20.5+ on 32-bit ARM devices.\n\nNew versions and source code: https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher",
+    "zh_cn": "感谢试用 Gurkha Launcher 的第一个预发布版本！它基于 Zalith Launcher 和 PojavLauncher，并修复了 Minecraft 1.20.5+ 在 32 位 ARM 设备上的问题。\n\n新版本与源代码：https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher",
+    "zh_tw": "感謝試用 Gurkha Launcher 的第一個預發布版本！它基於 Zalith Launcher 和 PojavLauncher，並修復了 Minecraft 1.20.5+ 在 32 位元 ARM 裝置上的問題。\n\n新版本與原始碼：https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher"
+  },
+  "date": "2026-10-15",
+  "numbering": 1
+}

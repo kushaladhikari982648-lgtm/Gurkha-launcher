@@ -1,12 +1,17 @@
 package net.kdt.pojavlaunch.utils;
 
+import net.kdt.pojavlaunch.MinecraftGLSurface;
+import com.movtery.zalithlauncher.launch.SdlSupport;
 import static com.movtery.zalithlauncher.utils.path.PathManager.DIR_NATIVE_LIB;
 import static net.kdt.pojavlaunch.Architecture.ARCH_X86;
 import static net.kdt.pojavlaunch.Architecture.is64BitsDevice;
 import static net.kdt.pojavlaunch.Tools.currentDisplayMetrics;
 
 import android.content.Context;
+import android.content.Intent;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.util.ArrayMap;
@@ -37,10 +42,12 @@ import com.oracle.dalvik.VMLauncher;
 
 import net.kdt.pojavlaunch.Architecture;
 import net.kdt.pojavlaunch.Logger;
+import net.kdt.pojavlaunch.MainActivity;
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.multirt.MultiRTUtils;
 import net.kdt.pojavlaunch.multirt.Runtime;
 import net.kdt.pojavlaunch.plugins.FFmpegPlugin;
+import net.kdt.pojavlaunch.services.GameService;
 
 import org.greenrobot.eventbus.EventBus;
 import org.lwjgl.glfw.CallbackBridge;
@@ -253,6 +260,8 @@ public final class JREUtils {
         if (eglName != null) envMap.put("POJAVEXEC_EGL", eglName);
 
         envMap.put("POJAV_RENDERER", rendererId);
+        // Minecraft 26.3+: SDL creates the GL context itself and needs the renderer's libraries
+        if (MinecraftGLSurface.sdlVersion) envMap.putAll(SdlSupport.getRendererEnv(currentRenderer, DIR_NATIVE_LIB));
 
         if (RendererPluginManager.getSelectedRendererPlugin() != null) return;
 
@@ -363,6 +372,7 @@ public final class JREUtils {
     private static void launchJavaVM(
             final AppCompatActivity activity,
             String runtimeHome,
+            final Runtime runtime,
             Version gameVersion,
             final List<String> JVMArgs,
             final String userArgsString
@@ -393,9 +403,21 @@ public final class JREUtils {
         // Force LWJGL to use the Freetype library intended for it, instead of using the one
         // that we ship with Java (since it may be older than what's needed)
         userArgs.add("-Dorg.lwjgl.freetype.libname="+ DIR_NATIVE_LIB +"/libfreetype.so");
+        // Minecraft 26.3+ (SDL3) and the GLFW versions on LWJGL 3.4.1 (26.2): LWJGL 3.4.1 uses its own natives
+        // (overrides the freetype path above)
+        if (MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw) userArgs.addAll(SdlSupport.getJvmArgs(DIR_NATIVE_LIB));
 
         // Some phones are not using the right number of cores, fix that
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());
+
+        // Runtime specific JVM fixes (see getArm32FixArgs). They must stay before JVMArgs,
+        // which end with the main class.
+        List<String> runtimeFixArgs = getArm32FixArgs(runtime, userArgs);
+        if (!runtimeFixArgs.isEmpty()) {
+            Logger.appendToLog("Info: 32-bit ARM runtime (Java " + runtime.javaVersion + "), adding: "
+                    + String.join(" ", runtimeFixArgs));
+        }
+        userArgs.addAll(runtimeFixArgs);
 
         userArgs.addAll(JVMArgs);
         activity.runOnUiThread(() -> Toast.makeText(activity, activity.getString(R.string.autoram_info_msg, AllSettings.getRamAllocation().getValue().getValue()), Toast.LENGTH_SHORT).show());
@@ -419,6 +441,27 @@ public final class JREUtils {
             ErrorActivity.showExitMessage(activity, exitCode, false);
         }
         EventBus.getDefault().post(new JvmExitEvent(exitCode));
+        if (activity instanceof MainActivity) endGameProcess(activity, exitCode);
+    }
+
+    /**
+     * The game returned from main() instead of calling System.exit() (Minecraft 26.2 and newer can do that when
+     * "Quit Game" is used). Only System.exit() is caught by the exit hook (nominal_exit in jni/stdio_is.c), so
+     * nothing ended the process: the game screen stayed on a JVM that had finished (it can't be started again
+     * in the same process) and its foreground service kept running. End the process the same way the exit
+     * hook does. System.exit() can't be used here: it would run into the exit hook again, which waits forever.
+     * Same idea as upstream ZalithLauncher PR #758 ("stuck Quit Game 26.2-snapshot-1").
+     */
+    private static void endGameProcess(AppCompatActivity activity, int exitCode) {
+        Logging.i("JREUtils", "The game returned from main() (exit code " + exitCode + "), ending the process");
+        try {
+            activity.stopService(new Intent(activity, GameService.class));
+        } catch (Exception e) {
+            Logging.w("JREUtils", "Failed to stop the game service: " + e);
+        }
+        // Give the error screen (started above for a non-zero exit code) a moment to be handed to the system,
+        // which shows it in a new process, like the exit hook's "hat trick"
+        new Handler(Looper.getMainLooper()).postDelayed(ZHTools::killProcess, exitCode != 0 ? 500 : 100);
     }
 
     public static void launchWithUtils(
@@ -440,7 +483,69 @@ public final class JREUtils {
 
         initGraphicAndSoundEngine(gameVersion != null);
 
-        launchJavaVM(activity, runtimeHome, gameVersion, JVMArgs, userArgsString);
+        launchJavaVM(activity, runtimeHome, runtime, gameVersion, JVMArgs, userArgsString);
+    }
+
+    /**
+     * JVM options for 32-bit ARM runtimes, reproducing what PojavLauncher changed in its own arm32 Java
+     * builds (those changes live in PojavLauncherTeam/android-openjdk-build-multiarch, not in the
+     * launcher, so the runtimes bundled with this launcher do not have them).
+     * <p>
+     * <b>Client VM (Java 17+).</b> Pojav builds its arm32 runtimes as the "client" VM since February 2025
+     * (android-openjdk-build-multiarch PR #29, "After testing by me and several other people on arm32,
+     * the VM appears to run more stable with this"). The bundled arm32 runtimes are "server" VMs, which on
+     * 32-bit ARM run the interpreter plus the C2 compiler only (TieredCompilation is off by default
+     * there): C2 is slow to kick in and needs a lot of memory, which a 32-bit process does not have.
+     * -XX:+NeverActAsServerClassMachine makes HotSpot emulate the client VM
+     * (CompilerConfig::set_client_emulation_mode_flags: C1 only, one compiler thread, 32 MB code cache,
+     * and Serial GC through the GC ergonomics), as it does by default on 32-bit Windows. A compilation
+     * mode or garbage collector chosen in the user's JVM arguments still takes precedence.
+     * <p>
+     * <b>Math intrinsics (Java 18+).</b> Port of PojavLauncher's "Fixed 1.20.5+ versions on 32-bit
+     * devices": android-openjdk-build-multiarch commit 8cb72d3 ("Fix[arm32]: Disable InlineIntrinsics on
+     * arm32 by default"). Since JDK 18 (JDK-8271128) the 32-bit ARM template interpreter has math entries
+     * (templateInterpreterGenerator_arm.cpp, generate_math_entry) written for the hard-float calling
+     * convention: Math.abs/sqrt leave their result in VFP register D0, and Math.sin/cos/tan/log/log10/
+     * exp/pow pass their argument in D0 to the C runtime. Android's armeabi-v7a uses the softfp
+     * convention, where doubles travel in core registers, so all of them return garbage while they are
+     * interpreted. The pure-Java StrictMath code (FdLibm) relies on Math.abs and then fails with
+     * ArrayIndexOutOfBoundsException in FdLibm$RemPio2, so Minecraft 1.20.5+ (Java 21) crashes or renders
+     * garbage. Verified on the bundled Java 21 and 25 under qemu-arm with Android's 32-bit libraries.
+     * InlineIntrinsics is a "develop" flag that release JVMs refuse, so all the intrinsics that have such
+     * an entry are disabled with the diagnostic DisableIntrinsic flag, which the interpreter honours too
+     * (TemplateInterpreterGenerator::generate_intrinsic_entry -> vmIntrinsics::is_intrinsic_available).
+     * Every name in the list exists since JDK 18; an unknown name would stop the JVM from starting.
+     * <p>
+     * Both are harmless on runtimes that already contain Pojav's changes.
+     *
+     * @param runtime  the runtime that is about to be started
+     * @param userArgs the JVM arguments collected so far (including the user's custom arguments)
+     * @return the extra JVM arguments, or an empty list if the runtime is not a 32-bit ARM runtime
+     */
+    public static List<String> getArm32FixArgs(Runtime runtime, List<String> userArgs) {
+        List<String> args = new ArrayList<>();
+        int runtimeArch = runtime.arch != null ? Architecture.archAsInt(runtime.arch) : Tools.DEVICE_ARCHITECTURE;
+        if (runtimeArch != Architecture.ARCH_ARM) return args;
+
+        // Java 8 for arm32 is already a client VM; the client emulation mode exists since JDK 17.
+        boolean userChoseServerClass = false;
+        for (String arg : userArgs) {
+            if (arg.contains("NeverActAsServerClassMachine") || arg.contains("AlwaysActAsServerClassMachine")) {
+                userChoseServerClass = true;
+                break;
+            }
+        }
+        if (runtime.javaVersion >= 17 && !userChoseServerClass) {
+            args.add("-XX:+NeverActAsServerClassMachine");
+        }
+
+        // JDK 8 (aarch32 port) and JDK 17 are not affected: the interpreter math entries appeared in JDK 18.
+        if (runtime.javaVersion >= 18) {
+            // The unlock option must come before the diagnostic option, or the JVM refuses to start.
+            args.add("-XX:+UnlockDiagnosticVMOptions");
+            args.add("-XX:DisableIntrinsic=_dabs,_dsqrt,_dsqrt_strict,_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow");
+        }
+        return args;
     }
 
     /**

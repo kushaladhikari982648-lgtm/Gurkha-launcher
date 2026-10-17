@@ -1,0 +1,5 @@
+ltw-release.aar: LTW (Large Thin Wrapper) OpenGL renderer
+Source:  https://github.com/MojoLauncher/LTW (LGPL-3.0)
+Commit:  2f4dbaaa2494a9fe73d78dda859301b5c060fdd3
+Build:   https://github.com/MojoLauncher/LTW/actions/runs/38618045254 (2026-10-14T18:46:46Z)
+Update:  replace the aar with a newer output-aar artifact of that repository and update this file.

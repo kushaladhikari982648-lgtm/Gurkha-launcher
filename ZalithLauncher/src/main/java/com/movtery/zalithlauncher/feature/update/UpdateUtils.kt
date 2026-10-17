@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.movtery.zalithlauncher.InfoDistributor
 import com.movtery.zalithlauncher.R
 import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.feature.update.LauncherVersion.FileSize
@@ -86,13 +87,18 @@ class UpdateUtils {
 
             CallUtils(object : CallbackListener {
                 override fun onFailure(call: Call?) {
-                    showFailToast(context, context.getString(R.string.update_fail))
+                    //自动检查（ignore = true）失败时不打扰用户（例如离线），只有手动检查才提示
+                    //Automatic checks (ignore = true) fail silently, e.g. when offline; manual checks report errors.
+                    if (!ignore) showFailToast(context, context.getString(R.string.update_fail))
+                    else Logging.w("UpdateLauncher", "Automatic update check failed")
                 }
 
                 @Throws(IOException::class)
                 override fun onResponse(call: Call?, response: Response?) {
                     if (!response!!.isSuccessful) {
-                        showFailToast(context, context.getString(R.string.update_fail_code, response.code))
+                        //404: launcher-info/launcher_version.json is not on the default branch (yet)
+                        //403: GitHub API rate limit (60 requests/hour per IP)
+                        if (!ignore) showFailToast(context, context.getString(R.string.update_fail_code, response.code))
                         Logging.e("UpdateLauncher", "Unexpected code " + response.code)
                     } else {
                         try {
@@ -160,11 +166,15 @@ class UpdateUtils {
             return fileSize.all
         }
 
+        /**
+         * Matches what .github/workflows/android.yml publishes: release tag "v<version_name>" with
+         * assets "<launcher_name>-<version_name>-<abi>.apk" (and "<launcher_name>-<version_name>.apk").
+         */
         @JvmStatic
         fun getDownloadUrl(launcherVersion: LauncherVersion): String {
             val archModel = getArchModel()
-            return "https://github.com/ZalithLauncher/ZalithLauncher/releases/download/" +
-                    "${launcherVersion.versionCode}/ZalithLauncher-${launcherVersion.versionName}" +
+            return "https://github.com/${UrlManager.GITHUB_REPOSITORY}/releases/download/" +
+                    "v${launcherVersion.versionName}/${InfoDistributor.LAUNCHER_NAME}-${launcherVersion.versionName}" +
                     "${(if (archModel != null) String.format("-%s", archModel) else "")}.apk"
         }
 

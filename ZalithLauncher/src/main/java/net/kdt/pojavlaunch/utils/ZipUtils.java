@@ -34,17 +34,27 @@ public class ZipUtils {
      * @param zipFile The ZipFile to extract files from
      * @param dirName The directory to extract the files from
      * @param destination The destination directory to extract the files into
-     * @throws IOException if it was not possible to create a directory or file extraction failed
+     * @throws IOException if it was not possible to create a directory, file extraction failed,
+     *                     or an entry tried to escape the destination directory (zip slip)
      */
     public static void zipExtract(ZipFile zipFile, String dirName, File destination) throws IOException {
         Enumeration<? extends ZipEntry> zipEntries = zipFile.entries();
+
+        // "overrides" must only match "overrides/...", not "overrides_old/..."
+        if(!dirName.isEmpty() && !dirName.endsWith("/")) dirName = dirName + "/";
+        String canonicalDestination = destination.getCanonicalPath();
 
         int dirNameLen = dirName.length();
         while(zipEntries.hasMoreElements()) {
             ZipEntry zipEntry = zipEntries.nextElement();
             String entryName = zipEntry.getName();
             if(!entryName.startsWith(dirName) || zipEntry.isDirectory()) continue;
-            File zipDestination = new File(destination, entryName.substring(dirNameLen));
+            String relativeName = entryName.substring(dirNameLen);
+            if(relativeName.isEmpty()) continue;
+            // Never trust entry names: a crafted modpack/world/plugin archive could use "../"
+            // to overwrite files outside of the destination (e.g. the app's private runtimes).
+            File zipDestination = FileUtils.resolveSafeChild(canonicalDestination, destination, relativeName);
+            if(zipDestination.getCanonicalPath().equals(canonicalDestination)) continue;
             FileUtils.ensureParentDirectory(zipDestination);
             try (InputStream inputStream = zipFile.getInputStream(zipEntry);
                  OutputStream outputStream = new FileOutputStream(zipDestination)) {

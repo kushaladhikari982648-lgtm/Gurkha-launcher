@@ -1,6 +1,13 @@
 import com.android.build.api.variant.FilterConfiguration.FilterType.ABI
 import com.android.build.gradle.tasks.MergeSourceSetFolders
 import com.github.megatronking.stringfog.plugin.StringFogExtension
+import org.tukaani.xz.LZMA2Options
+import org.tukaani.xz.XZOutputStream
+import java.io.ByteArrayOutputStream
+import java.util.zip.CRC32
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 plugins {
     id("com.android.application")
@@ -10,11 +17,13 @@ plugins {
 apply(plugin = "stringfog")
 
 val getCFApiKey = {
-    System.getenv("CURSEFORGE_API_KEY") ?: run {
+    // CI passes an unset secret as an empty string, which must count as "no key" too
+    System.getenv("CURSEFORGE_API_KEY")?.trim()?.takeIf { it.isNotEmpty() } ?: run {
         val curseforgeKeyFile = File(rootDir, "curseforge_key.txt")
-        if (curseforgeKeyFile.canRead() && curseforgeKeyFile.isFile) {
-            curseforgeKeyFile.readText()
+        if (curseforgeKeyFile.canRead() && curseforgeKeyFile.isFile && curseforgeKeyFile.readText().isNotBlank()) {
+            curseforgeKeyFile.readText().trim()
         } else {
+            // The app checks for this value and tells the user that CurseForge is unavailable (Modrinth still works)
             logger.warn("BUILD: You have no CurseForge key, the curseforge api will get disabled !")
             "DUMMY"
         }
@@ -27,10 +36,14 @@ val getBuildType = {
     buildType
 }
 
+// Java/Kotlin package and Android namespace of the code (R, BuildConfig). Kept as is: renaming it
+// would touch every source file and changes nothing for users.
 val nameId = "com.movtery.zalithlauncher"
 val generatedZalithDir = file("$buildDir/generated/source/zalith/java")
 val launcherAPPName = project.findProperty("launcher_app_name") as? String ?: error("The \"launcher_app_name\" property is not set in gradle.properties.")
 val launcherName = project.findProperty("launcher_name") as? String ?: error("The \"launcher_name\" property is not set in gradle.properties.")
+// Package name of the installed app (what Android uses to tell apps apart).
+val launcherApplicationId = project.findProperty("launcher_application_id") as? String ?: error("The \"launcher_application_id\" property is not set in gradle.properties.")
 val launcherVersionCode = (project.findProperty("launcher_version_code") as? String)?.toIntOrNull() ?: error("The \"launcher_version_code\" property is not set as an integer in gradle.properties.")
 val launcherVersionName = project.findProperty("launcher_version_name") as? String ?: error("The \"launcher_version_name\" property is not set in gradle.properties.")
 
@@ -54,11 +67,15 @@ android {
 
     signingConfigs {
         create("releaseBuild") {
-            val pwd = System.getenv("MOVTERY_KEYSTORE_PASSWORD")
-            storeFile = file("movtery-key.jks")
+            // The release key is never stored in the repository. CI decodes it from the
+            // GURKHA_KEYSTORE_BASE64 secret into the file named by GURKHA_KEYSTORE_FILE
+            // (see .github/workflows/android.yml and RELEASING.md).
+            val keystorePath = System.getenv("GURKHA_KEYSTORE_FILE")
+            val pwd = System.getenv("GURKHA_KEYSTORE_PASSWORD")
+            if (!keystorePath.isNullOrBlank()) storeFile = file(keystorePath)
             storePassword = pwd
-            keyAlias = "mtp"
-            keyPassword = pwd
+            keyAlias = System.getenv("GURKHA_KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "gurkha"
+            keyPassword = System.getenv("GURKHA_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: pwd
         }
         create("customDebug") {
             storeFile = file("debug.keystore")
@@ -69,17 +86,22 @@ android {
     }
 
     defaultConfig {
-        applicationId = nameId
+        applicationId = launcherApplicationId
         minSdk = 26
         targetSdk = 34
         versionCode = launcherVersionCode
         versionName = launcherVersionName
         multiDexEnabled = true //important
         manifestPlaceholders["launcher_name"] = launcherAPPName
+        // Only the languages the launcher is translated into (res/values-*): the libraries (Material, AppCompat,
+        // ...) bring texts for ~80 more, which made resources.arsc twice as big for nothing
+        resourceConfigurations += listOf("en", "ar", "de", "fr", "pt-rBR", "ru", "vi", "zh-rCN", "zh-rTW")
     }
 
     buildTypes {
-        val storageProviderId = "$nameId.storage_provider"
+        // Must be unique per installed app: two apps declaring the same provider authority cannot be
+        // installed side by side, so derive it from the application id (not from the code package).
+        val storageProviderId = "$launcherApplicationId.storage_provider"
 
         getByName("debug") {
             applicationIdSuffix = ".debug"
@@ -119,7 +141,12 @@ android {
                         task.doLast {
                             val arch = System.getProperty("arch", "all")
                             val assetsDir = task.outputDir.get().asFile
-                            val jreList = listOf("jre-8", "jre-17", "jre-21")
+                            // Every bundled runtime (jre-8, jre-17, jre-21, jre-25, ...) must be stripped,
+                            // otherwise per-architecture APKs ship binaries for the other CPUs too.
+                            val jreList = File("$assetsDir/components").listFiles()
+                                ?.filter { it.isDirectory && it.name.startsWith("jre-") }
+                                ?.map { it.name }
+                                ?: emptyList()
                             println("arch:$arch")
                             jreList.forEach { jreVersion ->
                                 val runtimeDir = File("$assetsDir/components/$jreVersion")
@@ -128,6 +155,25 @@ android {
                                     if (arch != "all" && it.name != "version" && !it.name.contains("universal") && it.name != "bin-${arch}.tar.xz") {
                                         println("delete:${it} : ${it.delete()}")
                                     }
+                                }
+                                // A runtime that has no build for this CPU (Java 25 has no 32-bit x86 build) is useless
+                                // here: drop its shared part too instead of shipping it (UnpackJreTask skips it).
+                                if (arch != "all" && !File(runtimeDir, "bin-${arch}.tar.xz").exists()) {
+                                    println("delete (no bin-${arch}.tar.xz):${runtimeDir} : ${runtimeDir.deleteRecursively()}")
+                                }
+                            }
+                            // Component jars (LWJGL, Caciocavallo, authlib-injector, ...) go into the APK as xz-compressed
+                            // uncompressed jars: their classes compress far better together than one by one (lwjgl-vulkan.jar
+                            // 7.95 MB -> 1.52 MB, 11.5 MB less in total). UnpackComponentsTask restores the .jar.
+                            File("$assetsDir/components").walkTopDown()
+                                .filter { it.isFile && it.name.endsWith(".jar") }
+                                .toList()
+                                .forEach { packJarAsXz(it) }
+                            // LWJGL 3.4.1 natives (Minecraft 26.3+, from lwjgl-3.4.1-natives-release.aar): keep only this ABI
+                            val abiName = mapOf("arm" to "armeabi-v7a", "arm64" to "arm64-v8a", "x86" to "x86", "x86_64" to "x86_64")[arch]
+                            if (abiName != null) {
+                                File("$assetsDir/components/lwjgl-3.4.1-natives").listFiles()?.forEach {
+                                    if (it.isDirectory && it.name != abiName) println("delete:${it} : ${it.deleteRecursively()}")
                                 }
                             }
                         }
@@ -190,6 +236,40 @@ android {
     }
 }
 
+/**
+ * Replaces [jar] by "<name>.jar.xz": the same jar with all entries stored uncompressed, then xz-compressed (LZMA2
+ * dictionary no larger than needed, at most 8 MiB like the Java runtimes, so unpacking needs little memory).
+ * Entry order, names, data and times are kept, so signatures and the manifest position stay valid.
+ */
+fun packJarAsXz(jar: File) {
+    val stored = ByteArrayOutputStream()
+    ZipFile(jar).use { zip ->
+        ZipOutputStream(stored).use { out ->
+            for (entry in zip.entries()) {
+                val data = zip.getInputStream(entry).use { it.readBytes() }
+                val copy = ZipEntry(entry.name).apply {
+                    method = ZipEntry.STORED
+                    size = data.size.toLong()
+                    compressedSize = data.size.toLong()
+                    crc = CRC32().apply { update(data) }.value
+                    time = entry.time
+                }
+                out.putNextEntry(copy)
+                out.write(data)
+                out.closeEntry()
+            }
+        }
+    }
+    val bytes = stored.toByteArray()
+    val options = LZMA2Options(6).apply {
+        dictSize = maxOf(LZMA2Options.DICT_SIZE_MIN, minOf(8 shl 20, Integer.highestOneBit(maxOf(bytes.size, 1)) shl 1))
+    }
+    File(jar.parentFile, jar.name + ".xz").outputStream().buffered().use { file ->
+        XZOutputStream(file, options).use { it.write(bytes) }
+    }
+    println("packed:${jar.name} ${jar.length()} -> ${File(jar.parentFile, jar.name + ".xz").length()} : ${jar.delete()}")
+}
+
 fun generateJavaClass(sourceOutputDir: File, packageName: String, className: String, constantMap: Map<String, String>) {
     val outputDir = File(sourceOutputDir, packageName.replace(".", "/"))
     outputDir.mkdirs()
@@ -226,6 +306,10 @@ tasks.register("generateInfoDistributor") {
 
 tasks.named("preBuild") {
     dependsOn("generateInfoDistributor")
+    // The lwjgl3-sdl component needs lwjgl-sdl-patches.jar and its version file (module jre_lwjgl3sdl)
+    dependsOn(":jre_lwjgl3sdl:jar")
+    // GLFW versions on LWJGL 3.4.1 (Minecraft 26.2) need the GLFW stub without the 3.3.6 jars (module jre_lwjgl3glfw)
+    dependsOn(":jre_lwjgl3glfw:stubJar")
 }
 
 dependencies {
