@@ -35,7 +35,7 @@ public class NotificationUtils {
         if(contentTitle != -1) notificationBuilder.setContentTitle(context.getString(contentTitle));
         if(contentText != -1) notificationBuilder.setContentText(context.getString(contentText));
         if(actionIntent != null) notificationBuilder.setContentIntent(pendingIntent);
-        notificationBuilder.setSmallIcon(R.mipmap.ic_launcher);
+        notificationBuilder.setSmallIcon(R.drawable.ic_notification);
 
         notificationManager.notify(notificationId, notificationBuilder.build());
     }

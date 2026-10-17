@@ -1,4 +1,6 @@
 <div align="center">
+    <img width="128" src="branding/gurkha-icon.png" alt="Gurkha Launcher logo: two crossed khukuris"></img>
+    <br>
     <img width="320" src="ZalithLauncher/src/main/res/drawable/app_name_title.png" alt="Gurkha Launcher"></img>
 </div>
 
