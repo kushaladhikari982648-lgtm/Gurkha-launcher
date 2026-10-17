@@ -18,11 +18,12 @@ under the [GPL-3.0](LICENSE) license.
   for 32-bit phones, or the universal APK if you are not sure.
 - It installs as its own app (`com.gurkha.launcher`) next to Zalith Launcher, with its own settings and
   game files.
-- **Differences from Zalith Launcher:** PojavLauncher's fix for Minecraft 1.20.5+ on 32-bit ARM devices,
-  plus security and stability fixes. See the [release notes](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases).
+- **Differences from Zalith Launcher:** runs Minecraft 26.3+ (SDL3), adds the LTW renderer, PojavLauncher's
+  fix for Minecraft 1.20.5+ on 32-bit ARM devices, plus security and stability fixes. See the [release notes](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases).
 - **Maintainers:** publishing a release is described in [RELEASING.md](RELEASING.md).
 
-All credit for the launcher itself goes to the Zalith Launcher and PojavLauncher developers. The original
+All credit for the launcher itself goes to the Zalith Launcher and PojavLauncher developers; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the components added from Amethyst and MojoLauncher. The original
 Zalith Launcher README follows.
 
 ---
