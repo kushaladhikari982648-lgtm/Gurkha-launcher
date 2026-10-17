@@ -1,0 +1,55 @@
+name: Probe (temporary)
+
+# One-off check of what Minecraft 26.x needs from LWJGL. Removed again after reading the results.
+on:
+  push:
+    paths: [ '.github/workflows/probe.yml' ]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: LWJGL usage of Minecraft 26.x
+        env:
+          HAS_CF_KEY: ${{ secrets.CURSEFORGE_API_KEY != '' }}
+        run: |
+          echo "::notice title=CurseForge secret::CURSEFORGE_API_KEY set: $HAS_CF_KEY"
+          python3 - <<'PY'
+          import collections, io, json, re, urllib.request, zipfile
+          def get(url):
+              return urllib.request.urlopen(url, timeout=120).read()
+          manifest = json.loads(get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
+          by_id = {v["id"]: v for v in manifest["versions"]}
+          ids = [v["id"] for v in manifest["versions"] if v["type"] == "release" and re.match(r"^(26\.|1\.21\.1[01]$)", v["id"])]
+          ids += [i for i in ("26.2-snapshot-1", "26.3-snapshot-3", "26.3-snapshot-4") if i in by_id]
+          ids.append(manifest["latest"]["snapshot"])
+          seen = []
+          for vid in ids:
+              if vid in seen or vid not in by_id:
+                  continue
+              seen.append(vid)
+              meta = json.loads(get(by_id[vid]["url"]))
+              libs = sorted({":".join(l["name"].split(":")[1:3]) for l in meta["libraries"] if l["name"].startswith("org.lwjgl:")})
+              lines = [f"{vid} ({meta.get('releaseTime', '')[:10]}, Java {meta.get('javaVersion', {}).get('majorVersion')}):",
+                       "libraries: " + ", ".join(libs)]
+              if vid in ("26.2", "26.3", "26.2-snapshot-1", manifest["latest"]["snapshot"]) or vid == ids[0]:
+                  jar = zipfile.ZipFile(io.BytesIO(get(meta["downloads"]["client"]["url"])))
+                  pkgs, flags = collections.Counter(), set()
+                  for name in jar.namelist():
+                      if not name.endswith(".class"):
+                          continue
+                      data = jar.read(name)
+                      for m in set(re.findall(rb"org/lwjgl/((?:util/)?[a-z0-9]+)/", data)):
+                          pkgs[m.decode()] += 1
+                      for s in (b"graphicsBackend", b"preferredGraphicsBackend"):
+                          if s in data:
+                              flags.add(f"{s.decode()} in {name}")
+                  lines.append("classes referencing org.lwjgl.<pkg>: " + ", ".join(f"{k}={v}" for k, v in pkgs.most_common()))
+                  lines.append("strings: " + "; ".join(sorted(flags)[:8]))
+              msg = "\n".join(lines)
+              print(msg)
+              print(f"::notice title=Minecraft {vid}::" + msg.replace("%", "%25").replace("\n", "%0A"))
+          PY
