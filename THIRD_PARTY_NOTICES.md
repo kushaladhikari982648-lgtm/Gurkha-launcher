@@ -12,6 +12,7 @@ projects already ship, it bundles:
 | LWJGL 3.4.1 jars and natives | `ZalithLauncher/src/main/assets/components/lwjgl3-sdl/`, `ZalithLauncher/libs/lwjgl-3.4.1-natives-release.aar` | BSD-3-Clause (LWJGL), see the licenses inside the aar for its bundled libraries (FreeType, shaderc, spng, VMA, ...) | [LWJGL](https://github.com/LWJGL/lwjgl3), builds of [AngelAuraMC/lwjgl3](https://github.com/AngelAuraMC/lwjgl3) used by Amethyst |
 | Patched LWJGL classes `SDLInit`, `SDLMouse` | `jre_lwjgl3sdl/src/main/java/org/lwjgl/sdl/` | BSD-3-Clause (LWJGL), changes from Amethyst (LGPL-3.0) | Amethyst-Android `jre_lwjgl3glfw/lwjgl-3.4.1` |
 | SPIRV-Cross | `ZalithLauncher/libs/spirv-cross-natives.aar` | Apache-2.0 | [KhronosGroup/SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross), build used by Amethyst |
+| Krypton Wrapper (NG-GL4ES) OpenGL renderer | `ZalithLauncher/libs/ng_gl4es-release.aar` | MIT (based on gl4es, MIT); contains glslang (BSD-3-Clause and others), SPIRV-Cross (Apache-2.0), cJSON (MIT) and code from MobileGlues (LGPL-2.1) | [BZLZHH/NG-GL4ES](https://github.com/BZLZHH/NG-GL4ES) R0.4.5, built for this launcher, details in `ZalithLauncher/libs/ng_gl4es-release.txt` |
 
 The launcher-side SDL integration (`CallbackBridge`, `MinecraftGLSurface`, `SdlSupport`, the
 `nativeNotifyLauncher` bridge) is ported from Amethyst-Android (LGPL-3.0). `ltw_sdl_egl.c` is original

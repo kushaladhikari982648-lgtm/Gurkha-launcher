@@ -9,6 +9,7 @@ import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.feature.version.Version
 import com.movtery.zalithlauncher.renderer.RendererInterface
 import com.movtery.zalithlauncher.renderer.Renderers
+import com.movtery.zalithlauncher.renderer.renderers.KryptonRenderer
 import com.movtery.zalithlauncher.renderer.renderers.LTWRenderer
 import com.movtery.zalithlauncher.ui.dialog.LifecycleAwareTipDialog
 import com.movtery.zalithlauncher.ui.dialog.TipDialog
@@ -29,6 +30,7 @@ import java.util.Locale
  * (git.artdeell.mojo.utils.jre.GameRunner):
  * - GL4ES can't run versions released from 2025-02-07 on (1.21.5 snapshots and newer, all of 26.x),
  *   and Sodium (or a fork) on 1.17+ needs desktop OpenGL 3 features: use LTW instead.
+ * - Krypton Wrapper can't run versions released from 26.3-snapshot-3 on: use LTW instead.
  * - LTW can't run versions released before 21w10a (before 1.17, OpenGL compatibility profile) unless
  *   Angelica is installed: use GL4ES instead.
  * - On Adreno GPUs, versions before 1.21.5 create more GL buffers than the driver allows when the render
@@ -43,6 +45,8 @@ object RendererPolicy {
     private val CORE_PROFILE_START: Date = date(2021, Calendar.MARCH, 9)
     /** Versions released from this day on can't be run by GL4ES. */
     private val GL4ES_END: Date = date(2025, Calendar.FEBRUARY, 7)
+    /** Krypton Wrapper can't run versions released from this day on (26.3-snapshot-3, 2026-07-07). */
+    private val KRYPTON_END: Date = date(2026, Calendar.JULY, 7)
     /** 1.21.5 (released on 2025-03-25) no longer runs into the Adreno buffer limit. */
     private val ADRENO_BUFFER_FIX: Date = date(2025, Calendar.MARCH, 25)
     private const val ADRENO_SAFE_RENDER_DISTANCE = 7
@@ -80,6 +84,12 @@ object RendererPolicy {
         }
 
         when (current.getRendererId()) {
+            KryptonRenderer.ID -> {
+                // Krypton Wrapper doesn't work from 26.3-snapshot-3 on (Amethyst 1.1.7 release notes)
+                if (!releaseDate.before(KRYPTON_END) && ltw != null) {
+                    switchTo(activity, ltw, activity.getString(R.string.renderer_policy_use_ltw, versionName))
+                }
+            }
             LTWRenderer.ID -> {
                 if (releaseDate.before(CORE_PROFILE_START) && !hasMod(gameDir, "angelica") && gl4es != null) {
                     switchTo(activity, gl4es, activity.getString(R.string.renderer_policy_use_gl4es, versionName))
