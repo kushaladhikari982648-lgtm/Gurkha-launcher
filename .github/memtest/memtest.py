@@ -77,10 +77,9 @@ get(meta["downloads"]["client"]["url"], client_jar)
 classpath.append(client_jar)
 asset_index = meta["assetIndex"]
 index = json.loads(get(asset_index["url"], os.path.join(ASSETS, "indexes", asset_index["id"] + ".json")))
-# Only the small assets the game reads while starting (languages, sounds.json, icons, ...), not the sound files
+# Every asset except the sound files (fonts like unifont are needed to start)
 from concurrent.futures import ThreadPoolExecutor
-wanted = [obj["hash"] for name, obj in index["objects"].items()
-          if name.endswith((".json", ".mcmeta", ".lang", ".png")) and obj["size"] < 2_000_000]
+wanted = sorted({obj["hash"] for name, obj in index["objects"].items() if not name.endswith(".ogg")})
 with ThreadPoolExecutor(16) as pool:
     list(pool.map(lambda h: get(f"https://resources.download.minecraft.net/{h[:2]}/{h}",
                                 os.path.join(ASSETS, "objects", h[:2], h)), wanted))
@@ -142,22 +141,28 @@ for set_name, flags in SETS:
     oom = "OutOfMemoryError" in text or any("OutOfMemory" in open(os.path.join(dp, f), errors="replace").read()
                                             for dp, _, fs in os.walk(os.path.join(game_dir, "crash-reports")) for f in fs)
     # GC log: "... GC(12) Pause Young (Normal) (G1 Evacuation Pause) 312M->134M(500M) 12.345ms"
-    after, pauses, full = [], [], 0
+    after, pauses, full, full_causes, startup_after = [], [], 0, {}, []
     for line in open(gc_log, errors="replace") if os.path.exists(gc_log) else []:
-        m = re.search(r"\[([\d.]+)s\].*Pause (\w+).*?(\d+)M->(\d+)M\((\d+)M\)\s+([\d.]+)ms", line)
+        m = re.search(r"\[([\d.]+)s\].*Pause (\w+)(.*?)(\d+)M->(\d+)M\((\d+)M\)\s+([\d.]+)ms", line)
         if not m:
             continue
-        t, kind, before, now, size, ms = m.groups()
+        t, kind, detail, before, now, size, ms = m.groups()
         if joined_at and float(t) >= joined_at - start + 10:  # in the world, after the first 10 seconds
             after.append(int(now))
+        else:
+            startup_after.append(int(now))
         pauses.append(float(ms))
-        full += kind == "Full"
+        if kind == "Full":
+            full += 1
+            cause = detail.strip().strip("()") or "?"
+            full_causes[cause] = full_causes.get(cause, 0) + 1
     crashed = not alive and not oom
     results.append(
         f"{set_name:9s} {'JOINED' if joined_at else 'no join'}{f' in {joined_at - start:.0f}s' if joined_at else ''}"
         f"{' OUT OF MEMORY' if oom else ''}{' (process ended early)' if crashed else ''} | "
         f"heap in use after GC in the world: max {max(after) if after else '-'} MB, median "
-        f"{sorted(after)[len(after) // 2] if after else '-'} MB | {len(pauses)} GCs ({full} full), "
+        f"{sorted(after)[len(after) // 2] if after else '-'} MB, before the world max {max(startup_after) if startup_after else '-'} MB | "
+        f"{len(pauses)} GCs ({full} full: {', '.join(f'{k} x{v}' for k, v in full_causes.items()) or '-'}), "
         f"longest pause {max(pauses) if pauses else 0:.0f} ms, total {sum(pauses) / 1000:.1f} s")
     tail = [l for l in text.splitlines() if re.search(r"ERROR|Exception|Error:|FATAL", l)][-6:]
     if tail:
