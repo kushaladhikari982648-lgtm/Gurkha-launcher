@@ -18,28 +18,28 @@ jobs:
         include:
           - version: "1.20.1"
             java: "17"
-            sets: "base= dedup=-XX:+UseStringDeduplication"
-          - version: "1.21.11"
+            sets: "j17= j17@650= j17@800= j21@500@21= j25coh@500@25=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
+          - version: "1.20.4"
+            java: "17"
+            sets: "j17= j25coh@500@25=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
+          - version: "1.20.6"
             java: "21"
-            sets: "base= dedup=-XX:+UseStringDeduplication serial=-XX:+UseSerialGC_-XX:+UseStringDeduplication"
-          - version: "26.1.2"
-            java: "25"
-            sets: "base= dedup=-XX:+UseStringDeduplication coh=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
-          - version: "26.2"
-            java: "25"
-            sets: "base= coh=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
-          - version: "26.3"
-            java: "25"
-            sets: "base= coh=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
+            sets: "j21= j25coh@500@25=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
+          - version: "1.21.1"
+            java: "21"
+            sets: "j21= j25coh@500@25=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up Java ${{ matrix.java }}
+      - name: Set up Java 17, 21, 25 (the last one is the default)
         uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
-          java-version: ${{ matrix.java }}
+          java-version: |
+            17
+            21
+            25
 
       - name: Virtual display with software OpenGL
         run: |
