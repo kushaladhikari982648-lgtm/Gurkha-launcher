@@ -1,0 +1,68 @@
+name: Android JVM flag check (temporary)
+
+# One-off check (removed again): the bundled Android Java runtimes, run under qemu-user with the C library of an
+# Android 7 system image, with the JVM options the launcher is going to add for low-memory launches.
+on:
+  push:
+    paths: [ '.github/workflows/flagcheck.yml', '.github/memtest/FlagCheck.java' ]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 25 (to compile the test program)
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: qemu, Android 7 system images, bundled runtimes
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user-static > /dev/null
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "system-images;android-24;default;arm64-v8a" "system-images;android-24;default;armeabi-v7a" > /dev/null
+          for abi in arm64-v8a armeabi-v7a; do
+            mkdir -p "/tmp/sys-$abi" "/tmp/root-$abi"
+            sudo mount -o loop,ro "$ANDROID_HOME/system-images/android-24/default/$abi/system.img" "/tmp/sys-$abi"
+            ln -s "/tmp/sys-$abi" "/tmp/root-$abi/system"
+          done
+          A=ZalithLauncher/src/main/assets/components
+          for v in 21 25; do
+            for arch in arm64 arm; do
+              d="/tmp/jre-$v-$arch"
+              mkdir -p "$d"
+              tar -xJf "$A/jre-$v/universal.tar.xz" -C "$d"
+              tar -xJf "$A/jre-$v/bin-$arch.tar.xz" -C "$d"
+            done
+          done
+          javac --release 8 -d /tmp/fc .github/memtest/FlagCheck.java
+
+      - name: Flags on the Android runtimes
+        run: |
+          ARM32_FIX="-XX:+NeverActAsServerClassMachine -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_dabs,_dsqrt,_dsqrt_strict,_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow"
+          check() { # title qemu abi jre flags...
+            local title=$1 q=$2 abi=$3 jre=$4; shift 4
+            local out
+            # shellcheck disable=SC2068
+            out=$(timeout 900 "$q" -L "/tmp/root-$abi" -E "LD_LIBRARY_PATH=$jre/lib/server:$jre/lib:$jre/lib/jli" \
+                  "$jre/bin/java" $@ 2>&1 | grep -E "OK |Unrecognized|Error|error|Exception|UseCompactObjectHeaders|UseStringDeduplication |UseSerialGC |UseG1GC |version" | head -8)
+            echo "$title: $(echo "$out" | tr '\n' '|' | tr -s ' ' | cut -c1-600)" | tee -a /tmp/report.txt
+          }
+          q64=qemu-aarch64-static; q32=qemu-arm-static
+          FLAGS="-XX:+PrintFlagsFinal -version"
+          check "J25 arm64 COH+dedup flags" $q64 arm64-v8a /tmp/jre-25-arm64 "-Xmx500M -XX:+UseCompactObjectHeaders -XX:+UseStringDeduplication $FLAGS"
+          check "J25 arm64 COH+dedup run" $q64 arm64-v8a /tmp/jre-25-arm64 "-Xmx500M -XX:+UseCompactObjectHeaders -XX:+UseStringDeduplication -cp /tmp/fc FlagCheck"
+          check "J21 arm64 dedup run" $q64 arm64-v8a /tmp/jre-21-arm64 "-Xmx500M -XX:+UseStringDeduplication -XX:+PrintFlagsFinal -cp /tmp/fc FlagCheck"
+          check "J21 arm64 COH (must fail)" $q64 arm64-v8a /tmp/jre-21-arm64 "-XX:+UseCompactObjectHeaders -version"
+          check "J25 arm32 client+dedup run" $q32 armeabi-v7a /tmp/jre-25-arm "-Xmx500M $ARM32_FIX -XX:+UseStringDeduplication -XX:+PrintFlagsFinal -cp /tmp/fc FlagCheck"
+          check "J21 arm32 client+dedup run" $q32 armeabi-v7a /tmp/jre-21-arm "-Xmx500M $ARM32_FIX -XX:+UseStringDeduplication -cp /tmp/fc FlagCheck"
+          check "J25 arm32 COH (info)" $q32 armeabi-v7a /tmp/jre-25-arm "-XX:+UseCompactObjectHeaders -version"
+          echo "::notice title=Android JVM flag check::$(sed 's/%/%25/g' /tmp/report.txt | awk '{printf "%s%%0A", $0}')"
