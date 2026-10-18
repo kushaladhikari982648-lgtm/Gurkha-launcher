@@ -123,7 +123,8 @@ for spec, flags in SETS:
     open(os.path.join(game_dir, "options.txt"), "w").write(OPTIONS)
     gc_log = os.path.join(WORK, f"gc-{parts[0]}.log")
     log_flags = [f"-Xlog:gc:file={gc_log}:uptime"] if run_major >= 9 else ["-XX:+PrintGCDetails", f"-Xloggc:{gc_log}"]
-    cmd = ([java_bin, f"-Xms{heap}M", f"-Xmx{heap}M"] + flags.replace("_", " ").split() + log_flags +
+    agent = [f"-javaagent:{os.environ['AGENT']}=3"] if set_name.startswith("agent") and os.environ.get("AGENT") else []
+    cmd = ([java_bin, f"-Xms{heap}M", f"-Xmx{heap}M"] + agent + flags.replace("_", " ").split() + log_flags +
            [f"-Djava.library.path={NATIVES}", "-cp", ":".join(classpath), meta["mainClass"],
             "--username", "Tester", "--version", VERSION, "--gameDir", game_dir, "--assetsDir", ASSETS,
             "--assetIndex", asset_index["id"], "--uuid", "00000000000000000000000000000001", "--accessToken", "0",
@@ -180,6 +181,9 @@ for spec, flags in SETS:
         f"{sorted(after)[len(after) // 2] if after else '-'} MB, before the world max {max(startup_after) if startup_after else '-'} MB | "
         f"{len(pauses)} GCs ({full} full: {', '.join(f'{k} x{v}' for k, v in full_causes.items()) or '-'}), "
         f"longest pause {max(pauses) if pauses else 0:.0f} ms, total {sum(pauses) / 1000:.1f} s")
+    patched = [l.strip()[:200] for l in text.splitlines() if "[Gurkha Launcher]" in l]
+    if patched:
+        results.append("    " + "\n    ".join(patched))
     if histogram:
         results.append("    heap at the first full GC:\n" + histogram)
     tail = [l for l in text.splitlines() if re.search(r"OutOfMemory|FATAL", l)][-3:]

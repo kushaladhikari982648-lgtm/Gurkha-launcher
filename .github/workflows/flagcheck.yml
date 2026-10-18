@@ -55,17 +55,18 @@ jobs:
             local log="/tmp/check-$n.log" start rc
             start=$(date +%s)
             # shellcheck disable=SC2068
+            rc=0
             timeout 1200 "$q" -L "/tmp/root-$abi" -E "LD_LIBRARY_PATH=$jre/lib/server:$jre/lib:$jre/lib/jli" \
-              "$jre/bin/java" $@ > "$log" 2>&1
-            rc=$?
+              "$jre/bin/java" $@ > "$log" 2>&1 || rc=$?
             {
               echo "$title: exit $rc after $(( $(date +%s) - start ))s"
               grep -E "^OK |Unrecognized|Could not create|OutOfMemoryError|Exception in|SIGSEGV|fatal error" "$log" | head -3 | sed 's/^/    /'
               grep -E "^ *bool (UseCompactObjectHeaders|UseStringDeduplication|UseSerialGC|UseG1GC|UseCompressedClassPointers) " "$log" | tr -s ' ' | sed 's/^/    /'
-              [ "$rc" != 0 ] && head -4 "$log" | sed 's/^/    first: /'
+              if [ "$rc" != 0 ]; then head -4 "$log" | sed 's/^/    first: /'; fi
             } | tee -a /tmp/report.txt
           }
           q64=qemu-aarch64-static; q32=qemu-arm-static
+          check "J25 arm64 no extra flags" $q64 arm64-v8a /tmp/jre-25-arm64 "-Xmx500M -version"
           check "J25 arm64 COH+dedup flags" $q64 arm64-v8a /tmp/jre-25-arm64 "-Xmx500M -XX:+UseCompactObjectHeaders -XX:+UseStringDeduplication -XX:+PrintFlagsFinal -version"
           check "J25 arm64 COH+dedup run" $q64 arm64-v8a /tmp/jre-25-arm64 "-Xmx500M -XX:+UseCompactObjectHeaders -XX:+UseStringDeduplication -cp /tmp/fc FlagCheck"
           check "J25 arm64 plain run" $q64 arm64-v8a /tmp/jre-25-arm64 "-Xmx500M -cp /tmp/fc FlagCheck"

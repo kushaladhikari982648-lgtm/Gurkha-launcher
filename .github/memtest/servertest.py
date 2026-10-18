@@ -30,7 +30,8 @@ for heap in HEAPS:
         "level-seed=4815162342\nview-distance=4\nsimulation-distance=5\nonline-mode=false\n")
     gc_log = os.path.join(d, "gc.log")
     start = time.time()
-    proc = subprocess.Popen([java, f"-Xms{heap}M", f"-Xmx{heap}M", f"-Xlog:gc:file={gc_log}:uptime", "-jar", "server.jar", "nogui"],
+    agent = [f"-javaagent:{os.environ['AGENT']}=3"] if os.environ.get("AGENT") else []
+    proc = subprocess.Popen([java, f"-Xms{heap}M", f"-Xmx{heap}M", f"-Xlog:gc:file={gc_log}:uptime"] + agent + ["-jar", "server.jar", "nogui"],
                             cwd=d, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     done, oom, out = None, False, []
     deadline = time.time() + 420
@@ -58,6 +59,8 @@ for heap in HEAPS:
             peak = max(peak, int(m.group(3)))
     lines.append(f"{heap:4d} MB: {'world ready in %.0fs' % done if done else 'NOT READY'}{' OUT OF MEMORY' if oom else ''}"
                  f" | max heap after GC {peak} MB, {full} full GCs")
+    if heap == HEAPS[0]:
+        lines += ["      " + l.strip()[:200] for l in out if "[Gurkha Launcher]" in l]
 msg = "\n".join(lines)
 print(msg)
-print(f"::notice title=Server {VERSION} (Java {major}) new world::" + msg.replace("\n", "%0A"))
+print(f"::notice title=Server {VERSION} (Java {major}) new world{' with agent' if os.environ.get('AGENT') else ''}::" + msg.replace("\n", "%0A"))
