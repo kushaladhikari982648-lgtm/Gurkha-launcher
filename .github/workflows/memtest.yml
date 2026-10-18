@@ -15,19 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - version: "1.20.1"
-            java: "17"
-            sets: "j17= j17@650= j17@800= j21@500@21= j25coh@500@25=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
-          - version: "1.20.4"
-            java: "17"
-            sets: "j17= j25coh@500@25=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
-          - version: "1.20.6"
-            java: "21"
-            sets: "j21= j25coh@500@25=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
-          - version: "1.21.1"
-            java: "21"
-            sets: "j21= j25coh@500@25=-XX:+UseStringDeduplication_-XX:+UseCompactObjectHeaders"
+        version: [ "1.12.2", "1.14.4", "1.16.5", "1.17.1", "1.18.2", "1.19.4", "1.20.1", "1.20.6", "1.21.11" ]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -41,17 +29,5 @@ jobs:
             21
             25
 
-      - name: Virtual display with software OpenGL
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libxrandr2 libxcursor1 libxi6 libxinerama1 libxxf86vm1 libxkbcommon0 > /dev/null
-          Xvfb :99 -screen 0 1280x720x24 > /dev/null 2>&1 &
-          echo "DISPLAY=:99" >> "$GITHUB_ENV"
-          echo "LIBGL_ALWAYS_SOFTWARE=1" >> "$GITHUB_ENV"
-
-      - name: Minecraft ${{ matrix.version }} at 500 MB
-        run: |
-          java -version 2>&1 | head -1
-          # flag sets: one "name=flags" word each, "_" between the flags of a set
-          # shellcheck disable=SC2086
-          python3 .github/memtest/memtest.py "${{ matrix.version }}" 120 ${{ matrix.sets }} 2>&1 | tail -80
+      - name: Server ${{ matrix.version }} creating a new world with small heaps
+        run: python3 .github/memtest/servertest.py "${{ matrix.version }}" 250 300 350 400

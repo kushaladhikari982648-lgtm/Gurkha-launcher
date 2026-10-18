@@ -48,21 +48,32 @@ jobs:
       - name: Flags on the Android runtimes
         run: |
           ARM32_FIX="-XX:+NeverActAsServerClassMachine -XX:+UnlockDiagnosticVMOptions -XX:DisableIntrinsic=_dabs,_dsqrt,_dsqrt_strict,_dsin,_dcos,_dtan,_dlog,_dlog10,_dexp,_dpow"
+          n=0
           check() { # title qemu abi jre flags...
             local title=$1 q=$2 abi=$3 jre=$4; shift 4
-            local out
+            n=$((n + 1))
+            local log="/tmp/check-$n.log" start rc
+            start=$(date +%s)
             # shellcheck disable=SC2068
-            out=$(timeout 900 "$q" -L "/tmp/root-$abi" -E "LD_LIBRARY_PATH=$jre/lib/server:$jre/lib:$jre/lib/jli" \
-                  "$jre/bin/java" $@ 2>&1 | grep -E "OK |Unrecognized|Error|error|Exception|UseCompactObjectHeaders|UseStringDeduplication |UseSerialGC |UseG1GC |version" | head -8)
-            echo "$title: $(echo "$out" | tr '\n' '|' | tr -s ' ' | cut -c1-600)" | tee -a /tmp/report.txt
+            timeout 1200 "$q" -L "/tmp/root-$abi" -E "LD_LIBRARY_PATH=$jre/lib/server:$jre/lib:$jre/lib/jli" \
+              "$jre/bin/java" $@ > "$log" 2>&1
+            rc=$?
+            {
+              echo "$title: exit $rc after $(( $(date +%s) - start ))s"
+              grep -E "^OK |Unrecognized|Could not create|OutOfMemoryError|Exception in|SIGSEGV|fatal error" "$log" | head -3 | sed 's/^/    /'
+              grep -E "^ *bool (UseCompactObjectHeaders|UseStringDeduplication|UseSerialGC|UseG1GC|UseCompressedClassPointers) " "$log" | tr -s ' ' | sed 's/^/    /'
+              [ "$rc" != 0 ] && head -4 "$log" | sed 's/^/    first: /'
+            } | tee -a /tmp/report.txt
           }
           q64=qemu-aarch64-static; q32=qemu-arm-static
-          FLAGS="-XX:+PrintFlagsFinal -version"
-          check "J25 arm64 COH+dedup flags" $q64 arm64-v8a /tmp/jre-25-arm64 "-Xmx500M -XX:+UseCompactObjectHeaders -XX:+UseStringDeduplication $FLAGS"
+          check "J25 arm64 COH+dedup flags" $q64 arm64-v8a /tmp/jre-25-arm64 "-Xmx500M -XX:+UseCompactObjectHeaders -XX:+UseStringDeduplication -XX:+PrintFlagsFinal -version"
           check "J25 arm64 COH+dedup run" $q64 arm64-v8a /tmp/jre-25-arm64 "-Xmx500M -XX:+UseCompactObjectHeaders -XX:+UseStringDeduplication -cp /tmp/fc FlagCheck"
-          check "J21 arm64 dedup run" $q64 arm64-v8a /tmp/jre-21-arm64 "-Xmx500M -XX:+UseStringDeduplication -XX:+PrintFlagsFinal -cp /tmp/fc FlagCheck"
+          check "J25 arm64 plain run" $q64 arm64-v8a /tmp/jre-25-arm64 "-Xmx500M -cp /tmp/fc FlagCheck"
+          check "J21 arm64 dedup flags" $q64 arm64-v8a /tmp/jre-21-arm64 "-Xmx500M -XX:+UseStringDeduplication -XX:+PrintFlagsFinal -version"
+          check "J21 arm64 dedup run" $q64 arm64-v8a /tmp/jre-21-arm64 "-Xmx500M -XX:+UseStringDeduplication -cp /tmp/fc FlagCheck"
           check "J21 arm64 COH (must fail)" $q64 arm64-v8a /tmp/jre-21-arm64 "-XX:+UseCompactObjectHeaders -version"
-          check "J25 arm32 client+dedup run" $q32 armeabi-v7a /tmp/jre-25-arm "-Xmx500M $ARM32_FIX -XX:+UseStringDeduplication -XX:+PrintFlagsFinal -cp /tmp/fc FlagCheck"
-          check "J21 arm32 client+dedup run" $q32 armeabi-v7a /tmp/jre-21-arm "-Xmx500M $ARM32_FIX -XX:+UseStringDeduplication -cp /tmp/fc FlagCheck"
-          check "J25 arm32 COH (info)" $q32 armeabi-v7a /tmp/jre-25-arm "-XX:+UseCompactObjectHeaders -version"
+          check "J25 arm32 client+dedup flags" $q32 armeabi-v7a /tmp/jre-25-arm "-Xmx256M $ARM32_FIX -XX:+UseStringDeduplication -XX:+PrintFlagsFinal -version"
+          check "J25 arm32 client+dedup run" $q32 armeabi-v7a /tmp/jre-25-arm "-Xmx256M $ARM32_FIX -XX:+UseStringDeduplication -cp /tmp/fc FlagCheck"
+          check "J21 arm32 client+dedup run" $q32 armeabi-v7a /tmp/jre-21-arm "-Xmx256M $ARM32_FIX -XX:+UseStringDeduplication -cp /tmp/fc FlagCheck"
+          check "J25 arm32 COH (info)" $q32 armeabi-v7a /tmp/jre-25-arm "-Xmx256M -XX:+UseCompactObjectHeaders -version"
           echo "::notice title=Android JVM flag check::$(sed 's/%/%25/g' /tmp/report.txt | awk '{printf "%s%%0A", $0}')"
