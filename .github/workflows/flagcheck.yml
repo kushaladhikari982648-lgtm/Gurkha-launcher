@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -56,7 +56,9 @@ jobs:
             start=$(date +%s)
             # shellcheck disable=SC2068
             rc=0
-            timeout 1200 "$q" -L "/tmp/root-$abi" -E "LD_LIBRARY_PATH=$jre/lib/server:$jre/lib:$jre/lib/jli" \
+            # libc++_shared.so comes from the app's own native libraries, like on a phone
+            timeout 1200 "$q" -L "/tmp/root-$abi" -E ANDROID_ROOT=/system -E ANDROID_DATA=/data \
+              -E "LD_LIBRARY_PATH=$jre/lib/server:$jre/lib:$jre/lib/jli:$PWD/ZalithLauncher/src/main/jniLibs/$abi" \
               "$jre/bin/java" $@ > "$log" 2>&1 || rc=$?
             {
               echo "$title: exit $rc after $(( $(date +%s) - start ))s"
