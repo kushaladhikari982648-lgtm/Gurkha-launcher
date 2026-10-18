@@ -8,10 +8,12 @@ import com.movtery.zalithlauncher.feature.customprofilepath.ProfilePathHome
 import com.movtery.zalithlauncher.feature.customprofilepath.ProfilePathHome.Companion.getLibrariesHome
 import com.movtery.zalithlauncher.feature.version.Version
 import com.movtery.zalithlauncher.utils.ZHTools
+import com.movtery.zalithlauncher.setting.AllSettings
 import com.movtery.zalithlauncher.utils.path.LibPath
 import com.movtery.zalithlauncher.utils.path.PathManager
 import net.kdt.pojavlaunch.AWTCanvasView
 import net.kdt.pojavlaunch.JMinecraftVersionList
+import net.kdt.pojavlaunch.Logger
 import net.kdt.pojavlaunch.Tools
 import net.kdt.pojavlaunch.multirt.Runtime
 import net.kdt.pojavlaunch.utils.JSONUtils
@@ -68,6 +70,13 @@ class LaunchArgs(
         }
 
         argsList.addAll(getCacioJavaArgs(runtime.javaVersion == 8))
+
+        // Minecraft 1.14 - 1.20.4: smaller spawn area with small allocations, see LowMemoryProfile
+        val allocation = AllSettings.ramAllocation.value.getValue()
+        LowMemoryProfile.getSpawnAreaAgentArg(minecraftVersion, allocation)?.let { agent ->
+            argsList.add(agent)
+            Logger.appendToLog("Info: $allocation MB allocation, Minecraft ${minecraftVersion.getVersionName()} gets the smaller spawn area of Minecraft 1.20.5 (5 x 5 chunks instead of 21 x 21) so that worlds fit into memory")
+        }
 
         val is7 = VersionNumber.compare(VersionNumber.asVersion(versionInfo.id ?: "0.0").canonical, "1.12") < 0
         val configFilePath = if (is7) LibPath.LOG4J_XML_1_7 else LibPath.LOG4J_XML_1_12

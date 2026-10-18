@@ -310,6 +310,8 @@ tasks.named("preBuild") {
     dependsOn(":jre_lwjgl3sdl:jar")
     // GLFW versions on LWJGL 3.4.1 (Minecraft 26.2) need the GLFW stub without the 3.3.6 jars (module jre_lwjgl3glfw)
     dependsOn(":jre_lwjgl3glfw:stubJar")
+    // Smaller spawn area of Minecraft 1.14 - 1.20.4 for low-memory launches (module jre_lowmem_agent)
+    dependsOn(":jre_lowmem_agent:jar")
 }
 
 dependencies {

@@ -2,6 +2,7 @@ package net.kdt.pojavlaunch.utils;
 
 import net.kdt.pojavlaunch.MinecraftGLSurface;
 import com.movtery.zalithlauncher.launch.SdlSupport;
+import com.movtery.zalithlauncher.launch.LowMemoryProfile;
 import static com.movtery.zalithlauncher.utils.path.PathManager.DIR_NATIVE_LIB;
 import static net.kdt.pojavlaunch.Architecture.ARCH_X86;
 import static net.kdt.pojavlaunch.Architecture.is64BitsDevice;
@@ -418,6 +419,14 @@ public final class JREUtils {
                     + String.join(" ", runtimeFixArgs));
         }
         userArgs.addAll(runtimeFixArgs);
+
+        // Smaller heap use for small allocations (2-4 GB phones), see LowMemoryProfile
+        int allocation = AllSettings.getRamAllocation().getValue().getValue();
+        List<String> lowMemoryArgs = LowMemoryProfile.getJvmArgs(runtime, allocation, userArgs);
+        if (!lowMemoryArgs.isEmpty()) {
+            Logger.appendToLog("Info: " + allocation + " MB allocation, adding: " + String.join(" ", lowMemoryArgs));
+        }
+        userArgs.addAll(lowMemoryArgs);
 
         userArgs.addAll(JVMArgs);
         activity.runOnUiThread(() -> Toast.makeText(activity, activity.getString(R.string.autoram_info_msg, AllSettings.getRamAllocation().getValue().getValue()), Toast.LENGTH_SHORT).show());

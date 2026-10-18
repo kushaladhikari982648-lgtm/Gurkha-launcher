@@ -154,7 +154,8 @@ object RendererPolicy {
      * The release date of the vanilla version, also for mod loader versions: their own JSON carries the
      * date of the loader profile, and Tools.getVersionInfo() copies that date over the inherited one.
      */
-    private fun originalReleaseDate(version: Version): Date? = try {
+    /** Release date of the Minecraft version itself (for modded versions: of the version they are based on). */
+    internal fun originalReleaseDate(version: Version): Date? = try {
         val own = Tools.getVersionInfo(version, true)
         val parent = own.inheritsFrom?.takeIf { it.isNotBlank() && it != own.id }
         val releaseTime = if (parent != null) {
