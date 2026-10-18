@@ -1,5 +1,6 @@
 package com.movtery.zalithlauncher.launch
 
+import net.kdt.pojavlaunch.MinecraftGLSurface
 import androidx.collection.ArrayMap
 import com.movtery.zalithlauncher.InfoDistributor
 import com.movtery.zalithlauncher.feature.accounts.AccountUtils
@@ -7,10 +8,12 @@ import com.movtery.zalithlauncher.feature.customprofilepath.ProfilePathHome
 import com.movtery.zalithlauncher.feature.customprofilepath.ProfilePathHome.Companion.getLibrariesHome
 import com.movtery.zalithlauncher.feature.version.Version
 import com.movtery.zalithlauncher.utils.ZHTools
+import com.movtery.zalithlauncher.setting.AllSettings
 import com.movtery.zalithlauncher.utils.path.LibPath
 import com.movtery.zalithlauncher.utils.path.PathManager
 import net.kdt.pojavlaunch.AWTCanvasView
 import net.kdt.pojavlaunch.JMinecraftVersionList
+import net.kdt.pojavlaunch.Logger
 import net.kdt.pojavlaunch.Tools
 import net.kdt.pojavlaunch.multirt.Runtime
 import net.kdt.pojavlaunch.utils.JSONUtils
@@ -33,7 +36,14 @@ class LaunchArgs(
         argsList.addAll(getJavaArgs())
         argsList.addAll(getMinecraftJVMArgs())
         argsList.add("-cp")
-        argsList.add("${Tools.getLWJGL3ClassPath()}:$launchClassPath")
+        // Minecraft 26.3+ (SDL3) gets LWJGL 3.4.1 instead of the launcher's LWJGL 3.3.6 + GLFW stub, and so do the
+        // GLFW versions that need LWJGL 3.4.1 (26.2, see SdlSupport.usesLwjgl341WithGlfw), with the GLFW stub
+        val lwjglClassPath = when {
+            MinecraftGLSurface.sdlVersion -> SdlSupport.getClassPath()
+            SdlSupport.lwjgl341Glfw -> SdlSupport.getGlfwClassPath()
+            else -> Tools.getLWJGL3ClassPath()
+        }
+        argsList.add("$lwjglClassPath:$launchClassPath")
 
         if (runtime.javaVersion > 8) {
             argsList.add("--add-exports")
@@ -60,6 +70,13 @@ class LaunchArgs(
         }
 
         argsList.addAll(getCacioJavaArgs(runtime.javaVersion == 8))
+
+        // Minecraft 1.14 - 1.20.4: smaller spawn area with small allocations, see LowMemoryProfile
+        val allocation = AllSettings.ramAllocation.value.getValue()
+        LowMemoryProfile.getSpawnAreaAgentArg(minecraftVersion, allocation)?.let { agent ->
+            argsList.add(agent)
+            Logger.appendToLog("Info: $allocation MB allocation, Minecraft ${minecraftVersion.getVersionName()} gets the smaller spawn area of Minecraft 1.20.5 (5 x 5 chunks instead of 21 x 21) so that worlds fit into memory")
+        }
 
         val is7 = VersionNumber.compare(VersionNumber.asVersion(versionInfo.id ?: "0.0").canonical, "1.12") < 0
         val configFilePath = if (is7) LibPath.LOG4J_XML_1_7 else LibPath.LOG4J_XML_1_12
@@ -132,7 +149,7 @@ class LaunchArgs(
                 versionInfo.minecraftArguments ?:
                 Tools.fromStringArray(minecraftArgs.toTypedArray())
             ), verArgMap
-        )
+        ) + GraphicsBackend.getGameArgs(versionInfo, gameDirPath).toTypedArray()
     }
 
     private fun setLauncherInfo(verArgMap: MutableMap<String, String>) {

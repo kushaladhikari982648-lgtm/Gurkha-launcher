@@ -1,6 +1,8 @@
 package net.kdt.pojavlaunch.customcontrols.keyboard;
 
 
+import org.libsdl.app.SDLActivity;
+import net.kdt.pojavlaunch.MinecraftGLSurface;
 import static android.content.Context.INPUT_METHOD_SERVICE;
 
 import android.content.Context;
@@ -92,6 +94,11 @@ public class TouchCharInput extends androidx.appcompat.widget.AppCompatEditText 
 
     /** Regain ability to exist, take focus and have some text being input */
     public void enable(){
+        // Minecraft 26.3+ (SDL3): SDL handles text input through its own input connection
+        if (MinecraftGLSurface.sdlEnabled && SDLActivity.isUsingSDLTextEdit()) {
+            SDLActivity.enableSDLEditKeyboard();
+            return;
+        }
         setEnabled(true);
         setFocusable(true);
         setVisibility(VISIBLE);
@@ -100,6 +107,7 @@ public class TouchCharInput extends androidx.appcompat.widget.AppCompatEditText 
 
     /** Lose ability to exist, take focus and have some text being input */
     public void disable(){
+        if (MinecraftGLSurface.sdlEnabled && SDLActivity.isUsingSDLTextEdit()) SDLActivity.disableSDLEditKeyboard();
         clear();
         setVisibility(GONE);
         clearFocus();

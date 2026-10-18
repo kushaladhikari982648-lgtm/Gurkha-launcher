@@ -1,6 +1,7 @@
 package com.movtery.zalithlauncher.feature.download.platform.curseforge
 
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.movtery.zalithlauncher.feature.download.Filters
 import com.movtery.zalithlauncher.feature.download.InfoCache
@@ -23,15 +24,27 @@ import net.kdt.pojavlaunch.Tools
 import net.kdt.pojavlaunch.modloaders.modpacks.api.ApiHandler
 import net.kdt.pojavlaunch.utils.GsonJsonUtils
 import java.io.IOException
+import java.net.URLEncoder
 import java.util.TreeSet
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
 import java.util.function.Consumer
+import kotlin.math.min
 
 class CurseForgeCommonUtils {
     companion object {
         private const val ALGO_SHA_1 = 1
         private const val CURSEFORGE_MINECRAFT_GAME_ID = 432
         private const val CURSEFORGE_SEARCH_COUNT = 20
-        private const val CURSEFORGE_PAGINATION_SIZE = 500
+        /** The API returns at most 50 results per request (https://docs.curseforge.com/rest-api/#pagination-limits). */
+        private const val CURSEFORGE_PAGINATION_SIZE = 50
+        /** ...and only the first 10000 results of a list: index + pageSize must stay <= 10000. */
+        private const val CURSEFORGE_MAX_RESULTS = 10000
+        /** Parallel requests when loading the remaining pages of a long file list. */
+        private const val CURSEFORGE_PAGE_THREADS = 4
+        /** IDs per request of the batch endpoints (POST /v1/mods, POST /v1/mods/files). */
+        private const val CURSEFORGE_BATCH_SIZE = 100
         internal const val CURSEFORGE_MODPACK_CLASS_ID = 4471
         internal const val CURSEFORGE_MOD_CLASS_ID = 6
 
@@ -40,16 +53,28 @@ class CurseForgeCommonUtils {
             params["searchFilter"] = filters.name
             params["sortField"] = filters.sort.curseforge
             params["sortOrder"] = "desc"
-            params["pageSize"] = CURSEFORGE_SEARCH_COUNT
+            // The API rejects requests beyond its result window, so ask for fewer results near its end
+            params["pageSize"] = min(CURSEFORGE_SEARCH_COUNT, CURSEFORGE_MAX_RESULTS - index).coerceAtLeast(1)
             filters.category.curseforgeID?.let { if (filters.category != Category.ALL) params["categoryId"] = it }
             filters.mcVersion?.let { if (it.isNotEmpty()) params["gameVersion"] = it }
             params["index"] = index
         }
 
+        /** The string value of a member, or null if it is missing or JSON null (Gson's asString throws then). */
+        internal fun JsonObject.stringOrNull(name: String): String? =
+            get(name)?.takeIf { it.isJsonPrimitive }?.asString
+
+        private fun JsonObject.longOrNull(name: String): Long? =
+            get(name)?.takeIf { it.isJsonPrimitive }?.let { runCatching { it.asLong }.getOrNull() }
+
+        private fun JsonObject.booleanOrFalse(name: String): Boolean =
+            get(name)?.takeIf { it.isJsonPrimitive }?.let { runCatching { it.asBoolean }.getOrNull() } ?: false
+
         internal fun getAllCategories(hit: JsonObject): Set<Category> {
             val list: MutableSet<Category> = TreeSet()
-            for (categories in hit["categories"].asJsonArray) {
-                val id = categories.asJsonObject["id"].asString
+            val categories = hit.get("categories")?.takeIf { it.isJsonArray }?.asJsonArray ?: return list
+            for (category in categories) {
+                val id = (category as? JsonObject)?.stringOrNull("id") ?: continue
                 CategoryUtils.getCategoryByCurseForge(id)?.let { list.add(it) }
             }
             return list
@@ -63,15 +88,18 @@ class CurseForgeCommonUtils {
 
         internal fun getScreenshots(api: ApiHandler, projectId: String): List<ScreenshotItem> {
             searchModFromID(api, projectId)?.let { jsonObject ->
-                val hit = jsonObject.getAsJsonObject("data")
+                val hit = GsonJsonUtils.getJsonObjectSafe(jsonObject, "data") ?: return emptyList()
+                val screenshots = hit.get("screenshots")?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
                 val screenshotItems: MutableList<ScreenshotItem> = ArrayList()
-                hit.getAsJsonArray("screenshots").forEach { element ->
-                    val screenshotObject = element.asJsonObject
+                screenshots.forEach { element ->
+                    val screenshotObject = element as? JsonObject ?: return@forEach
+                    // Screenshots without a title or a description have JSON null there
+                    val url = screenshotObject.stringOrNull("url") ?: return@forEach
                     screenshotItems.add(
                         ScreenshotItem(
-                            screenshotObject.get("url").asString,
-                            StringUtilsKt.getNonEmptyOrBlank(screenshotObject.get("title").asString),
-                            StringUtilsKt.getNonEmptyOrBlank(screenshotObject.get("description").asString),
+                            url,
+                            StringUtilsKt.getNonEmptyOrBlank(screenshotObject.stringOrNull("title") ?: ""),
+                            StringUtilsKt.getNonEmptyOrBlank(screenshotObject.stringOrNull("description") ?: ""),
                         )
                     )
                 }
@@ -94,7 +122,7 @@ class CurseForgeCommonUtils {
 
             val infoItems: MutableList<InfoItem> = ArrayList()
             for (data in dataArray) {
-                val dataElement = data.asJsonObject
+                val dataElement = data as? JsonObject ?: continue
                 getInfoItem(dataElement, classify)?.let { item ->
                     infoItems.add(item)
                 }
@@ -104,27 +132,50 @@ class CurseForgeCommonUtils {
         }
 
         internal fun getInfoItem(dataObject: JsonObject, classify: Classify): InfoItem? {
-            val allowModDistribution = dataObject.get("allowModDistribution")
-            // Gson automatically casts null to false, which leans to issues
-            // So, only check the distribution flag if it is non-null
-            if (!allowModDistribution.isJsonNull && !allowModDistribution.asBoolean) {
-                Logging.i("CurseForgeCommonUtils", "Skipping project ${dataObject["name"].asString} because curseforge sucks")
+            // Gson turns JSON null into false, so only a real false counts. The member can also be missing
+            // altogether, which used to throw a NullPointerException and broke the whole search.
+            if (dataObject.get("allowModDistribution")?.takeIf { it.isJsonPrimitive }?.asBoolean == false) {
+                Logging.i("CurseForgeCommonUtils", "Skipping project ${dataObject.stringOrNull("name")}: its author does not allow downloads from other apps")
                 return null
             }
 
-            return InfoItem(
-                classify,
-                Platform.CURSEFORGE,
-                dataObject.get("id").asString,
-                dataObject.get("slug").asString,
-                getAuthors(dataObject.get("authors").asJsonArray).toTypedArray(),
-                dataObject.get("name").asString,
-                dataObject.get("summary").asString,
-                dataObject.get("downloadCount").asLong,
-                ZHTools.getDate(dataObject.get("dateCreated").asString),
-                getIconUrl(dataObject),
-                getAllCategories(dataObject).toList(),
-            )
+            return runCatching {
+                InfoItem(
+                    classify,
+                    Platform.CURSEFORGE,
+                    dataObject.get("id").asString,
+                    dataObject.stringOrNull("slug") ?: "",
+                    getAuthors(dataObject.get("authors")?.takeIf { it.isJsonArray }?.asJsonArray ?: JsonArray()).toTypedArray(),
+                    dataObject.stringOrNull("name") ?: "",
+                    dataObject.stringOrNull("summary") ?: "",
+                    dataObject.longOrNull("downloadCount") ?: 0L,
+                    ZHTools.getDate(dataObject.stringOrNull("dateCreated") ?: dataObject.stringOrNull("dateModified")),
+                    getIconUrl(dataObject),
+                    getAllCategories(dataObject).toList(),
+                )
+            }.getOrElse { e ->
+                // One malformed project must not break the whole result page
+                Logging.e("CurseForgeCommonUtils", "Skipping a project that could not be read: ${Tools.printToString(e)}")
+                null
+            }
+        }
+
+        /**
+         * The game versions a file is for, without the other tags CurseForge puts in the same list
+         * (mod loaders, "Client", "Java 17", ...).
+         */
+        internal fun getMinecraftVersions(fileObject: JsonObject): MutableSet<String> {
+            val mcVersions: MutableSet<String> = TreeSet()
+            fileObject.get("gameVersions")?.takeIf { it.isJsonArray }?.asJsonArray?.forEach { element ->
+                if (element.isJsonPrimitive) mcVersions.add(element.asString)
+            }
+            val releaseRegex = RELEASE_REGEX
+            val nonMCVersion: MutableSet<String> = TreeSet()
+            mcVersions.forEach(Consumer { string: String ->
+                if (!releaseRegex.matcher(string).find()) nonMCVersion.add(string)
+            })
+            if (nonMCVersion.isNotEmpty()) mcVersions.removeAll(nonMCVersion)
+            return mcVersions
         }
 
         @Throws(Throwable::class)
@@ -136,31 +187,18 @@ class CurseForgeCommonUtils {
             val versionsItem: MutableList<VersionItem> = ArrayList()
             for (data in allData) {
                 try {
-                    //获取版本信息
-                    val mcVersions: MutableSet<String> = TreeSet()
-                    for (gameVersionElement in data.getAsJsonArray("gameVersions")) {
-                        val gameVersion = gameVersionElement.asString
-                        mcVersions.add(gameVersion)
-                    }
-                    //过滤非MC版本的元素
-                    val releaseRegex = RELEASE_REGEX
-                    val nonMCVersion: MutableSet<String> = TreeSet()
-                    mcVersions.forEach(Consumer { string: String ->
-                        if (!releaseRegex.matcher(string).find()) nonMCVersion.add(string)
-                    })
-                    if (nonMCVersion.isNotEmpty()) mcVersions.removeAll(nonMCVersion)
-
+                    val downloadUrl = getDownloadUrl(data) ?: continue
                     versionsItem.add(
                         VersionItem(
                             infoItem.projectId,
                             data.get("displayName").asString,
-                            data.get("downloadCount").asLong,
+                            data.longOrNull("downloadCount") ?: 0L,
                             ZHTools.getDate(data.get("fileDate").asString),
-                            mcVersions.toList(),
+                            getMinecraftVersions(data).toList(),
                             VersionTypeUtils.getVersionType(data.get("releaseType").asString),
                             data.get("fileName").asString,
                             getSha1FromData(data),
-                            data.get("downloadUrl").asString
+                            downloadUrl
                         )
                     )
                 } catch (e: Exception) {
@@ -176,8 +214,7 @@ class CurseForgeCommonUtils {
         internal fun getAuthors(array: JsonArray): List<String> {
             val authors: MutableList<String> = ArrayList()
             for (authorElement in array) {
-                val authorObject = authorElement.asJsonObject
-                authors.add(authorObject.get("name").asString)
+                (authorElement as? JsonObject)?.stringOrNull("name")?.let { authors.add(it) }
             }
             return authors
         }
@@ -194,20 +231,32 @@ class CurseForgeCommonUtils {
             return null
         }
 
+        /**
+         * The CDN link of a file. CurseForge leaves "downloadUrl" empty for some files; their CDN path is
+         * made of the file id and the file name, which must be URL-encoded (spaces, "+", "[", ...).
+         */
+        internal fun buildEdgeUrl(fileId: Long, fileName: String): String {
+            val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
+            return "https://edge.forgecdn.net/files/${fileId / 1000}/${fileId % 1000}/$encodedName"
+        }
+
+        /** The download link of a file object of the API, built from its id and name when "downloadUrl" is null. */
+        internal fun getDownloadUrl(fileObject: JsonObject): String? {
+            fileObject.stringOrNull("downloadUrl")?.takeIf { it.isNotBlank() }?.let { return it }
+            val id = fileObject.longOrNull("id") ?: return null
+            val fileName = fileObject.stringOrNull("fileName") ?: return null
+            return buildEdgeUrl(id, fileName)
+        }
+
         internal fun getDownloadUrl(api: ApiHandler, projectID: Long, fileID: Long): String? {
             // First try the official api endpoint
             val response = api.safeRun { get("mods/$projectID/files/$fileID/download-url", JsonObject::class.java) }
-            if (response != null && !response["data"].isJsonNull) return response["data"].asString
+            response?.stringOrNull("data")?.takeIf { it.isNotBlank() }?.let { return it }
 
             // Otherwise, fallback to building an edge link
             val fallbackResponse = api.safeRun { get("mods/$projectID/files/$fileID", JsonObject::class.java) }
-            if (fallbackResponse != null && !fallbackResponse["data"].isJsonNull) {
-                val modData = fallbackResponse["data"].asJsonObject
-                val id = modData["id"].asInt
-                return "https://edge.forgecdn.net/files/${id / 1000}/${id % 1000}/${modData["fileName"].asString}"
-            }
-
-            return null
+            val modData = GsonJsonUtils.getJsonObjectSafe(fallbackResponse, "data") ?: return null
+            return getDownloadUrl(modData)
         }
 
         internal fun getDownloadSha1(api: ApiHandler, projectID: Long, fileID: Long): String? {
@@ -223,30 +272,95 @@ class CurseForgeCommonUtils {
             }
         }
 
+        /**
+         * Loads many objects with the batch endpoints (POST /v1/mods with "modIds", POST /v1/mods/files with
+         * "fileIds"): one request per [CURSEFORGE_BATCH_SIZE] ids instead of one request per id. Returns the
+         * objects by id; ids that could not be loaded are missing from the result (callers fall back to the
+         * single requests for them).
+         */
+        private fun getByIds(api: ApiHandler, endpoint: String, idsMember: String, ids: Collection<Long>): Map<Long, JsonObject> {
+            val result = HashMap<Long, JsonObject>()
+            for (chunk in ids.distinct().chunked(CURSEFORGE_BATCH_SIZE)) {
+                val body = JsonObject().apply {
+                    add(idsMember, JsonArray().apply { chunk.forEach { add(it) } })
+                }
+                val response = api.safeRun { post(endpoint, body, JsonObject::class.java) }
+                val data = GsonJsonUtils.getJsonArraySafe(response, "data")
+                if (data == null) {
+                    Logging.w("CurseForgeCommonUtils", "$endpoint: no data for ${chunk.size} ids, falling back to single requests")
+                    continue
+                }
+                for (element in data) {
+                    val obj = element as? JsonObject ?: continue
+                    obj.longOrNull("id")?.let { result[it] = obj }
+                }
+            }
+            return result
+        }
+
+        /** The projects with these ids (POST /v1/mods), by id. */
+        internal fun getModsByIds(api: ApiHandler, modIds: Collection<Long>): Map<Long, JsonObject> =
+            getByIds(api, "mods", "modIds", modIds)
+
+        /** The files with these ids (POST /v1/mods/files), by id: download link, name and hashes in one request. */
+        internal fun getFilesByIds(api: ApiHandler, fileIds: Collection<Long>): Map<Long, JsonObject> =
+            getByIds(api, "mods/files", "fileIds", fileIds)
+
+        /**
+         * All files of a project. The API returns 50 files per request (this used to ask for 500 and stop after
+         * the first answer because it held fewer than 500 files, so only the newest 50 files of a project were
+         * ever listed). The first page tells the total count; the other pages are then loaded in parallel.
+         */
         @Throws(IOException::class)
         internal fun getPaginatedData(api: ApiHandler, projectId: String): List<JsonObject> {
-            val dataList: MutableList<JsonObject> = ArrayList()
-            var index = 0
-            while (index != -1) {
+            fun loadPage(index: Int): JsonObject {
                 val params = HashMap<String, Any>()
                 params["index"] = index
                 params["pageSize"] = CURSEFORGE_PAGINATION_SIZE
-
-                val response = api.get("mods/$projectId/files", params, JsonObject::class.java)
-                val data = GsonJsonUtils.getJsonArraySafe(response, "data") ?: throw IOException("Invalid data!")
-
-                for (i in 0 until data.size()) {
-                    val fileInfo = data[i].asJsonObject
-                    if (fileInfo["isServerPack"].asBoolean) continue
-                    dataList.add(fileInfo)
-                }
-                if (data.size() < CURSEFORGE_PAGINATION_SIZE) {
-                    index = -1
-                    continue
-                }
-                index += CURSEFORGE_PAGINATION_SIZE
+                return api.get("mods/$projectId/files", params, JsonObject::class.java)
+                    ?: throw IOException("No answer for the files of project $projectId (index $index)")
             }
 
+            val pages = ArrayList<JsonObject>()
+            val firstPage = loadPage(0)
+            pages.add(firstPage)
+
+            val totalCount = GsonJsonUtils.getJsonObjectSafe(firstPage, "pagination")?.longOrNull("totalCount")?.toInt()
+            if (totalCount != null) {
+                val remaining = (CURSEFORGE_PAGINATION_SIZE until min(totalCount, CURSEFORGE_MAX_RESULTS) step CURSEFORGE_PAGINATION_SIZE)
+                    .filter { it + CURSEFORGE_PAGINATION_SIZE <= CURSEFORGE_MAX_RESULTS }
+                if (remaining.isNotEmpty()) {
+                    val executor = Executors.newFixedThreadPool(min(CURSEFORGE_PAGE_THREADS, remaining.size))
+                    try {
+                        val futures = remaining.map { index -> executor.submit(Callable { loadPage(index) }) }
+                        futures.forEach { pages.add(it.get()) } // in order: newest files first, like the API
+                    } catch (e: ExecutionException) {
+                        throw (e.cause as? IOException) ?: IOException("Failed to load the files of project $projectId", e.cause)
+                    } finally {
+                        executor.shutdownNow()
+                    }
+                }
+            } else {
+                // No pagination info: keep asking until a page is not full
+                var index = CURSEFORGE_PAGINATION_SIZE
+                var last = firstPage
+                while (index + CURSEFORGE_PAGINATION_SIZE <= CURSEFORGE_MAX_RESULTS &&
+                    (GsonJsonUtils.getJsonArraySafe(last, "data")?.size() ?: 0) >= CURSEFORGE_PAGINATION_SIZE) {
+                    last = loadPage(index)
+                    pages.add(last)
+                    index += CURSEFORGE_PAGINATION_SIZE
+                }
+            }
+
+            val dataList: MutableList<JsonObject> = ArrayList()
+            for (page in pages) {
+                val data = GsonJsonUtils.getJsonArraySafe(page, "data") ?: throw IOException("Invalid data!")
+                for (element: JsonElement in data) {
+                    val fileInfo = element as? JsonObject ?: continue
+                    if (fileInfo.booleanOrFalse("isServerPack")) continue
+                    dataList.add(fileInfo)
+                }
+            }
             return dataList
         }
 
@@ -258,8 +372,11 @@ class CurseForgeCommonUtils {
         ): SearchResult = lastResult.apply {
             this.infoItems.addAll(infoItems)
             this.previousCount += dataArray.size()
-            this.totalResultCount = response.getAsJsonObject("pagination").get("totalCount").asInt
-            this.isLastPage = dataArray.size() < CURSEFORGE_SEARCH_COUNT
+            this.totalResultCount = GsonJsonUtils.getJsonObjectSafe(response, "pagination")?.longOrNull("totalCount")?.toInt()
+                ?: this.previousCount
+            // A full page can be the last one too: the API serves no results beyond its 10000 result window
+            this.isLastPage = dataArray.size() < CURSEFORGE_SEARCH_COUNT ||
+                    this.previousCount >= min(this.totalResultCount, CURSEFORGE_MAX_RESULTS)
         }
     }
 }

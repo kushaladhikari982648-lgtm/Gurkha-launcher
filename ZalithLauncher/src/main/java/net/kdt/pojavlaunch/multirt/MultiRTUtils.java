@@ -240,39 +240,38 @@ public class MultiRTUtils {
 
     private static void uncompressTarXZ(final InputStream tarFileInputStream, final File dest) throws IOException {
         net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(dest);
+        final String canonicalDest = dest.getCanonicalPath();
 
         byte[] buffer = new byte[8192];
-        TarArchiveInputStream tarIn = new TarArchiveInputStream(
-                new XZCompressorInputStream(tarFileInputStream)
-        );
-        TarArchiveEntry tarEntry = tarIn.getNextTarEntry();
-        // tarIn is a TarArchiveInputStream
-        while (tarEntry != null) {
+        try (TarArchiveInputStream tarIn = new TarArchiveInputStream(
+                new XZCompressorInputStream(tarFileInputStream))) {
+            TarArchiveEntry tarEntry;
+            while ((tarEntry = tarIn.getNextTarEntry()) != null) {
+                final String tarEntryName = tarEntry.getName();
+                // publishProgress(null, "Unpacking " + tarEntry.getName());
+                ProgressLayout.setProgress(ProgressLayout.UNPACK_RUNTIME, 100, R.string.generic_unpacking, tarEntryName);
 
-            final String tarEntryName = tarEntry.getName();
-            // publishProgress(null, "Unpacking " + tarEntry.getName());
-            ProgressLayout.setProgress(ProgressLayout.UNPACK_RUNTIME, 100, R.string.generic_unpacking, tarEntryName);
-
-            File destPath = new File(dest, tarEntry.getName());
-            net.kdt.pojavlaunch.utils.FileUtils.ensureParentDirectory(destPath);
-            if (tarEntry.isSymbolicLink()) {
-                try {
-                    // android.system.Os
-                    // Libcore one support all Android versions
-                    Os.symlink(tarEntry.getName(), tarEntry.getLinkName());
-                } catch (Throwable e) {
-                    Logging.e("MultiRT", Tools.printToString(e));
+                // Runtimes can be imported by the user, so entry names are untrusted:
+                // refuse anything that would be written outside of the runtime directory.
+                File destPath = net.kdt.pojavlaunch.utils.FileUtils.resolveSafeChild(canonicalDest, dest, tarEntryName);
+                net.kdt.pojavlaunch.utils.FileUtils.ensureParentDirectory(destPath);
+                if (tarEntry.isSymbolicLink()) {
+                    try {
+                        // android.system.Os.symlink(target, linkPath): the link is created at destPath and
+                        // points to the archived link target. (The arguments used to be swapped, so the
+                        // link was created relative to the process working directory and always failed.)
+                        Os.symlink(tarEntry.getLinkName(), destPath.getAbsolutePath());
+                    } catch (Throwable e) {
+                        Logging.e("MultiRT", Tools.printToString(e));
+                    }
+                } else if (tarEntry.isDirectory()) {
+                    net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(destPath);
+                } else if (!destPath.exists() || destPath.length() != tarEntry.getSize()) {
+                    try (FileOutputStream os = new FileOutputStream(destPath)) {
+                        IOUtils.copyLarge(tarIn, os, buffer);
+                    }
                 }
-
-            } else if (tarEntry.isDirectory()) {
-                net.kdt.pojavlaunch.utils.FileUtils.ensureDirectory(destPath);
-            } else if (!destPath.exists() || destPath.length() != tarEntry.getSize()) {
-                FileOutputStream os = new FileOutputStream(destPath);
-                IOUtils.copyLarge(tarIn, os, buffer);
-                os.close();
             }
-            tarEntry = tarIn.getNextTarEntry();
         }
-        tarIn.close();
     }
 }

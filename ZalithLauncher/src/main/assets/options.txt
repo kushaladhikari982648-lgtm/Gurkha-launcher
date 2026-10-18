@@ -10,6 +10,10 @@ fboEnable:true
 fancyGraphics:false
 ao:0
 clouds:true
+graphicsMode:0
+renderClouds:"fast"
+entityShadows:false
+biomeBlendRadius:1
 snooperEnabled:true
 enableVsync:false
 pauseOnLostFocus:true

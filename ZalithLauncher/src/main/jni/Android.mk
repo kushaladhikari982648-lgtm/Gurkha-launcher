@@ -26,7 +26,6 @@ LOCAL_SRC_FILES := \
     ctxbridges/egl_loader.c \
     ctxbridges/osmesa_loader.c \
     ctxbridges/swap_interval_no_egl.c \
-    ctxbridges/virgl_bridge.c \
     environ/environ.c \
     input_bridge_v3.c \
     jre_launcher.c \
@@ -39,6 +38,15 @@ ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
 LOCAL_CFLAGS += -DADRENO_POSSIBLE
 LOCAL_LDLIBS += -lEGL -lGLESv2
 endif
+include $(BUILD_SHARED_LIBRARY)
+
+
+# EGL front for the LTW renderer under SDL3 (Minecraft 26.3+), see ltw_sdl_egl.c
+include $(CLEAR_VARS)
+LOCAL_MODULE := ltw_sdl_egl
+LOCAL_SRC_FILES := ltw_sdl_egl.c
+LOCAL_LDLIBS := -ldl -llog
+LOCAL_CFLAGS += -fvisibility=hidden
 include $(BUILD_SHARED_LIBRARY)
 
 

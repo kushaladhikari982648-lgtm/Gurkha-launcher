@@ -56,7 +56,7 @@ public class ProgressService extends Service implements TaskCountListener {
         mNotificationBuilder = new NotificationCompat.Builder(this, Tools.NOTIFICATION_CHANNEL_DEFAULT)
                 .setContentTitle(InfoCenter.replaceName(this, R.string.lazy_service_default_title))
                 .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.notification_terminate), pendingKillIntent)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setSilent(true);
     }
 

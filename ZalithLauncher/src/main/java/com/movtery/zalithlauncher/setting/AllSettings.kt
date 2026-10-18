@@ -7,6 +7,7 @@ import com.movtery.zalithlauncher.setting.unit.IntSettingUnit
 import com.movtery.zalithlauncher.setting.unit.LongSettingUnit
 import com.movtery.zalithlauncher.setting.unit.StringSettingUnit
 import com.movtery.zalithlauncher.utils.path.PathManager
+import com.movtery.zalithlauncher.utils.platform.DeviceMemory
 import net.kdt.pojavlaunch.Tools
 import net.kdt.pojavlaunch.prefs.LauncherPreferences
 
@@ -25,8 +26,12 @@ class AllSettings {
         @JvmStatic
         val ignoreNotchLauncher = BooleanSettingUnit("ignoreNotchLauncher", true)
 
+        /**
+         * Phones with less than 3 GB of RAM have entry-level GPUs: rendering at 75 % of the screen resolution keeps the
+         * game playable there and its frame buffers smaller (only the default; a chosen value is kept)
+         */
         @JvmStatic
-        val resolutionRatio = IntSettingUnit("resolutionRatio", 100)
+        val resolutionRatio = IntSettingUnit("resolutionRatio", if (DeviceMemory.isLowRam) 75 else 100)
 
         @JvmStatic
         val sustainedPerformance = BooleanSettingUnit("sustainedPerformance", false)
@@ -164,7 +169,7 @@ class AllSettings {
         val launcherTheme = StringSettingUnit("launcherTheme", "system")
 
         @JvmStatic
-        val animation = BooleanSettingUnit("animation", true)
+        val animation = BooleanSettingUnit("animation", !DeviceMemory.isLowRam) // off by default on < 3 GB phones
 
         @JvmStatic
         val animationSpeed = IntSettingUnit("animationSpeed", 600)

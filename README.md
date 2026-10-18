@@ -1,6 +1,36 @@
 <div align="center">
-    <img width="256" src="ZalithLauncher/src/main/res/drawable/app_name_title.png"></img>
+    <img width="128" src="branding/gurkha-icon.png" alt="Gurkha Launcher logo: two crossed khukuris"></img>
+    <br>
+    <img width="320" src="ZalithLauncher/src/main/res/drawable/app_name_title.png" alt="Gurkha Launcher"></img>
 </div>
+
+<div align="center">
+
+[![Android CI](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/workflows/android.yml/badge.svg)](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/workflows/android.yml)
+[![Latest release](https://img.shields.io/github/v/release/kushaladhikari982648-lgtm/Gurkha-launcher?include_prereleases)](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases)
+
+</div>
+
+**Gurkha Launcher** is a Minecraft: Java Edition launcher for Android. It is a fork of
+[Zalith Launcher](https://github.com/ZalithLauncher/ZalithLauncher), which is based on
+[PojavLauncher](https://github.com/PojavLauncherTeam/PojavLauncher). Like both of them, it is free software
+under the [GPL-3.0](LICENSE) license.
+
+- **Download:** [Releases](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases). Pick the `arm64-v8a` APK for most phones, `armeabi-v7a`
+  for 32-bit phones, or the universal APK if you are not sure.
+- It installs as its own app (`com.gurkha.launcher`) next to Zalith Launcher, with its own settings and
+  game files.
+- **Differences from Zalith Launcher:** runs Minecraft 26.1 - 26.4 (LWJGL 3.4, SDL3), plays every version with
+  500 MB of RAM (for phones with 2 GB), adds the LTW and Krypton Wrapper renderers (VirGL and Panfrost are gone),
+  PojavLauncher's fix for Minecraft 1.20.5+ on 32-bit ARM devices, working CurseForge downloads, smaller APKs,
+  plus security and stability fixes. See the [release notes](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases).
+- **Maintainers:** publishing a release is described in [RELEASING.md](RELEASING.md).
+
+All credit for the launcher itself goes to the Zalith Launcher and PojavLauncher developers; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the components added from Amethyst and MojoLauncher. The original
+Zalith Launcher README follows.
+
+---
 
 <div align="center">
 

@@ -18,6 +18,7 @@ class CheckNewNotice {
     companion object {
         @JvmStatic
         var noticeInfo: NoticeInfo? = null
+        @Volatile
         private var isChecking = false
 
         private fun checkCooling(): Boolean {
@@ -38,6 +39,8 @@ class CheckNewNotice {
             }
 
             if (!checkCooling()) {
+                //冷却中：必须重置状态，否则之后的所有检查都会被永久跳过
+                isChecking = false
                 return
             } else {
                 AllSettings.noticeCheck.put(ZHTools.getCurrentTimeMillis()).save()

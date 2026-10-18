@@ -46,6 +46,8 @@ class AboutFragment : FragmentWithAnim(R.layout.fragment_about) {
             appInfo.setOnClickListener{ StringUtils.copyText("text", appInfo.text.toString(), requireContext()) }
 
             returnButton.setOnClickListener { ZHTools.onBackPressed(requireActivity()) }
+            //Gurkha Launcher has no donation page yet (the original one belongs to the Zalith developer)
+            supportDevelopment.visibility = View.GONE
             supportDevelopment.setOnClickListener {
                 TipDialog.Builder(requireActivity())
                     .setTitle(R.string.request_sponsorship_title)
@@ -79,7 +81,8 @@ class AboutFragment : FragmentWithAnim(R.layout.fragment_about) {
         fragmentActivity: FragmentActivity,
         private val viewPager: ViewPager2
     ): FragmentStateAdapter(fragmentActivity) {
-        override fun getItemCount(): Int = 2
+        //The second page lists the Zalith developer's sponsors; this fork has none, so only the info page is shown.
+        override fun getItemCount(): Int = 1
         override fun createFragment(position: Int): Fragment {
             return when(position) {
                 0 -> AboutInfoPageFragment(viewPager)

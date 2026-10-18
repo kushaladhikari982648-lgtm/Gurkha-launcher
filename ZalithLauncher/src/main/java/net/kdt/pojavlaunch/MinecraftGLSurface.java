@@ -1,5 +1,9 @@
 package net.kdt.pojavlaunch;
 
+import android.app.Activity;
+import org.libsdl.app.SDL;
+import org.libsdl.app.SDLActivity;
+import org.libsdl.app.SDLSurface;
 import static net.kdt.pojavlaunch.MainActivity.touchCharInput;
 import static org.lwjgl.glfw.CallbackBridge.sendMouseButton;
 import static org.lwjgl.glfw.CallbackBridge.windowHeight;
@@ -7,6 +11,7 @@ import static org.lwjgl.glfw.CallbackBridge.windowWidth;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.graphics.SurfaceTexture;
 import android.util.AttributeSet;
 import android.view.InputDevice;
@@ -77,6 +82,14 @@ public class MinecraftGLSurface extends View implements GrabListener {
     final Object mSurfaceReadyListenerLock = new Object();
     /* View holding the surface, either a SurfaceView or a TextureView */
     View mSurface;
+    /**
+     * The game uses SDL3 instead of GLFW (Minecraft 26.3+). Set by MainActivity before start(); only then
+     * is the SDL glue (org.libsdl.app) attached to the surface.
+     */
+    public static boolean sdlVersion = false;
+    /** The game initialized SDL (see CallbackBridge.notifyLauncher): from then on SDL owns the surface and input. */
+    public static volatile boolean sdlEnabled = false;
+    private Surface mNativeSurface;
 
     private final InGameEventProcessor mIngameProcessor = new InGameEventProcessor(mSensitivityFactor);
     private final InGUIEventProcessor mInGUIProcessor = new InGUIEventProcessor();
@@ -107,12 +120,29 @@ public class MinecraftGLSurface extends View implements GrabListener {
      * @param touchpad the optional cursor-emulating touchpad, used for touch event processing
      *                 when the cursor is not grabbed
      */
+    /** Attaches SDL's Android glue to the game surface (ported from Amethyst-Android). */
+    private static void setupSDL(Context ctx, Surface nativeSurface, ViewGroup layout) {
+        if (!sdlVersion) return;
+        SDLSurface surface = new SDLSurface(ctx);
+        // Sets up the Java side; must run on a looper thread, or the SDLCommandHandler crashes
+        SDL.initialize();
+        Context activity = ctx;
+        while (!(activity instanceof Activity) && activity instanceof ContextWrapper) {
+            activity = ((ContextWrapper) activity).getBaseContext();
+        }
+        if (!(activity instanceof Activity)) return;
+        SDL.setContext((Activity) activity);
+        SDLActivity.externalInitialize(surface, layout, nativeSurface);
+    }
+
     public void start(boolean isAlreadyRunning, AbstractTouchpad touchpad){
         setUpPointerCapture(touchpad);
         mInGUIProcessor.setAbstractTouchpad(touchpad);
         if(AllSettings.getAlternateSurface().getValue()){
             SurfaceView surfaceView = new SurfaceView(getContext());
             mSurface = surfaceView;
+            mNativeSurface = surfaceView.getHolder().getSurface();
+            setupSDL(getContext(), mNativeSurface, (ViewGroup) getParent());
 
             surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
                 private boolean isCalled = isAlreadyRunning;
@@ -120,6 +150,7 @@ public class MinecraftGLSurface extends View implements GrabListener {
                 public void surfaceCreated(@NonNull SurfaceHolder holder) {
                     if(isCalled) {
                         JREUtils.setupBridgeWindow(surfaceView.getHolder().getSurface());
+                        if (sdlEnabled) SDLSurface.setNativeSurface(mNativeSurface);
                         return;
                     }
                     isCalled = true;
@@ -129,11 +160,16 @@ public class MinecraftGLSurface extends View implements GrabListener {
 
                 @Override
                 public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
+                    // SDL needs the real surface size, not the scaled resolution (it would render offscreen)
+                    if (sdlEnabled) SDLActivity.getSDLSurface().surfaceChanged(holder, format, Tools.currentDisplayMetrics.widthPixels, Tools.currentDisplayMetrics.heightPixels);
                     refreshSize();
                 }
 
                 @Override
-                public void surfaceDestroyed(@NonNull SurfaceHolder holder) {}
+                public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
+                    // The surface goes away whenever it is out of view; SDL must release its EGL surface
+                    if (sdlEnabled) SDLActivity.getSDLSurface().surfaceDestroyed(holder);
+                }
             });
 
             ((ViewGroup)getParent()).addView(surfaceView);
@@ -148,8 +184,11 @@ public class MinecraftGLSurface extends View implements GrabListener {
                 @Override
                 public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
                     Surface tSurface = new Surface(surface);
+                    mNativeSurface = tSurface;
+                    setupSDL(getContext(), mNativeSurface, (ViewGroup) getParent());
                     if(isCalled) {
                         JREUtils.setupBridgeWindow(tSurface);
+                        if (sdlEnabled) SDLSurface.setNativeSurface(mNativeSurface);
                         return;
                     }
                     isCalled = true;
@@ -159,11 +198,14 @@ public class MinecraftGLSurface extends View implements GrabListener {
 
                 @Override
                 public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture surface, int width, int height) {
+                    // SDL needs the real surface size, not the scaled resolution (it would render offscreen)
+                    if (sdlEnabled) SDLActivity.getSDLSurface().surfaceChanged(null, 0, Tools.currentDisplayMetrics.widthPixels, Tools.currentDisplayMetrics.heightPixels);
                     refreshSize();
                 }
 
                 @Override
                 public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surface) {
+                    if (sdlEnabled) SDLActivity.getSDLSurface().surfaceDestroyed(null);
                     return true;
                 }
 
@@ -371,6 +413,8 @@ public class MinecraftGLSurface extends View implements GrabListener {
                 view.getSurfaceTexture().setDefaultBufferSize(windowWidth, windowHeight);
             }
         }
+
+        if (sdlEnabled && SDLActivity.getSDLSurface() != null) SDLActivity.getSDLSurface().nativeResize(windowWidth, windowHeight);
 
         CallbackBridge.sendUpdateWindowSize(windowWidth, windowHeight);
         EventBus.getDefault().post(new RefreshHotbarEvent());
