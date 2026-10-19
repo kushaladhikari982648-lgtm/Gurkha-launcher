@@ -3369,10 +3369,19 @@ mod tests {
             "repeated lookups must keep one cache entry for the name (each one is re-resolving)"
         );
         // A miss is not cached, so a second lookup stays a miss instead of poisoning the table.
+        // (Some stacks hand out a stub pointer for any name through eglGetProcAddress, in which
+        // case there is no miss to observe and only the one-entry invariant applies.)
+        let first = driver_fn_cached::<unsafe extern "C" fn()>("glDefinitelyNotAGLFunction");
+        let after_first_lookup = cached(b"glDefinitelyNotAGLFunction");
+        if first.is_none() {
+            assert!(after_first_lookup.is_none(), "a miss must not be cached");
+        }
         let _ = driver_fn_cached::<unsafe extern "C" fn()>("glDefinitelyNotAGLFunction");
-        assert!(cached(b"glDefinitelyNotAGLFunction").is_none());
-        let _ = driver_fn_cached::<unsafe extern "C" fn()>("glDefinitelyNotAGLFunction");
-        assert!(cached(b"glDefinitelyNotAGLFunction").is_none());
+        assert_eq!(
+            cached(b"glDefinitelyNotAGLFunction"),
+            after_first_lookup,
+            "a repeated lookup of one name must not add a second entry"
+        );
     }
 
     #[test]
