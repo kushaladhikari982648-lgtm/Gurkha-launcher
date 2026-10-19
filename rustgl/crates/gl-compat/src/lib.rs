@@ -3348,31 +3348,31 @@ mod tests {
         let _lock = global_test_lock();
         // The regression this guards: driver_fn used to run dlsym (plus a CString malloc)
         // on every forwarded GL call, so a draw-heavy frame paid it per draw. The cache is
-        // keyed by the name, so repeated lookups must not re-resolve.
-        fn cache_len() -> usize {
+        // keyed by the name, so repeated lookups must not re-resolve. The checks are scoped
+        // to this entry: other tests fill the same cache and run in parallel.
+        fn cached(name: &[u8]) -> Option<usize> {
             // Scoped so the guard is released: std::sync::Mutex is not reentrant.
             DRIVER_CACHE
                 .lock()
                 .unwrap()
                 .as_ref()
-                .map(|cache| cache.len())
-                .unwrap_or(0)
+                .and_then(|cache| cache.get(name).copied())
         }
         let _ = driver_fn_cached::<unsafe extern "C" fn(u32)>("glCullFace");
-        let after_first = cache_len();
+        let after_first = cached(b"glCullFace");
         for _ in 0..1000 {
             let _ = driver_fn_cached::<unsafe extern "C" fn(u32)>("glCullFace");
         }
         assert_eq!(
-            cache_len(),
+            cached(b"glCullFace"),
             after_first,
-            "repeated lookups must not grow the cache (each one is re-resolving)"
+            "repeated lookups must keep one cache entry for the name (each one is re-resolving)"
         );
-        // A cached miss stays a miss instead of retrying dlsym every call.
+        // A miss is not cached, so a second lookup stays a miss instead of poisoning the table.
         let _ = driver_fn_cached::<unsafe extern "C" fn()>("glDefinitelyNotAGLFunction");
-        let after_miss = cache_len();
+        assert!(cached(b"glDefinitelyNotAGLFunction").is_none());
         let _ = driver_fn_cached::<unsafe extern "C" fn()>("glDefinitelyNotAGLFunction");
-        assert_eq!(cache_len(), after_miss);
+        assert!(cached(b"glDefinitelyNotAGLFunction").is_none());
     }
 
     #[test]
@@ -3380,12 +3380,12 @@ mod tests {
         let _lock = global_test_lock();
         driver_fn_cached::<unsafe extern "C" fn(u32)>("glCullFace");
         clear_driver_cache();
-        assert!(DRIVER_CACHE
+        let still_cached = DRIVER_CACHE
             .lock()
             .unwrap()
             .as_ref()
-            .map(|cache| cache.is_empty())
-            .unwrap_or(true));
+            .and_then(|cache| cache.get(&b"glCullFace"[..]).copied());
+        assert!(still_cached.is_none());
     }
 
     #[test]

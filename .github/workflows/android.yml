@@ -65,7 +65,7 @@ jobs:
             sudo apt-get install -y --no-install-recommends \
               libegl1 libgles2 libgles1 libegl-dev libgles-dev \
               libgl1 libglx-mesa0 libglvnd0 libglx0 libegl-mesa0
-            cargo test -p renderer-core -p gl-compat
+            cargo test -p renderer-core -p gl-compat -- --test-threads=1
             cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release -p gl-compat
             cd ..
             python3 rustgl/pack_aar.py
@@ -311,7 +311,7 @@ jobs:
             sudo apt-get install -y --no-install-recommends \
               libegl1 libgles2 libgles1 libegl-dev libgles-dev \
               libgl1 libglx-mesa0 libglvnd0 libglx0 libegl-mesa0
-            cargo test -p renderer-core -p gl-compat
+            cargo test -p renderer-core -p gl-compat -- --test-threads=1
             cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release -p gl-compat
             cd ..
             python3 rustgl/pack_aar.py
