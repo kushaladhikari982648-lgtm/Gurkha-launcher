@@ -6,5 +6,6 @@ License: upstream publishes no license file - used with the author's permission,
 Build:   built by .github/workflows/android.yml (step "Build RustGL renderer"):
          rustup stable + cargo-ndk, NDK 25.2.9519653 (the launcher's ndkVersion),
          cargo ndk --release -p gl-compat, packed with rustgl/pack_aar.py
-         CI run: (see the run that produced this file)
+Source-tree: (filled in by CI: hash of the rustgl/ directory this AAR was built from)
+         CI run: (filled in by CI)
 ABIs:    arm64-v8a armeabi-v7a x86 x86_64

@@ -197,6 +197,41 @@ jobs:
           name: rustgl-release-aar
           path: ZalithLauncher/libs/rustgl-release.aar
 
+      - name: Commit the RustGL renderer library
+        if: matrix.arch == 'all' && github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The renderer AARs live in the repository (see ng_gl4es-release.txt), so keep
+          # rustgl-release.aar next to them for local Gradle builds. Commit it only when the
+          # rustgl/ source changed, otherwise rebuilds would make a commit each push.
+          TREE=$(git rev-parse "HEAD:rustgl")
+          CURRENT=$(sed -n 's/^Source-tree: //p' ZalithLauncher/libs/rustgl-release.txt)
+          if [ "$TREE" = "$CURRENT" ] && git cat-file -e "HEAD:ZalithLauncher/libs/rustgl-release.aar" 2>/dev/null; then
+            echo "rustgl-release.aar is already committed for rustgl source tree $TREE"
+            exit 0
+          fi
+          python3 - "$TREE" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" <<'PYDOC'
+          import pathlib, sys
+          tree, run = sys.argv[1], sys.argv[2]
+          text = pathlib.Path("ZalithLauncher/libs/rustgl-release.txt").read_text()
+          out = []
+          for line in text.splitlines():
+              if line.startswith("Source-tree:"):
+                  out.append(f"Source-tree: {tree}   (hash of the rustgl/ directory)")
+              elif line.strip().startswith("CI run:"):
+                  out.append(f"         CI run: {run}")
+              else:
+                  out.append(line)
+          pathlib.Path("ZalithLauncher/libs/rustgl-release.txt").write_text("\n".join(out) + "\n")
+          PYDOC
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ZalithLauncher/libs/rustgl-release.aar ZalithLauncher/libs/rustgl-release.txt
+          git commit -m "Build: rustgl-release.aar for rustgl $TREE [skip ci]"
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME" || echo "::warning title=RustGL AAR not committed::The workflow token cannot push to this branch; download the rustgl-release-aar artifact from this run instead."
+
   # Runs once before the five release builds so that a missing secret or a wrong tag gives one clear error.
   ReleasePreflight:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
