@@ -59,6 +59,12 @@ jobs:
             export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.2.9519653"
             echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
             cd rustgl
+            # The gl-compat tests resolve some legacy entry points through a real EGL/GLES
+            # stack (Mesa), the same setup upstream verified them with.
+            sudo apt-get update -q
+            sudo apt-get install -y --no-install-recommends \
+              libegl1 libgles2 libgles1 libegl-dev libgles-dev \
+              libgl1 libglx-mesa0 libglvnd0 libglx0 libegl-mesa0
             cargo test -p renderer-core -p gl-compat
             cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release -p gl-compat
             cd ..
@@ -299,6 +305,12 @@ jobs:
             export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.2.9519653"
             echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
             cd rustgl
+            # The gl-compat tests resolve some legacy entry points through a real EGL/GLES
+            # stack (Mesa), the same setup upstream verified them with.
+            sudo apt-get update -q
+            sudo apt-get install -y --no-install-recommends \
+              libegl1 libgles2 libgles1 libegl-dev libgles-dev \
+              libgl1 libglx-mesa0 libglvnd0 libglx0 libegl-mesa0
             cargo test -p renderer-core -p gl-compat
             cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release -p gl-compat
             cd ..
