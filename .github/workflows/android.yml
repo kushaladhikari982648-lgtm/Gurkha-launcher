@@ -131,6 +131,22 @@ jobs:
               print(f"::notice title=APK size {os.path.basename(apk)}::" + msg.replace("%", "%25").replace("\n", "%0A"))
           PY
 
+      - name: Check the RustGL renderer is in the APK
+        run: |
+          # Every APK must ship librust_gl.so for the ABIs it contains (the RustGL renderer).
+          python3 - ZalithLauncher/build/outputs/apk/debug/*.apk <<'PY'
+          import sys, zipfile
+          for apk in sys.argv[1:]:
+              names = zipfile.ZipFile(apk).namelist()
+              abis = {n.split("/")[1] for n in names if n.startswith("lib/") and n.endswith(".so")}
+              missing = [a for a in sorted(abis) if f"lib/{a}/librust_gl.so" not in names]
+              if missing:
+                  sys.exit(f"::error title=librust_gl.so missing::{apk} has no librust_gl.so for {missing}")
+              if not abis:
+                  sys.exit(f"::error title=No native libraries::{apk}")
+              print(f"{apk}: librust_gl.so present for {', '.join(sorted(abis))}")
+          PY
+
       - name: Check the packed component jars
         run: |
           # The build packs component jars as xz-compressed uncompressed jars (packJarAsXz in build.gradle.kts).
@@ -225,11 +241,12 @@ jobs:
                   out.append(line)
           pathlib.Path("ZalithLauncher/libs/rustgl-release.txt").write_text("\n".join(out) + "\n")
           PYDOC
+          set -x
+          trap 'echo "::error title=RustGL AAR commit failed::command failed with exit $? (see the step log)"' ERR
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ZalithLauncher/libs/rustgl-release.aar ZalithLauncher/libs/rustgl-release.txt
           git commit -m "Build: rustgl-release.aar for rustgl $TREE [skip ci]"
-          git pull --rebase origin "$GITHUB_REF_NAME"
           git push origin "HEAD:$GITHUB_REF_NAME" || echo "::warning title=RustGL AAR not committed::The workflow token cannot push to this branch; download the rustgl-release-aar artifact from this run instead."
 
   # Runs once before the five release builds so that a missing secret or a wrong tag gives one clear error.
