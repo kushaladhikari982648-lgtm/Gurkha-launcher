@@ -718,15 +718,16 @@ pub(crate) fn probe_shader_target_is_es_for_test(version: &str) -> bool {
 /// The table is a hash map rather than a linear scan: this runs on every forwarded GL call,
 /// and on low-end SoCs (the Cortex-A53 cores paired with PowerVR GE8300-class GPUs) the
 /// scan of a ~200-entry vec under the mutex cost more than the draw dispatch it guarded.
-static DRIVER_CACHE: Mutex<std::collections::HashMap<(usize, usize), usize>> =
-    Mutex::new(std::collections::HashMap::new());
+/// (Wrapped in an Option because `HashMap::new` is not a const fn and this is a static.)
+type DriverCache = std::collections::HashMap<(usize, usize), usize>;
+static DRIVER_CACHE: Mutex<Option<DriverCache>> = Mutex::new(None);
 
 /// Drops every memoized driver entry point. Called when the GL context changes.
 fn clear_driver_cache() {
     DRIVER_CACHE
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .clear();
+        .take();
 }
 
 /// Memoized [`driver_fn`]. Callers pass the same `'static` name every time.
@@ -734,7 +735,8 @@ pub(crate) fn driver_fn_cached<T: Copy>(name: &'static str) -> Option<T> {
     trace_call(name);
     let key = (name.as_ptr() as usize, name.len());
     {
-        let cache = DRIVER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = DRIVER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        let cache = guard.get_or_insert_with(DriverCache::new);
         if let Some(addr) = cache.get(&key) {
             if *addr == 0 {
                 return None;
@@ -758,7 +760,8 @@ pub(crate) fn driver_fn_cached<T: Copy>(name: &'static str) -> Option<T> {
     // SAFETY: `driver_fn` already checked that T has pointer size, so this copies the
     // function pointer's bits verbatim into a pointer-sized integer.
     let ptr: usize = unsafe { std::mem::transmute_copy::<T, usize>(&f) };
-    let mut cache = DRIVER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut guard = DRIVER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let cache = guard.get_or_insert_with(DriverCache::new);
     cache.entry(key).or_insert(ptr);
     Some(f)
 }
@@ -3346,7 +3349,12 @@ mod tests {
         // keyed by the address of the name literal, so repeated lookups must not re-resolve.
         fn cache_len() -> usize {
             // Scoped so the guard is released: std::sync::Mutex is not reentrant.
-            DRIVER_CACHE.lock().unwrap().len()
+            DRIVER_CACHE
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|cache| cache.len())
+                .unwrap_or(0)
         }
         let _ = driver_fn_cached::<unsafe extern "C" fn(u32)>("glCullFace");
         let after_first = cache_len();
@@ -3370,7 +3378,12 @@ mod tests {
         let _lock = global_test_lock();
         driver_fn_cached::<unsafe extern "C" fn(u32)>("glCullFace");
         clear_driver_cache();
-        assert!(DRIVER_CACHE.lock().unwrap().is_empty());
+        assert!(DRIVER_CACHE
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|cache| cache.is_empty())
+            .unwrap_or(true));
     }
 
     #[test]

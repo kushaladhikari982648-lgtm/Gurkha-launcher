@@ -45,22 +45,42 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Build RustGL renderer
+        id: rustgl
         run: |
           set -o pipefail
           # librust_gl.so (source in rustgl/) is the RustGL desktop-GL-to-GLES renderer. Build it
           # with cargo-ndk and pack ZalithLauncher/libs/rustgl-release.aar before Gradle runs, so
           # every APK ships it like the other renderer libraries. See rustgl/README.md.
-          cargo install cargo-ndk --locked
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-          "$SDKMANAGER" "ndk;25.2.9519653" > /dev/null
-          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.2.9519653"
-          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
-          cd rustgl
-          cargo test -p renderer-core -p gl-compat
-          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release -p gl-compat
-          cd ..
-          python3 rustgl/pack_aar.py
+          {
+            cargo install cargo-ndk --locked
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "ndk;25.2.9519653" > /dev/null
+            export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.2.9519653"
+            echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+            cd rustgl
+            cargo test -p renderer-core -p gl-compat
+            cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release -p gl-compat
+            cd ..
+            python3 rustgl/pack_aar.py
+          } 2>&1 | tee "$RUNNER_TEMP/rustgl.log"
+
+      - name: Report RustGL build errors
+        if: failure() && steps.rustgl.outcome != 'success'
+        run: |
+          # The failing Rust/cargo lines as one annotation (same idea as "Report build errors")
+          python3 - "$RUNNER_TEMP/rustgl.log" <<'PY'
+          import os, re, sys
+          path = sys.argv[1]
+          lines = open(path, errors="replace").read().splitlines() if os.path.exists(path) else []
+          idx = set()
+          for i, l in enumerate(lines):
+              if re.search(r"^error|^warning: unused|error\[E\d+\]|error:|FAILED|failures:|panicked at|test result", l):
+                  idx.update(range(i, min(i + 4, len(lines))))
+          keep = [lines[i] for i in sorted(idx) if lines[i].strip()]
+          msg = "\n".join(keep[:80]) or "\n".join(lines[-40:]) or "No RustGL output captured."
+          print("::error title=RustGL build failed::" + msg.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+          PY
 
       - name: Build JRE JAR files
         run: |
@@ -265,22 +285,42 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Build RustGL renderer
+        id: rustgl
         run: |
           set -o pipefail
           # librust_gl.so (source in rustgl/) is the RustGL desktop-GL-to-GLES renderer. Build it
           # with cargo-ndk and pack ZalithLauncher/libs/rustgl-release.aar before Gradle runs, so
           # every APK ships it like the other renderer libraries. See rustgl/README.md.
-          cargo install cargo-ndk --locked
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-          "$SDKMANAGER" "ndk;25.2.9519653" > /dev/null
-          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.2.9519653"
-          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
-          cd rustgl
-          cargo test -p renderer-core -p gl-compat
-          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release -p gl-compat
-          cd ..
-          python3 rustgl/pack_aar.py
+          {
+            cargo install cargo-ndk --locked
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "ndk;25.2.9519653" > /dev/null
+            export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.2.9519653"
+            echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+            cd rustgl
+            cargo test -p renderer-core -p gl-compat
+            cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release -p gl-compat
+            cd ..
+            python3 rustgl/pack_aar.py
+          } 2>&1 | tee "$RUNNER_TEMP/rustgl.log"
+
+      - name: Report RustGL build errors
+        if: failure() && steps.rustgl.outcome != 'success'
+        run: |
+          # The failing Rust/cargo lines as one annotation (same idea as "Report build errors")
+          python3 - "$RUNNER_TEMP/rustgl.log" <<'PY'
+          import os, re, sys
+          path = sys.argv[1]
+          lines = open(path, errors="replace").read().splitlines() if os.path.exists(path) else []
+          idx = set()
+          for i, l in enumerate(lines):
+              if re.search(r"^error|^warning: unused|error\[E\d+\]|error:|FAILED|failures:|panicked at|test result", l):
+                  idx.update(range(i, min(i + 4, len(lines))))
+          keep = [lines[i] for i in sorted(idx) if lines[i].strip()]
+          msg = "\n".join(keep[:80]) or "\n".join(lines[-40:]) or "No RustGL output captured."
+          print("::error title=RustGL build failed::" + msg.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+          PY
 
       - name: Build JRE JAR files
         run: |
