@@ -1,0 +1,10 @@
+rustgl-release.aar: RustGL, a desktop OpenGL 4.5 compatibility surface on top of OpenGL ES 3
+Source:  https://github.com/whaltermc/rust-renderer, vendored under rustgl/ at revision eb22559
+         with local fixes for low-end devices (see rustgl/README.md)
+License: upstream publishes no license file - used with the author's permission,
+         see THIRD_PARTY_NOTICES.md
+Build:   built by .github/workflows/android.yml (step "Build RustGL renderer"):
+         rustup stable + cargo-ndk, NDK 25.2.9519653 (the launcher's ndkVersion),
+         cargo ndk --release -p gl-compat, packed with rustgl/pack_aar.py
+         CI run: (see the run that produced this file)
+ABIs:    arm64-v8a armeabi-v7a x86 x86_64
