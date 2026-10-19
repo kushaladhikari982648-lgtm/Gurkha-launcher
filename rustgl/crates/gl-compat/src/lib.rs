@@ -707,19 +707,21 @@ pub(crate) fn probe_shader_target_is_es_for_test(version: &str) -> bool {
     version.trim_start().starts_with("OpenGL ES")
 }
 
-/// Resolved driver entry points, keyed by the address of the NUL-terminated name literal.
+/// Resolved driver entry points, keyed by the name's bytes.
 ///
 /// Resolving costs a `dlsym` (plus a `CString` allocation in the `eglGetProcAddress`
 /// fallback) and the previous code paid that on *every* forwarded GL call — a `dlsym` per
-/// draw call. Every name here is a `'static` literal, so its address identifies it. The
-/// whole table is dropped when the EGL context changes, because `eglGetProcAddress` may
-/// hand back context-specific pointers.
+/// draw call. The whole table is dropped when the EGL context changes, because
+/// `eglGetProcAddress` may hand back context-specific pointers.
 ///
 /// The table is a hash map rather than a linear scan: this runs on every forwarded GL call,
 /// and on low-end SoCs (the Cortex-A53 cores paired with PowerVR GE8300-class GPUs) the
 /// scan of a ~200-entry vec under the mutex cost more than the draw dispatch it guarded.
-/// (Wrapped in an Option because `HashMap::new` is not a const fn and this is a static.)
-type DriverCache = std::collections::HashMap<(usize, usize), usize>;
+/// Keyed by the name contents (not the literal's address): the same spelling can sit at two
+/// addresses in one binary (string constants are only merged in optimized builds), and a
+/// second entry for one name would defeat the point of the cache.
+/// (The map is wrapped in an Option because `HashMap::new` is not a const fn and this is a static.)
+type DriverCache = std::collections::HashMap<&'static [u8], usize>;
 static DRIVER_CACHE: Mutex<Option<DriverCache>> = Mutex::new(None);
 
 /// Drops every memoized driver entry point. Called when the GL context changes.
@@ -733,11 +735,11 @@ fn clear_driver_cache() {
 /// Memoized [`driver_fn`]. Callers pass the same `'static` name every time.
 pub(crate) fn driver_fn_cached<T: Copy>(name: &'static str) -> Option<T> {
     trace_call(name);
-    let key = (name.as_ptr() as usize, name.len());
+    let key = name.as_bytes();
     {
         let mut guard = DRIVER_CACHE.lock().unwrap_or_else(|e| e.into_inner());
         let cache = guard.get_or_insert_with(DriverCache::new);
-        if let Some(addr) = cache.get(&key) {
+        if let Some(addr) = cache.get(key) {
             if *addr == 0 {
                 return None;
             }
@@ -3346,7 +3348,7 @@ mod tests {
         let _lock = global_test_lock();
         // The regression this guards: driver_fn used to run dlsym (plus a CString malloc)
         // on every forwarded GL call, so a draw-heavy frame paid it per draw. The cache is
-        // keyed by the address of the name literal, so repeated lookups must not re-resolve.
+        // keyed by the name, so repeated lookups must not re-resolve.
         fn cache_len() -> usize {
             // Scoped so the guard is released: std::sync::Mutex is not reentrant.
             DRIVER_CACHE
