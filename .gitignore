@@ -20,3 +20,8 @@ local.properties
 
 # Python renderer test scratch files
 /rustgl/**/__pycache__/
+
+# PowerVR renderer build products (AAR is shipped under ZalithLauncher/libs/)
+/powervr/.work/
+/powervr/artifacts/
+/powervr/**/__pycache__/

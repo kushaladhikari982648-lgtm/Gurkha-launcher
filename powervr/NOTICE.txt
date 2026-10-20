@@ -1,0 +1,26 @@
+PowerVR Unified (experimental)
+Source project: https://github.com/kushaladhikari982648-lgtm/Powervr-the-poop
+Revision: 1999cd5ee8245b20cacd322eeab6ee2d00a81110
+
+Krypton/NG-GL4ES base: BZLZHH/NG-GL4ES @ 6e153a1622a8d9ef903f7975aafbef2453571bab.
+Based on GL4ES (MIT); bundled dependencies retain their own notices, including
+glslang, SPIRV-Cross, cJSON and code from MobileGlues.
+The integrated multidraw module is derived from MojoLauncher/LTW
+@ 2f4dbaaa2494a9fe73d78dda859301b5c060fdd3:
+Copyright (c) 2025 artDev, SerpentSpirale, CADIndie.
+Adaptation (c) 2026 Powervr-the-poop contributors. SPDX-License-Identifier: LGPL-3.0-only.
+The source project's original build tooling is MIT; its LICENSE is included.
+The root tooling license does not relicense the incorporated renderer code.
+
+Full modified corresponding source, recursive submodules, and upstream copyright
+and license files are included in corresponding-source.tar.gz inside each ABI's
+powervr-unified.zip in the powervr-unified-sources artifact from the same Gurkha
+Actions run as the APK. Tagged releases also attach those source-containing ZIPs.
+Build recipes/pins and launcher adapter: Gurkha-launcher/powervr and
+ZalithLauncher/src/main/java/com/movtery/zalithlauncher/renderer/renderers/PowerVRRenderer.kt.
+When redistributing APKs, provide those source packages with them and preserve
+applicable notices and LGPL library replacement/relinking rights. Keep the native
+renderer a separate shared library; do not replace Android's system GLES libraries.
+
+This is a partial integration, not a complete LTW merger. GLES 3 is required.
+No measured speedup or universal Minecraft compatibility is claimed.

@@ -1,0 +1,8 @@
+{
+  "description": "Conservative GLES2 baseline; not device-benchmarked.",
+  "environment": {
+    "LIBGL_ES": "2",
+    "LIBGL_GL": "21",
+    "LIBGL_BATCH": "0"
+  }
+}

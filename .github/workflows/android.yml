@@ -53,11 +53,55 @@ jobs:
           print("::error title=RustGL rendering regression::" + text)
           PYTEST
 
+  PowerVRRenderer:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build pinned PowerVR Unified libraries
+        run: |
+          set -o pipefail
+          {
+            python3 -m venv "$RUNNER_TEMP/powervr-tools"
+            "$RUNNER_TEMP/powervr-tools/bin/pip" install cmake==3.31.6
+            export PATH="$RUNNER_TEMP/powervr-tools/bin:$PATH"
+            python3 -m unittest discover -s powervr/tests -v
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
+            NDK="$ANDROID_HOME/ndk/28.2.13676358"
+            for ABI in arm64-v8a armeabi-v7a; do
+              python3 powervr/tools/build_unified.py --ndk "$NDK" --abi "$ABI" --jobs 2
+            done
+            python3 powervr/verify_native.py "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+            python3 powervr/pack_aar.py
+          } 2>&1 | tee "$RUNNER_TEMP/powervr.log"
+      - name: Report PowerVR build failure
+        if: failure()
+        run: |
+          python3 - "$RUNNER_TEMP/powervr.log" <<'PYERROR'
+          import pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text(errors="replace") if path.exists() else "Build log missing"
+          text = text[-3000:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print("::error title=PowerVR renderer build failed::" + text)
+          PYERROR
+      - uses: actions/upload-artifact@v7
+        with:
+          name: powervr-release-aar
+          path: |
+            ZalithLauncher/libs/powervr-release.aar
+            ZalithLauncher/libs/powervr-release.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: powervr-unified-sources
+          path: powervr/artifacts/*/powervr-unified.zip
+          if-no-files-found: error
+          retention-days: 90
+
   BuildDebug:
-    needs: RustGLChecks
+    needs: [RustGLChecks, PowerVRRenderer]
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-22.04
-    # contents: write lets the "Commit the RustGL renderer library" step push the built AAR
+    # contents: write lets the renderer-library step update the checked-in AARs
     permissions:
       contents: write
     strategy:
@@ -68,6 +112,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Download built PowerVR renderer
+        uses: actions/download-artifact@v8
+        with:
+          name: powervr-release-aar
+          path: ZalithLauncher/libs
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -237,6 +287,9 @@ jobs:
           print("::error title=Build failed::" + msg.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
           PY
 
+      - name: Check PowerVR renderer APK contents
+        run: python3 powervr/check_apk.py ZalithLauncher/build/outputs/apk
+
       - name: Upload Debug ${{ matrix.arch }}
         uses: actions/upload-artifact@v7
         with:
@@ -250,18 +303,22 @@ jobs:
           name: rustgl-release-aar
           path: ZalithLauncher/libs/rustgl-release.aar
 
-      - name: Commit the RustGL renderer library
+      - name: Commit built renderer libraries
         if: matrix.arch == 'all' && github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # The renderer AARs live in the repository (see ng_gl4es-release.txt), so keep
-          # rustgl-release.aar next to them for local Gradle builds. Commit it only when the
-          # rustgl/ source changed, otherwise rebuilds would make a commit each push.
+          # RustGL and PowerVR AARs next to them for local Gradle builds. The source-tree
+          # gates avoid bot commits for unchanged renderer sources.
           TREE=$(git rev-parse "HEAD:rustgl")
           CURRENT=$(sed -n 's/^Source-tree: \([0-9a-f]*\).*/\1/p' ZalithLauncher/libs/rustgl-release.txt)
-          if [ "$TREE" = "$CURRENT" ] && git cat-file -e "HEAD:ZalithLauncher/libs/rustgl-release.aar" 2>/dev/null; then
-            echo "rustgl-release.aar is already committed for rustgl source tree $TREE"
+          PV_TREE=$(git rev-parse "HEAD:powervr")
+          PV_CURRENT=$(git show HEAD:ZalithLauncher/libs/powervr-release.txt 2>/dev/null | sed -n 's/^Source-tree: //p' || true)
+          if [ "$TREE" = "$CURRENT" ] && [ "$PV_TREE" = "$PV_CURRENT" ] &&
+             git cat-file -e "HEAD:ZalithLauncher/libs/rustgl-release.aar" 2>/dev/null &&
+             git cat-file -e "HEAD:ZalithLauncher/libs/powervr-release.aar" 2>/dev/null; then
+            echo "Both renderer AARs are already committed for these sources"
             exit 0
           fi
           python3 - "$TREE" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" <<'PYDOC'
@@ -279,12 +336,13 @@ jobs:
           pathlib.Path("ZalithLauncher/libs/rustgl-release.txt").write_text("\n".join(out) + "\n")
           PYDOC
           set -x
-          trap 'echo "::error title=RustGL AAR commit failed::command failed with exit $? (see the step log)"' ERR
+          trap 'echo "::error title=Renderer AAR commit failed::command failed with exit $? (see the step log)"' ERR
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ZalithLauncher/libs/rustgl-release.aar ZalithLauncher/libs/rustgl-release.txt
-          git commit -m "Build: rustgl-release.aar for rustgl $TREE [skip ci]"
-          git push origin "HEAD:$GITHUB_REF_NAME" || echo "::warning title=RustGL AAR not committed::The workflow token cannot push to this branch; download the rustgl-release-aar artifact from this run instead."
+          git add ZalithLauncher/libs/rustgl-release.aar ZalithLauncher/libs/rustgl-release.txt ZalithLauncher/libs/powervr-release.aar ZalithLauncher/libs/powervr-release.txt
+          git diff --cached --quiet && exit 0
+          git commit -m "Build: RustGL and PowerVR renderer libraries [skip ci]"
+          git push origin "HEAD:$GITHUB_REF_NAME" || echo "::warning title=Renderer AARs not committed::The workflow token cannot push to this branch; download the rustgl-release-aar and powervr-release-aar artifacts from this run instead."
 
   # Runs once before the five release builds so that a missing secret or a wrong tag gives one clear error.
   ReleasePreflight:
@@ -346,7 +404,7 @@ jobs:
           rm -f "$KEYSTORE"
 
   BuildRelease:
-    needs: [ReleasePreflight, RustGLChecks]
+    needs: [ReleasePreflight, RustGLChecks, PowerVRRenderer]
     runs-on: ubuntu-22.04
     strategy:
       matrix:
@@ -359,6 +417,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Download built PowerVR renderer
+        uses: actions/download-artifact@v8
+        with:
+          name: powervr-release-aar
+          path: ZalithLauncher/libs
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -439,6 +503,9 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/gurkha-release.jks"
 
+      - name: Check PowerVR renderer APK contents
+        run: python3 powervr/check_apk.py ZalithLauncher/build/outputs/apk
+
       - name: Upload Release ${{ matrix.arch }}
         uses: actions/upload-artifact@v7
         with:
@@ -471,10 +538,20 @@ jobs:
           path: out
           merge-multiple: true
 
+      - name: Download PowerVR corresponding source
+        uses: actions/download-artifact@v8
+        with:
+          name: powervr-unified-sources
+          path: powervr-sources
+      - name: Include corresponding source with release APKs
+        run: |
+          cp powervr-sources/arm64-v8a/powervr-unified.zip out/powervr-unified-arm64-v8a.zip
+          cp powervr-sources/armeabi-v7a/powervr-unified.zip out/powervr-unified-armeabi-v7a.zip
+
       - name: Checksums
         working-directory: out
         run: |
-          sha256sum *.apk > SHA256SUMS.txt
+          sha256sum *.apk *.zip > SHA256SUMS.txt
           ls -l
           cat SHA256SUMS.txt
 

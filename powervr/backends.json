@@ -1,0 +1,20 @@
+{
+  "krypton": {
+    "repository": "https://github.com/BZLZHH/NG-GL4ES.git",
+    "commit": "6e153a1622a8d9ef903f7975aafbef2453571bab",
+    "license": "MIT plus bundled third-party licenses",
+    "cmake_path": ".",
+    "target": "ng_gl4es",
+    "library": "libng_gl4es.so",
+    "environment": {"LIBGL_ES": "3", "POJAV_RENDERER": "opengles3"}
+  },
+  "ltw": {
+    "repository": "https://github.com/MojoLauncher/LTW.git",
+    "commit": "2f4dbaaa2494a9fe73d78dda859301b5c060fdd3",
+    "license": "LGPL-3.0 plus bundled third-party licenses",
+    "cmake_path": "ltw/src/main/tinywrapper",
+    "target": "ltw",
+    "library": "libltw.so",
+    "environment": {"LIBGL_ES": "3", "POJAV_RENDERER": "opengles3_ltw"}
+  }
+}

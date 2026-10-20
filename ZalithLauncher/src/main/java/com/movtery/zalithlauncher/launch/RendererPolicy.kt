@@ -9,6 +9,7 @@ import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.feature.version.Version
 import com.movtery.zalithlauncher.renderer.RendererInterface
 import com.movtery.zalithlauncher.renderer.Renderers
+import com.movtery.zalithlauncher.renderer.renderers.PowerVRRenderer
 import com.movtery.zalithlauncher.renderer.renderers.KryptonRenderer
 import com.movtery.zalithlauncher.renderer.renderers.LTWRenderer
 import com.movtery.zalithlauncher.ui.dialog.LifecycleAwareTipDialog
@@ -84,8 +85,8 @@ object RendererPolicy {
         }
 
         when (current.getRendererId()) {
-            KryptonRenderer.ID -> {
-                // Krypton Wrapper doesn't work from 26.3-snapshot-3 on (Amethyst 1.1.7 release notes)
+            KryptonRenderer.ID, PowerVRRenderer.ID -> {
+                // Krypton and its PowerVR Unified derivative do not support 26.3-snapshot-3 onward (Amethyst 1.1.7 release notes)
                 if (!releaseDate.before(KRYPTON_END) && ltw != null) {
                     switchTo(activity, ltw, activity.getString(R.string.renderer_policy_use_ltw, versionName))
                 }

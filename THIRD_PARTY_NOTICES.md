@@ -14,6 +14,12 @@ projects already ship, it bundles:
 | SPIRV-Cross | `ZalithLauncher/libs/spirv-cross-natives.aar` | Apache-2.0 | [KhronosGroup/SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross), build used by Amethyst |
 | Krypton Wrapper (NG-GL4ES) OpenGL renderer | `ZalithLauncher/libs/ng_gl4es-release.aar` | MIT (based on gl4es, MIT); contains glslang (BSD-3-Clause and others), SPIRV-Cross (Apache-2.0), cJSON (MIT) and code from MobileGlues (LGPL-2.1) | [BZLZHH/NG-GL4ES](https://github.com/BZLZHH/NG-GL4ES) R0.4.5, built for this launcher, details in `ZalithLauncher/libs/ng_gl4es-release.txt` |
 | RustGL OpenGL renderer (`librust_gl.so`) | `ZalithLauncher/libs/rustgl-release.aar`, source in `rustgl/` | **No license file upstream** — used with the author's permission; confirm terms with [whaltermc/rust-renderer](https://github.com/whaltermc/rust-renderer) before redistribution | [whaltermc/rust-renderer](https://github.com/whaltermc/rust-renderer), vendored and patched for low-end devices, details in `rustgl/README.md` and `ZalithLauncher/libs/rustgl-release.txt` |
+| PowerVR Unified renderer (`libpowervr.so`) | `ZalithLauncher/libs/powervr-release.aar`, integration in `powervr/` | Krypton/bundled dependency licenses; LTW-derived module **LGPL-3.0-only**; source-project tooling MIT | [Powervr-the-poop](https://github.com/kushaladhikari982648-lgtm/Powervr-the-poop) @ `1999cd5ee8245b20cacd322eeab6ee2d00a81110`; pinned base/port revisions in `powervr/backends.json` |
+
+PowerVR's complete modified corresponding source, recursive submodules and original notices
+are distributed in the **powervr-unified-sources** CI artifact and the source-containing ZIPs
+attached to tagged releases. Keep those ZIPs with redistributed APKs; see `powervr/NOTICE.txt`
+and `powervr/README.md`.
 
 The launcher-side SDL integration (`CallbackBridge`, `MinecraftGLSurface`, `SdlSupport`, the
 `nativeNotifyLauncher` bridge) is ported from Amethyst-Android (LGPL-3.0). `ltw_sdl_egl.c` is original
