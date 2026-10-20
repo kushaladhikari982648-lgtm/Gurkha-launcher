@@ -96,12 +96,15 @@ def compile_src(text, stage, label, expect_success=True):
     return shader
 
 fixtures = (root / 'crates/shader-translate/tests/mc_shader_fixtures.rs').read_text()
+fixture_count = 0
 for match in re.finditer(r'const (\w+): &str = r(#?)"(.*?)"\2;', fixtures, re.S):
+    fixture_count += 1
     name, _, text = match.groups()
     stage = 0x8B31 if '_VSH_' in name else 0x8B30
     shader = compile_src(text, stage, name)
     delete_shader(shader)
     print(f'PASS: GLES compile {name}', flush=True)
+assert fixture_count == 6, f'Expected all six shader fixtures, found {fixture_count}'
 shader = compile_src('#version 330\nvoid main(){ EmitVertex(); }', 0x8B31,
                      'unsupported stage must fail instead of becoming a blank shader', False)
 delete_shader(shader)
@@ -199,23 +202,36 @@ bind_buffer = gl('glBindBuffer',None,U,U)
 bind_base = gl('glBindBufferBase',None,U,U,U)
 subdata = gl('glBufferSubData',None,U,Z,Z,P)
 values = (F * 20)(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1, 1,0,0,1)
-for immutable in (False, True):
+for allocation in ("mutable", "immutable", "named immutable"):
+    immutable = allocation != "mutable"
     ubo = U()
     gl('glGenBuffers',None,I,P)(1,C.byref(ubo))
     bind_buffer(0x8A11,ubo.value)
-    if immutable:
+    if allocation == "named immutable":
+        before = I()
+        get_i(0x8894, C.byref(before))
+        gl('glNamedBufferStorage',None,U,Z,P,U)(ubo.value,C.sizeof(values),values,0x0100)
+        after = I()
+        get_i(0x8894, C.byref(after))
+        assert before.value == after.value, 'named storage changed ARRAY_BUFFER binding'
+    elif immutable:
         gl('glBufferStorage',None,U,Z,P,U)(0x8A11,C.sizeof(values),values,0x0100)
     else:
         gl('glBufferData',None,U,Z,P,U)(0x8A11,C.sizeof(values),values,0x88E8)
     bind_base(0x8A11,0,ubo.value)
     background()
     draw(4,0,3)
-    pixel((255,0,0,255), f'UBO initial draw immutable={immutable}')
+    pixel((255,0,0,255), f'UBO initial draw ({allocation})')
     green = (F * 4)(0,1,0,1)
-    subdata(0x8A11,64,16,green)
+    if allocation == "named immutable":
+        gl('glNamedBufferSubData',None,U,Z,Z,P)(ubo.value,64,16,green)
+        get_i(0x8894, C.byref(after))
+        assert before.value == after.value, 'named subdata changed ARRAY_BUFFER binding'
+    else:
+        subdata(0x8A11,64,16,green)
     background()
     draw(4,0,3)
-    pixel((0,255,0,255), f'UBO subdata update immutable={immutable}')
+    pixel((0,255,0,255), f'UBO subdata update ({allocation})')
     if immutable:
         gl('glBufferData',None,U,Z,P,U)(0x8A11,C.sizeof(values),values,0x88E8)
         assert get_error() == 0x0502, 'immutable storage must reject reallocation'

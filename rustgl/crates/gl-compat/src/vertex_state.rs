@@ -689,9 +689,15 @@ pub unsafe extern "C" fn glNamedBufferSubData(
         errors().set(GL_INVALID_VALUE);
         return;
     }
-    if let Some(bind) = driver_fn_cached::<unsafe extern "C" fn(u32, u32)>("glBindBuffer") {
-        bind(GL_ARRAY_BUFFER, buffer);
+    let Some(bind) = driver_fn_cached::<unsafe extern "C" fn(u32, u32)>("glBindBuffer") else {
+        errors().set(GL_INVALID_OPERATION);
+        return;
+    };
+    let mut previous = 0;
+    if let Some(get) = driver_fn_cached::<unsafe extern "C" fn(u32, *mut i32)>("glGetIntegerv") {
+        get(0x8894, &mut previous);
     }
+    bind(GL_ARRAY_BUFFER, buffer);
     if let Some(f) = driver_fn_cached::<unsafe extern "C" fn(u32, isize, isize, *const c_void)>(
         "glBufferSubData",
     ) {
@@ -725,6 +731,7 @@ pub unsafe extern "C" fn glNamedBufferSubData(
             }
         }
     });
+    bind(GL_ARRAY_BUFFER, previous as u32);
 }
 
 #[no_mangle]
