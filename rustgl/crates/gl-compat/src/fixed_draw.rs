@@ -27,7 +27,6 @@ const GL_FRAGMENT_SHADER: u32 = 0x8B30;
 const GL_QUADS: u32 = 0x0007;
 const GL_TRIANGLES: u32 = 0x0004;
 const GL_UNSIGNED_INT: u32 = 0x1405;
-const GL_TEXTURE_2D: u32 = 0x0DE1;
 const GL_ALPHA_TEST: u32 = 0x0BC0;
 
 const VS_BASE: &str = "#version 300 es

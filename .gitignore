@@ -17,3 +17,6 @@ local.properties
 
 # RustGL renderer (rustgl/): Cargo build output, the packed AAR is ZalithLauncher/libs/rustgl-release.aar
 /rustgl/target/
+
+# Python renderer test scratch files
+/rustgl/**/__pycache__/
