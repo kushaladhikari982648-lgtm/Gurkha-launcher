@@ -72,7 +72,7 @@ pub struct GlesCapabilities {
 
 impl GlesCapabilities {
     pub fn has(&self, name: &[u8]) -> bool {
-        self.extensions.contains(name)
+        self.extensions.contains(name.strip_suffix(&[0]).unwrap_or(name))
     }
 
     /// True when the driver exposes an entry point in our bridge, i.e. the context is live.
@@ -123,7 +123,6 @@ const GL_MAX_COMPUTE_WORK_GROUP_COUNT: u32 = 0x91BE;
 const GL_MAX_COMPUTE_WORK_GROUP_SIZE: u32 = 0x91BF;
 const GL_MAX_COMPUTE_UNIFORM_COMPONENTS: u32 = 0x8263;
 const GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS: u32 = 0x90EB;
-const GL_MAX_DRAW_INDIRECT_COUNT: u32 = 0x88FC;
 
 /// Reads extensions and limits from the current context. Returns an invalid `GlesCapabilities` when no
 /// context is current, so callers can fall back rather than trust empty answers.
@@ -204,17 +203,23 @@ pub fn probe() -> GlesCapabilities {
     limit(GL_MAX_TEXTURE_IMAGE_UNITS, &mut caps.max_texture_units);
     limit(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &mut caps.max_combined_texture_units);
     limit(GL_MAX_UNIFORM_BLOCK_SIZE, &mut caps.max_uniform_block_size);
-    limit(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &mut caps.max_anisotropy);
+    if caps.has(b"GL_EXT_texture_filter_anisotropic") {
+        limit(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &mut caps.max_anisotropy);
+    }
 
     // Compute shader detection: ES 3.1+ or GL_EXT_compute_shader extension
     let has_compute = caps.es_at_least(3, 1) || caps.has(b"GL_EXT_compute_shader\0");
     caps.has_compute_shader = has_compute;
     if has_compute {
-        let mut v = [0i32; 3];
-        unsafe { get_int(GL_MAX_COMPUTE_WORK_GROUP_COUNT, v.as_mut_ptr()) };
-        caps.max_compute_work_group_count = v;
-        unsafe { get_int(GL_MAX_COMPUTE_WORK_GROUP_SIZE, v.as_mut_ptr()) };
-        caps.max_compute_work_group_size = v;
+        // These are indexed limits, not three-element glGetIntegerv queries.
+        if let Some(get_indexed) = driver_fn_cached::<unsafe extern "C" fn(u32, u32, *mut i32)>("glGetIntegeri_v") {
+            for axis in 0..3 {
+                unsafe {
+                    get_indexed(GL_MAX_COMPUTE_WORK_GROUP_COUNT, axis as u32, &mut caps.max_compute_work_group_count[axis]);
+                    get_indexed(GL_MAX_COMPUTE_WORK_GROUP_SIZE, axis as u32, &mut caps.max_compute_work_group_size[axis]);
+                }
+            }
+        }
         limit(GL_MAX_COMPUTE_UNIFORM_COMPONENTS, &mut caps.max_compute_uniform_components);
         limit(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &mut caps.max_compute_work_group_invocations);
     } else {
@@ -227,11 +232,9 @@ pub fn probe() -> GlesCapabilities {
     // Indirect draw detection: ES 3.2+ or GL_EXT_multi_draw_indirect extension
     let has_indirect = caps.es_at_least(3, 2) || caps.has(b"GL_EXT_multi_draw_indirect\0");
     caps.has_indirect_draw = has_indirect;
-    if has_indirect {
-        limit(GL_MAX_DRAW_INDIRECT_COUNT, &mut caps.max_draw_indirect_commands);
-    } else {
-        caps.max_draw_indirect_commands = 0;
-    }
+    // GLES has no GL_MAX_DRAW_INDIRECT_COUNT query. In particular 0x88FC is
+    // not such a limit; probing it leaves GL_INVALID_ENUM in the application's state.
+    caps.max_draw_indirect_commands = 0;
 
 
     // Texture buffer detection: ES 3.2+ or GL_EXT_texture_buffer extension
@@ -310,7 +313,7 @@ pub fn supported_aliases(c: &GlesCapabilities) -> Vec<&'static [u8]> {
         out.push(ext!("GL_ARB_program_interface_query"));
     }
     // Indirect draws (multi-draw indirect) are ES 3.2+ or GL_EXT_multi_draw_indirect
-    if c.es_at_least(3, 2) || c.has(ext!("GL_EXT_multi_draw_indirect\0")) {
+    if c.es_at_least(3, 2) || c.has(ext!("GL_EXT_multi_draw_indirect")) {
         out.push(ext!("GL_ARB_multi_draw_indirect"));
     }
     if c.has(ext!("GL_EXT_clip_control")) {
@@ -366,19 +369,19 @@ pub fn supported_aliases(c: &GlesCapabilities) -> Vec<&'static [u8]> {
         out.push(ext!("GL_ARB_shader_storage_buffer_object"));
     }
     // Internalformat query 2 via ES 3.1+ or GL_EXT_internalformat_query2
-    if c.es_at_least(3, 1) || c.has(ext!("GL_EXT_internalformat_query2\0")) {
+    if c.es_at_least(3, 1) || c.has(ext!("GL_EXT_internalformat_query2")) {
         out.push(ext!("GL_ARB_internalformat_query2"));
     }
     // Stencil texturing via ES 3.2+ or GL_EXT_stencil_texturing
-    if c.es_at_least(3, 2) || c.has(ext!("GL_EXT_stencil_texturing\0")) {
+    if c.es_at_least(3, 2) || c.has(ext!("GL_EXT_stencil_texturing")) {
         out.push(ext!("GL_ARB_stencil_texturing"));
     }
     // Texture mirror clamp to edge via ES 3.2+ or GL_EXT_texture_mirror_clamp_to_edge
-    if c.es_at_least(3, 2) || c.has(ext!("GL_EXT_texture_mirror_clamp_to_edge\0")) {
+    if c.es_at_least(3, 2) || c.has(ext!("GL_EXT_texture_mirror_clamp_to_edge")) {
         out.push(ext!("GL_ARB_texture_mirror_clamp_to_edge"));
     }
     // Texture stencil8 via ES 3.2+ or GL_EXT_texture_stencil8
-    if c.es_at_least(3, 2) || c.has(ext!("GL_EXT_texture_stencil8\0")) {
+    if c.es_at_least(3, 2) || c.has(ext!("GL_EXT_texture_stencil8")) {
         out.push(ext!("GL_ARB_texture_stencil8"));
     }
     out
@@ -399,7 +402,7 @@ mod tests {
             valid: true,
             es_major: major,
             es_minor: minor,
-            extensions: extensions.iter().map(|e| (*e).to_vec()).collect(),
+            extensions: extensions.iter().map(|e| e.strip_suffix(&[0]).unwrap_or(e).to_vec()).collect(),
             max_anisotropy: aniso,
             ..Default::default()
         }
@@ -411,6 +414,14 @@ mod tests {
             .iter()
             .map(|e| String::from_utf8_lossy(e.strip_suffix(&[0u8]).unwrap_or(e)).into_owned())
             .collect()
+    }
+
+    #[test]
+    fn extension_lookup_matches_the_non_nul_bytes_returned_by_cstr() {
+        let c = caps_with(&[b"GL_EXT_buffer_storage"], 3, 0, 0);
+        assert!(c.has(b"GL_EXT_buffer_storage"));
+        assert!(c.has(b"GL_EXT_buffer_storage\0"));
+        assert!(!c.has(b"GL_EXT_not_supported\0"));
     }
 
     #[test]
