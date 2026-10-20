@@ -1,20 +1,38 @@
-# PowerVR Unified in Gurkha Launcher
+# Proton Renderer in Gurkha Launcher
 
-Built-in renderer: **PowerVR Unified (Experimental)**, ID `opengles3_powervr`.
-Select it in a Minecraft version's renderer settings and fully restart the game.
-No renderer-plugin APK or local ZIP import is needed.
+Built-in renderer: **Proton Renderer**, ID `opengles3_powervr`, built from the
+upstream **PowerVR Unified r2** sources. Select it in a Minecraft version's renderer
+settings and fully restart the game. No renderer-plugin APK or local ZIP import is
+needed for the built-in entry.
+
+The display name follows the upstream repository (`proton-renderer`, renamed from
+`Powervr-the-poop`). The renderer ID, UUID, `libpowervr.so` name and
+`ZalithLauncher/libs/powervr-release.aar` stay unchanged, so existing renderer
+selections and the packaging checks keep working.
 
 ## Source and scope
 
 Vendored build tooling/native port from:
 
-- https://github.com/kushaladhikari982648-lgtm/Powervr-the-poop
+- https://github.com/kushaladhikari982648-lgtm/proton-renderer
+  (formerly https://github.com/kushaladhikari982648-lgtm/Powervr-the-poop)
 - Development branch `arena/b3c523aa-powervr-the-poop`, pinned revision
-  `1999cd5ee8245b20cacd322eeab6ee2d00a81110` (`main` only had a placeholder README).
+  `8ad4affab77acae64df40de7aac49af6a9d02295` (**r2**; `main` only has a placeholder README).
 - **Primary unified build**, not the older GL4ES baseline or dual-backend experiment.
 - Krypton/NG-GL4ES `6e153a1622a8d9ef903f7975aafbef2453571bab` with an LTW-derived
   indirect-multidraw module compiled into the same library. See `backends.json`,
-  `source-lock.json`, `README-upstream.md`, and `docs/UNIFIED.md`.
+  `source-lock.json`, `README-upstream.md`, `docs/UNIFIED.md` and `docs/GE8300.md`.
+
+### What changed in r2
+
+`native/pv_context_cache.h` stores the `GL_EXT_multi_draw_indirect` capability and the
+resolved host entry points inside each Krypton `glstate_s` (zero-initialized by
+`NewGLState`, never shared between contexts) instead of re-querying them on every
+draw. Context switches and recreated contexts therefore cannot reuse another
+context's capabilities, and no process-global cache exists. `tests/native_multidraw.c`
+asserts zero extra extension queries/symbol lookups over 10,000 subsequent draws and
+checks two contexts with different capabilities. This is a call-count test, not an
+FPS measurement; see `docs/GE8300.md` before judging performance.
 
 This is a partial feature port, not a merger of all LTW functionality. There is
 one native renderer, one GL namespace/state tracker, and no runtime backend switch.
@@ -53,13 +71,16 @@ python3 powervr/pack_aar.py
 
 `ZalithLauncher/libs/powervr-release.aar` is built and committed back by the universal
 push build, like RustGL. Its `.txt` sidecar records the source-tree hash, run URL,
-ABIs and binary checksums. An APK packaging check requires PowerVR in every ARM APK
-and forbids an accidental x86 copy. ELF architecture/checksum, bridge exports and
-unbundled shared dependencies are checked before packaging.
+ABIs and binary checksums. This checkout's checked-in AAR was repacked from the
+upstream r2 unified CI builds of the pinned revision (see the sidecar). An APK
+packaging check requires the PowerVR library in every ARM APK and forbids an
+accidental x86 copy. ELF architecture/checksum, bridge exports and unbundled shared
+dependencies are checked before packaging.
 
 Local changes to upstream: Gurkha AAR packager and integration checks, this README,
-NOTICE and source-lock. The native port and upstream build scripts are unchanged.
-Generated sources/build products in `.work/` and `artifacts/` are ignored by Git.
+NOTICE and source-lock. The native port and upstream build scripts are unchanged
+from r2. Generated sources/build products in `.work/` and `artifacts/` are ignored
+by Git.
 
 ## Licenses and corresponding source
 
@@ -75,6 +96,12 @@ recursive submodules and original license files) archived before compilation.
   Actions artifact retention is finite. Preserve LGPL replacement/relinking rights.
 - The APK includes a PowerVR notice, license texts and per-ABI build metadata.
 
+Upstream also publishes fresh per-ABI original-Zalith import ZIPs
+(`powervr-zalith-r2-<abi>` artifacts) from every unified build; `tools/package_zalith.py`
+here produces the same format with the **Proton Renderer (experimental)** name, and
+its repackaging workflow requires an explicit native run ID so it cannot silently
+ship r1 binaries.
+
 ## Validation boundary
 
 Native/build/packaging tests and Android compilation do not prove visual correctness
@@ -82,3 +109,4 @@ on a PowerVR GE8300. Test a clean game instance without mods/shader packs, verif
 GUI/text, terrain, entities and resizing, and retain the launcher log. Retest both
 32-bit and 64-bit Android where available. If it fails, switch back to the previous
 renderer; do not replace system GLES libraries or silently switch engines mid-process.
+`docs/GE8300.md` describes a reproducible r1/r2 A/B procedure and diagnostic settings.

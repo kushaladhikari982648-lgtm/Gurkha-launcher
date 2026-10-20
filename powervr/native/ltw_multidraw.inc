@@ -16,8 +16,8 @@ typedef void (*pv_mdi_arrays_fn)(GLenum, const void *, GLsizei, GLsizei);
 typedef const GLubyte *(*pv_stringi_fn)(GLenum, GLuint);
 typedef void (*pv_integer_fn)(GLenum, GLint *);
 
-/* Use Krypton's host resolver, not RTLD_DEFAULT. Recheck capability for
- * the current context rather than caching capabilities across contexts. */
+/* Use Krypton's host resolver, not RTLD_DEFAULT. Capability and entry points
+ * are cached in the owning GL context, never a process-global static. */
 static void *pv_host_proc(const char *name) {
     if (!gles) return NULL;
     void *fn = proc_address(gles, name);
@@ -29,16 +29,29 @@ static void *pv_host_proc(const char *name) {
 }
 
 static int pv_has_mdi(void) {
+    struct pv_mdi_cache *cache = &glstate->pv_mdi;
+    if (cache->initialized) return cache->supported;
+    /* Do not poison the cache if the host library is not loaded yet. */
+    if (!gles) return 0;
     pv_integer_fn get = (pv_integer_fn)pv_host_proc("glGetIntegerv");
     pv_stringi_fn stringi = (pv_stringi_fn)pv_host_proc("glGetStringi");
     if (!get || !stringi) return 0;
+    cache->get_integer = (void *)get;
     GLint count = 0;
     get(GL_NUM_EXTENSIONS, &count);
     for (GLint i = 0; i < count; ++i) {
         const char *ext = (const char *)stringi(GL_EXTENSIONS, (GLuint)i);
-        if (ext && strcmp(ext, "GL_EXT_multi_draw_indirect") == 0) return 1;
+        if (ext && strcmp(ext, "GL_EXT_multi_draw_indirect") == 0) {
+            cache->supported = 1;
+            break;
+        }
     }
-    return 0;
+    if (cache->supported) {
+        cache->elements = pv_host_proc("glMultiDrawElementsIndirectEXT");
+        cache->arrays = pv_host_proc("glMultiDrawArraysIndirectEXT");
+    }
+    cache->initialized = 1;
+    return cache->supported;
 }
 
 static int pv_mdi_validate(const void *offset, GLsizei draws, GLsizei stride,
@@ -63,7 +76,7 @@ static int pv_mdi_ready(const void *offset, GLsizei draws, GLsizei stride,
     if (glstate->list.pending) gl4es_flush();
     if (glstate->list.active) { errorShim(GL_INVALID_OPERATION); return 0; }
     if (!pv_has_mdi()) { errorShim(GL_INVALID_OPERATION); return 0; }
-    pv_integer_fn get = (pv_integer_fn)pv_host_proc("glGetIntegerv");
+    pv_integer_fn get = (pv_integer_fn)glstate->pv_mdi.get_integer;
     GLint binding = 0;
     get(GL_DRAW_INDIRECT_BUFFER_BINDING, &binding);
     if (!binding) { errorShim(GL_INVALID_OPERATION); return 0; }
@@ -77,7 +90,7 @@ void APIENTRY_GL4ES gl4es_glMultiDrawElementsIndirect(GLenum mode, GLenum type,
     }
     if (!pv_mdi_ready(indirect, drawcount, stride, 20)) return;
     pv_mdi_elements_fn draw = (pv_mdi_elements_fn)
-        pv_host_proc("glMultiDrawElementsIndirectEXT");
+        glstate->pv_mdi.elements;
     if (!draw) { errorShim(GL_INVALID_OPERATION); return; }
     scratch_t scratch = {0};
     realize_glenv(mode == GL_POINTS, 0, 0, type, indirect, &scratch);
@@ -98,7 +111,7 @@ void APIENTRY_GL4ES gl4es_glMultiDrawArraysIndirect(GLenum mode, const void *ind
         GLsizei drawcount, GLsizei stride) {
     if (!pv_mdi_ready(indirect, drawcount, stride, 16)) return;
     pv_mdi_arrays_fn draw = (pv_mdi_arrays_fn)
-        pv_host_proc("glMultiDrawArraysIndirectEXT");
+        glstate->pv_mdi.arrays;
     if (!draw) { errorShim(GL_INVALID_OPERATION); return; }
     scratch_t scratch = {0};
     realize_glenv(mode == GL_POINTS, 0, 0, 0, NULL, &scratch);

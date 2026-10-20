@@ -57,3 +57,24 @@ Minecraft version, mod or shader pack. The port requires the real
 Driver buffer range/mapping and draw-mode checks remain driver responsibilities.
 There is no measured PowerVR speedup. Do not run the old backend-selector tool
 for this build: it always uses the single integrated Krypton state implementation.
+
+## r2: avoid repeated CPU-side capability discovery
+
+The integrated indirect multidraw path now stores extension availability and host
+function pointers in each Krypton `glstate_s`. State is zero-initialized by
+`NewGLState`, not copied from a shared context, and discarded on state destruction.
+Thus context switches and context recreation do not reuse a process-global cache.
+The dynamic indirect-buffer binding validation is retained for correctness.
+
+A host regression test executes 10,000 subsequent draws and asserts **zero**
+additional extension-count queries, extension-string reads or symbol resolutions.
+It also checks two contexts with different capabilities. This is a call-count
+test, not a frame-time benchmark or evidence of an FPS improvement on GE8300.
+Vanilla Minecraft may not use this path; GPU fill rate, shader compilation,
+regular draw submission, chunk builds and JVM pauses remain unprofiled.
+
+Each unified CI build now produces a fresh per-ABI original-Zalith import ZIP
+(`powervr-zalith-r2-<abi>` artifact). The separate repackaging workflow requires
+an explicit native run ID, so it cannot silently ship the old r1 native binaries.
+
+See [GE8300 comparison procedure](GE8300.md) before judging performance.

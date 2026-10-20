@@ -22,6 +22,15 @@ def integrate(source):
     module = ROOT / "native/ltw_multidraw.inc"
     shutil.copy2(module, drawing.parent / module.name)
     drawing.write_text(text + '\n#include "ltw_multidraw.inc"\n')
+    # Cache lifetime follows Krypton's zero-initialized, non-shared context state.
+    header = source / "src/gl/glstate.h"
+    state = header.read_text()
+    marker = "    struct glstate_s {"
+    if state.count(marker) != 1:
+        raise ValueError("Upstream GL state layout changed; review cache integration")
+    shutil.copy2(ROOT / "native/pv_context_cache.h", header.parent / "pv_context_cache.h")
+    header.write_text(state.replace(marker,
+        '#include "pv_context_cache.h"\n' + marker + '\n        struct pv_mdi_cache pv_mdi;', 1))
     cmake = source / "CMakeLists.txt"
     cmake.write_text(cmake.read_text() + '\nset_target_properties(ng_gl4es PROPERTIES OUTPUT_NAME "powervr")\n')
     shutil.copytree(ROOT / "licenses", source / "powervr-licenses")
@@ -67,6 +76,7 @@ def main():
     (output / "build.json").write_text(json.dumps({
         "abi": args.abi, "base": lock, "ltw_port_origin": locks["ltw"],
         "integration": "native/ltw_multidraw.inc", "status": "experimental partial integration",
+        "cache_header_sha256": hashlib.sha256((ROOT / "native/pv_context_cache.h").read_bytes()).hexdigest(),
         "module_sha256": hashlib.sha256((ROOT / "native/ltw_multidraw.inc").read_bytes()).hexdigest(),
         "sha256": hashlib.sha256(library.read_bytes()).hexdigest(),
         "ndk": (ndk / "source.properties").read_text()}, indent=2) + "\n")

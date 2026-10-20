@@ -23,7 +23,8 @@ under the [GPL-3.0](LICENSE) license.
 - **Differences from Zalith Launcher:** runs Minecraft 26.1 - 26.4 (LWJGL 3.4, SDL3), plays every version with
   500 MB of RAM (for phones with 2 GB), adds the LTW and Krypton Wrapper renderers (VirGL and Panfrost are gone),
   adds the RustGL renderer (built in, tuned for low-end phones like those with IMG PowerVR GE8300 GPUs —
-  source in [`rustgl/`](rustgl/README.md)),
+  source in [`rustgl/`](rustgl/README.md)) and the Proton Renderer (PowerVR Unified r2, ARM only,
+  source in [`powervr/`](powervr/README.md)),
   PojavLauncher's fix for Minecraft 1.20.5+ on 32-bit ARM devices, working CurseForge downloads, smaller APKs,
   plus security and stability fixes. See the [release notes](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases).
 - **Maintainers:** publishing a release is described in [RELEASING.md](RELEASING.md).
@@ -96,11 +97,12 @@ This project uses several useful code libraries. Special thanks to them!
 >- [AndroidViewAnimations](https://github.com/daimajia/AndroidViewAnimations) (uses part of the animation source code): [MIT License](https://github.com/daimajia/AndroidViewAnimations/blob/master/License)
 >- [TapTargetView](https://github.com/KeepSafe/TapTargetView) (for creating onboarding guides): [Apache License 2.0](https://github.com/KeepSafe/TapTargetView/blob/master/LICENSE)
 
-### PowerVR Unified (Experimental)
+### Proton Renderer (PowerVR Unified r2, experimental)
 
-Gurkha also includes the single-library PowerVR Unified build from
-[Powervr-the-poop](https://github.com/kushaladhikari982648-lgtm/Powervr-the-poop).
-Select **PowerVR Unified (Experimental)** in version renderer settings on ARMv7/ARM64
+Gurkha also includes the single-library PowerVR Unified r2 build from
+[proton-renderer](https://github.com/kushaladhikari982648-lgtm/proton-renderer)
+(formerly `Powervr-the-poop`).
+Select **Proton Renderer** in version renderer settings on ARMv7/ARM64
 devices with GLES 3. This is Krypton with an LTW-derived feature port, not full LTW
 or an all-Minecraft-versions guarantee. Existing renderers remain available.
 See [build provenance, corresponding source, and testing limits](powervr/README.md).

@@ -1,6 +1,7 @@
-PowerVR Unified (experimental)
-Source project: https://github.com/kushaladhikari982648-lgtm/Powervr-the-poop
-Revision: 1999cd5ee8245b20cacd322eeab6ee2d00a81110
+Proton Renderer (experimental) — PowerVR Unified r2
+Source project: https://github.com/kushaladhikari982648-lgtm/proton-renderer
+Formerly published as https://github.com/kushaladhikari982648-lgtm/Powervr-the-poop
+Revision: 8ad4affab77acae64df40de7aac49af6a9d02295 (r2)
 
 Krypton/NG-GL4ES base: BZLZHH/NG-GL4ES @ 6e153a1622a8d9ef903f7975aafbef2453571bab.
 Based on GL4ES (MIT); bundled dependencies retain their own notices, including
@@ -8,7 +9,7 @@ glslang, SPIRV-Cross, cJSON and code from MobileGlues.
 The integrated multidraw module is derived from MojoLauncher/LTW
 @ 2f4dbaaa2494a9fe73d78dda859301b5c060fdd3:
 Copyright (c) 2025 artDev, SerpentSpirale, CADIndie.
-Adaptation (c) 2026 Powervr-the-poop contributors. SPDX-License-Identifier: LGPL-3.0-only.
+Adaptation (c) 2026 Powervr-the-poop contributors (now proton-renderer). SPDX-License-Identifier: LGPL-3.0-only.
 The source project's original build tooling is MIT; its LICENSE is included.
 The root tooling license does not relicense the incorporated renderer code.
 

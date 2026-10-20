@@ -75,8 +75,8 @@ def main():
     run_url = (f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run}"
                if run else 'local build')
     lines = [
-        'PowerVR Unified (experimental): single Krypton-based libpowervr.so with an LTW-derived feature port.',
-        f"Source: {lock['repository']} @ {lock['commit']}",
+        'Proton Renderer (experimental): PowerVR Unified r2, a single Krypton-based libpowervr.so with an LTW-derived feature port.',
+        f"Source: {lock['repository']} @ {lock['commit']} (revision {lock.get('revision', 'unified')})",
         f'Source-tree: {tree}', f'CI run: {run_url}',
         'Build: NDK 28.2.13676358, CMake 3.31.6, android-21, tools/build_unified.py.',
         'ABIs: arm64-v8a armeabi-v7a (no x86 binaries).',
