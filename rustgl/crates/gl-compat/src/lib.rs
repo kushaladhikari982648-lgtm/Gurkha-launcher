@@ -47,10 +47,6 @@ static SHADER_SOURCE_CACHE: Mutex<Vec<(u32, String)>> = Mutex::new(Vec::new());
 static COMPILE_FAILURES_LOGGED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 static LINK_FAILURES_LOGGED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 
-fn shader_diagnostics_enabled() -> bool {
-    std::env::var("RENDERER_DEBUG").as_deref() == Ok("1")
-}
-
 fn log_failure_once(seen: &Mutex<Vec<u32>>, object: u32) -> bool {
     let mut seen = seen.lock().unwrap_or_else(|e| e.into_inner());
     if seen.contains(&object) {
@@ -1067,9 +1063,14 @@ pub unsafe extern "C" fn glGetStringi(name: u32, index: u32) -> *const u8 {
     if name == GL_EXTENSIONS {
         // Indexed access into the same merged list GL_NUM_EXTENSIONS reports, so a caller
         // that iterates `count` entries never hits an early null.
-        let exts = merged_extensions();
-        if (index as usize) < exts.len() {
-            return exts[index as usize].as_ptr();
+        // Never return an address into the temporary clone from merged_extensions():
+        // LWJGL reads it after this function returns, when that clone has been freed.
+        if !DRIVER_LISTED.load(Ordering::Relaxed) {
+            let _ = merged_extensions();
+        }
+        let exts = MERGED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(ext) = exts.get(index as usize) {
+            return ext.as_ptr();
         }
         errors().set(GL_INVALID_VALUE);
         return std::ptr::null();
@@ -1137,33 +1138,10 @@ pub unsafe extern "C" fn glShaderSource(
     let translated = match translated {
         Ok(t) => t,
         Err(e) => {
-            // Do not abort with empty source — that freezes loading. Pass a tiny valid
-            // shader so glCompileShader fails cleanly; the game can fall back.
+            // Preserve a real compile failure. A valid white fragment shader or a vertex
+            // shader at (0,0,0,0) hides unsupported features as a successful blank frame.
             log(&format!("[ShaderTranslate] shader {shader} rejected: {e}"));
-            if is_es {
-                if src.contains("gl_Position") || src.contains("gl_Vertex") {
-                    "#version 300 es
-void main(){ gl_Position = vec4(0.0); }
-".into()
-                } else {
-                    "#version 300 es
-precision highp float;
-layout(location=0) out vec4 c;
-void main(){ c = vec4(1.0); }
-".into()
-                }
-            } else {
-                if src.contains("gl_Position") || src.contains("gl_Vertex") {
-                    "#version 450 core
-void main(){ gl_Position = vec4(0.0); }
-".into()
-                } else {
-                    "#version 450 core
-out vec4 c;
-void main(){ c = vec4(1.0); }
-".into()
-                }
-            }
+            "#error RustGL cannot translate this shader stage\n".into()
         }
     };
     // TEMP(debug): capture every shader source so translation gaps can be reproduced offline.
@@ -1216,7 +1194,7 @@ pub unsafe extern "C" fn glCompileShader(shader: u32) {
         take_shader_source(shader);
         return;
     }
-    if !shader_diagnostics_enabled() || !log_failure_once(&COMPILE_FAILURES_LOGGED, shader) {
+    if !log_failure_once(&COMPILE_FAILURES_LOGGED, shader) {
         take_shader_source(shader);
         return;
     }
@@ -1276,10 +1254,6 @@ pub unsafe extern "C" fn glLinkProgram(program: u32) {
         return;
     };
     link(program);
-    if !shader_diagnostics_enabled() {
-        return;
-    }
-
     const GL_LINK_STATUS: u32 = 0x8B82;
     const GL_INFO_LOG_LENGTH: u32 = 0x8B84;
     let Some(get_program_iv) =
@@ -2288,6 +2262,10 @@ pub unsafe extern "C" fn glGetFloatv(p: u32, d: *mut f32) {
         errors().set(GL_INVALID_VALUE);
         return;
     }
+    if let Some(matrix) = fixed_func::matrix_for_pname(p) {
+        std::ptr::copy_nonoverlapping(matrix.as_ptr(), d, matrix.len());
+        return;
+    }
     if let Some(v) = fixed_func::fog_query_f(p) {
         *d = v;
         return;
@@ -2417,7 +2395,7 @@ unsafe fn bound_buffer_name(target: u32) -> u32 {
 /// Usage hint for the `glBufferData` fallback: `GL_DYNAMIC_STORAGE_BIT` asks for a
 /// dynamically-updated buffer, anything else is static.
 fn storage_usage(flags: u32) -> u32 {
-    const GL_DYNAMIC_STORAGE_BIT: u32 = 0x0300;
+    const GL_DYNAMIC_STORAGE_BIT: u32 = 0x0100;
     const GL_STATIC_DRAW: u32 = 0x88E4;
     const GL_DYNAMIC_DRAW: u32 = 0x88E8;
     if flags & GL_DYNAMIC_STORAGE_BIT != 0 {
@@ -2427,42 +2405,34 @@ fn storage_usage(flags: u32) -> u32 {
     }
 }
 
-/// Mask of bits in `flags` that ask for mapped/persistent storage, which a driver without
-/// `glBufferStorage` cannot provide. Pure so it can be unit tested.
-const MAPPING_BITS: u32 = 0x0001 /* GL_MAP_READ_BIT */
-    | 0x0002 /* GL_MAP_WRITE_BIT */
-    | 0x0040 /* GL_MAP_PERSISTENT_BIT */
-    | 0x0080; /* GL_MAP_COHERENT_BIT */
+/// Buffer IDs and immutable storage flags. DYNAMIC_STORAGE_BIT allows subdata
+/// updates but never allows reallocating the store with glBufferData.
+static IMMUTABLE_BUFFERS: Mutex<Vec<(u32, u32)>> = Mutex::new(Vec::new());
 
-fn wants_mapping(flags: u32) -> bool {
-    flags & MAPPING_BITS != 0
-}
-
-/// Buffers the driver created through immutable storage, where re-specifying or updating
-/// the store with `glBufferData`/`glBufferSubData` is a GL_INVALID_OPERATION.
-static IMMUTABLE_BUFFERS: Mutex<Vec<u32>> = Mutex::new(Vec::new());
-
-fn with_immutable<R>(f: impl FnOnce(&mut Vec<u32>) -> R) -> R {
+fn with_immutable<R>(f: impl FnOnce(&mut Vec<(u32, u32)>) -> R) -> R {
     let mut g = IMMUTABLE_BUFFERS.lock().unwrap_or_else(|e| e.into_inner());
     f(g.as_mut())
 }
 
-fn mark_immutable(buffer: u32) {
-    if buffer == 0 {
-        return;
+fn mark_immutable(buffer: u32, flags: u32) {
+    if buffer != 0 {
+        with_immutable(|v| {
+            v.retain(|(id, _)| *id != buffer);
+            v.push((buffer, flags));
+        });
     }
-    with_immutable(|v| {
-        if !v.contains(&buffer) {
-            v.push(buffer);
-        }
-    });
 }
 
 fn is_immutable(buffer: u32) -> bool {
-    with_immutable(|v| v.contains(&buffer))
+    with_immutable(|v| v.iter().any(|(id, _)| *id == buffer))
 }
 
-/// `glBufferStorage` -> ES 3.1 `glBufferStorage` when the driver has it, otherwise a
+fn immutable_allows_subdata(buffer: u32) -> bool {
+    with_immutable(|v| v.iter().find(|(id, _)| *id == buffer)
+        .map_or(true, |(_, flags)| flags & 0x0100 != 0))
+}
+
+/// `glBufferStorage` -> EXT_buffer_storage when advertised, otherwise a
 /// `glBufferData` with the closest usage hint. The fallback cannot be immutable and cannot
 /// be persistently mapped, and says so rather than pretending otherwise.
 #[no_mangle]
@@ -2471,19 +2441,39 @@ pub unsafe extern "C" fn glBufferStorage(target: u32, size: isize, data: *const 
         errors().set(GL_INVALID_VALUE);
         return;
     }
-    if let Some(f) = driver_fn_cached::<unsafe extern "C" fn(u32, isize, *const c_void, u32)>("glBufferStorage") {
-        f(target, size, data, flags);
-        mark_immutable(bound_buffer_name(target));
+    let buffer = bound_buffer_name(target);
+    if buffer == 0 || is_immutable(buffer) {
+        errors().set(GL_INVALID_OPERATION);
         return;
     }
-    if wants_mapping(flags) {
-        log(
-            "[GLCompat] glBufferStorage: driver has no immutable storage; \
-             mapped/persistent storage request cannot be honoured",
-        );
+    // Buffer storage is NOT ES 3.1 core. EGL may return a non-null stub for the
+    // desktop name on PowerVR/Mesa. Gate on the extension and use its ES spelling.
+    let native_name = if shader_translation_is_es() {
+        if gles3::caps().has(b"GL_EXT_buffer_storage\0") {
+            Some("glBufferStorageEXT")
+        } else {
+            None
+        }
+    } else {
+        Some("glBufferStorage")
+    };
+    if let Some(name) = native_name {
+        if let Some(f) = driver_fn_cached::<unsafe extern "C" fn(u32, isize, *const c_void, u32)>(name) {
+            f(target, size, data, flags);
+            mark_immutable(buffer, flags);
+            return;
+        }
+    }
+    // Ordinary read/write maps are legal on mutable ES buffers. Persistent/coherent
+    // mappings are not: do not claim success with a buffer that cannot back them.
+    if flags & (0x0040 | 0x0080) != 0 {
+        log("[GLCompat] persistent buffer storage requires GL_EXT_buffer_storage on this GPU");
+        errors().set(GL_INVALID_OPERATION);
+        return;
     }
     if let Some(f) = driver_fn_cached::<unsafe extern "C" fn(u32, isize, *const c_void, u32)>("glBufferData") {
         f(target, size, data, storage_usage(flags));
+        mark_immutable(buffer, flags);
     } else {
         errors().set(GL_INVALID_OPERATION);
     }
@@ -2503,10 +2493,10 @@ pub unsafe extern "C" fn glBufferData(t: u32, size: isize, data: *const c_void, 
     }
 }
 
-/// `glBufferSubData` updates the store, which an immutable buffer forbids.
+/// Immutable storage allows subdata only when created with GL_DYNAMIC_STORAGE_BIT.
 #[no_mangle]
 pub unsafe extern "C" fn glBufferSubData(t: u32, o: isize, size: isize, data: *const c_void) {
-    if is_immutable(bound_buffer_name(t)) {
+    if !immutable_allows_subdata(bound_buffer_name(t)) {
         errors().set(GL_INVALID_OPERATION);
         return;
     }
@@ -2522,7 +2512,7 @@ pub unsafe extern "C" fn glDeleteBuffers(n: i32, b: *const u32) {
         with_immutable(|v| {
             for i in 0..n as usize {
                 let id = *b.add(i);
-                v.retain(|x| *x != id);
+                v.retain(|(x, _)| *x != id);
             }
         });
     }
@@ -2540,14 +2530,33 @@ fn own_symbol(name: &[u8]) -> Option<*const c_void> {
     if !name.starts_with(b"gl") {
         return None;
     }
-    type Global = libloading::os::unix::Library;
-    static THIS: OnceLock<Option<Global>> = OnceLock::new();
-    // The process-wide symbol table, so our own exports are visible to the lookup.
-    let lib = THIS.get_or_init(|| Some(Global::this()));
-    let lib = lib.as_ref()?;
+    // RTLD_DEFAULT/Library::this() can find system GLES instead of us, and cannot
+    // see this library at all when the launcher loaded it RTLD_LOCAL. Locate this
+    // very DSO by an address within it, then dlsym its own handle.
+    #[repr(C)]
+    struct DlInfo {
+        filename: *const c_char,
+        base: *mut c_void,
+        symbol: *const c_char,
+        address: *mut c_void,
+    }
+    #[link(name = "dl")]
+    extern "C" {
+        fn dladdr(address: *const c_void, info: *mut DlInfo) -> i32;
+    }
+    static THIS: OnceLock<Option<libloading::Library>> = OnceLock::new();
+    let lib = THIS.get_or_init(|| unsafe {
+        let mut info: DlInfo = std::mem::zeroed();
+        if dladdr(own_symbol as *const c_void, &mut info) == 0 || info.filename.is_null() {
+            return None;
+        }
+        use std::os::unix::ffi::OsStrExt;
+        let path = std::ffi::OsStr::from_bytes(CStr::from_ptr(info.filename).to_bytes());
+        libloading::Library::new(path).ok()
+    }).as_ref()?;
     // SAFETY: the value is a code address that is only ever returned to the caller, never
     // called here, and the handle it came from is never dropped.
-    let sym: libloading::os::unix::Symbol<*const c_void> =
+    let sym: libloading::Symbol<*const c_void> =
         unsafe { lib.get(name) }.ok()?;
     Some(*sym)
 }
@@ -2812,6 +2821,11 @@ fn resolve_proc(n: &[u8]) -> *const c_void {
             let f = forwarded(n);
             if !f.is_null() {
                 return f;
+            }
+            // Exported legacy functions (display lists, colors, texture environment) must
+            // win over system EGL's ES1 entry points and non-null unsupported stubs.
+            if let Some(p) = own_symbol(n) {
+                return p;
             }
             // LWJGL bridge: resolve unknown names from GLES driver / eglGetProcAddress
             let name = String::from_utf8_lossy(n);
@@ -3524,25 +3538,21 @@ mod tests {
 
     #[test]
     fn storage_flags_pick_the_matching_usage() {
-        const GL_DYNAMIC_STORAGE_BIT: u32 = 0x0300;
+        const GL_DYNAMIC_STORAGE_BIT: u32 = 0x0100;
         assert_eq!(storage_usage(0), 0x88E4); // static draw
         assert_eq!(storage_usage(GL_DYNAMIC_STORAGE_BIT), 0x88E8); // dynamic draw
     }
 
     #[test]
-    fn only_mapped_storage_triggers_the_fallback_warning() {
-        assert!(!wants_mapping(0));
-        assert!(!wants_mapping(0x0300)); // dynamic storage alone is honoured
-        assert!(wants_mapping(0x0040)); // GL_MAP_PERSISTENT_BIT
-        assert!(wants_mapping(0x0002)); // GL_MAP_WRITE_BIT
-    }
-
-    #[test]
     fn immutable_buffers_are_tracked_and_released() {
-        mark_immutable(7);
-        mark_immutable(7);
+        mark_immutable(7, 0);
+        mark_immutable(7, 0);
         assert!(is_immutable(7));
         assert!(!is_immutable(8));
+        assert!(!immutable_allows_subdata(7));
+        assert!(immutable_allows_subdata(8));
+        mark_immutable(7, 0x0100);
+        assert!(immutable_allows_subdata(7));
         let ids = [7u32, 8u32];
         unsafe { glDeleteBuffers(2, ids.as_ptr()) };
         assert!(!is_immutable(7));

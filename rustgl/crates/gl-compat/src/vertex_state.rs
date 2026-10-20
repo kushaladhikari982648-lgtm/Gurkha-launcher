@@ -526,6 +526,10 @@ pub unsafe extern "C" fn glCreateVertexArrays(n: i32, ids: *mut u32) {
 
 #[no_mangle]
 pub unsafe extern "C" fn glNamedBufferData(buffer: u32, size: isize, data: *const c_void, usage: u32) {
+    if crate::is_immutable(buffer) {
+        errors().set(GL_INVALID_OPERATION);
+        return;
+    }
     if size < 0 {
         errors().set(GL_INVALID_VALUE);
         return;
@@ -636,14 +640,37 @@ pub unsafe extern "C" fn glNamedBufferStorage(
     data: *const c_void,
     flags: u32,
 ) {
-    glNamedBufferData(buffer, size, data, 0x88E4);
-    if let Some(bind) = driver_fn_cached::<unsafe extern "C" fn(u32, u32)>("glBindBuffer") {
-        bind(GL_ARRAY_BUFFER, buffer);
+    if buffer == 0 || crate::is_immutable(buffer) {
+        errors().set(GL_INVALID_OPERATION);
+        return;
     }
-    if let Some(f) =
-        driver_fn_cached::<unsafe extern "C" fn(u32, isize, *const c_void, u32)>("glBufferStorage")
-    {
-        f(GL_ARRAY_BUFFER, size, data, flags);
+    let Some(bind) = driver_fn_cached::<unsafe extern "C" fn(u32, u32)>("glBindBuffer") else {
+        errors().set(GL_INVALID_OPERATION);
+        return;
+    };
+    let mut previous = 0;
+    if let Some(get) = driver_fn_cached::<unsafe extern "C" fn(u32, *mut i32)>("glGetIntegerv") {
+        get(0x8894, &mut previous);
+    }
+    bind(GL_ARRAY_BUFFER, buffer);
+    // Use the same capability-gated allocation as bind-to-edit storage, not a
+    // speculative desktop glBufferStorage pointer returned by EGL.
+    crate::glBufferStorage(GL_ARRAY_BUFFER, size, data, flags);
+    bind(GL_ARRAY_BUFFER, previous as u32);
+    if crate::is_immutable(buffer) {
+        with_buffers(|v| {
+            let state = DsaBuffer {
+                size: size as i64,
+                usage: if flags & 0x0100 != 0 { 0x88E8 } else { 0x88E4 },
+                contents: GL_ARRAY_BUFFER,
+                targets: vec![GL_ARRAY_BUFFER],
+            };
+            if let Some((_, old)) = v.iter_mut().find(|(id, _)| *id == buffer) {
+                *old = state;
+            } else {
+                v.push((buffer, state));
+            }
+        });
     }
 }
 
@@ -654,6 +681,10 @@ pub unsafe extern "C" fn glNamedBufferSubData(
     size: isize,
     data: *const c_void,
 ) {
+    if !crate::immutable_allows_subdata(buffer) {
+        errors().set(GL_INVALID_OPERATION);
+        return;
+    }
     if offset < 0 || size < 0 {
         errors().set(GL_INVALID_VALUE);
         return;

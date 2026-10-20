@@ -384,13 +384,10 @@ pub unsafe fn try_draw_arrays(mode: u32, first: i32, count: i32) -> bool {
         }
     }
 
-    // Prefer real texture binding over legacy glEnable(GL_TEXTURE_2D).
-    // 1.16 often binds a 2D texture without the fixed-function enable bit.
-    const GL_TEXTURE_BINDING_2D: u32 = 0x8069;
-    let mut tex_binding = 0i32;
-    get_int(GL_TEXTURE_BINDING_2D, &mut tex_binding);
-    let use_tex = has_uv
-        && (fixed_func::legacy_cap_enabled(GL_TEXTURE_2D) || tex_binding != 0);
+    // The sampler always reads unit 0, regardless of the last active server unit.
+    // A bound texture is not an enable bit: legacy GUI passes disable texturing
+    // while leaving the atlas bound. Sampling it then paints the wrong fullscreen quad.
+    let use_tex = has_uv && fixed_func::unit_texture_enabled(0);
     let (afunc, aref) = fixed_func::alpha();
     let alpha_mode = if fixed_func::legacy_cap_enabled(GL_ALPHA_TEST) && (0x200..=0x207).contains(&afunc) {
         (afunc - 0x200 + 1) as i32
@@ -405,7 +402,7 @@ pub unsafe fn try_draw_arrays(mode: u32, first: i32, count: i32) -> bool {
     {
         let c = fixed_func::current_color();
         crate::log(&format!(
-            "[FFDraw] diag #{d}: mode=0x{mode:04X} count={count} tex={use_tex} texbind={tex_binding} color_array={has_color} uv_array={has_uv} alpha_mode={alpha_mode} cur_color=({:.2},{:.2},{:.2},{:.2})",
+            "[FFDraw] diag #{d}: mode=0x{mode:04X} count={count} tex={use_tex} color_array={has_color} uv_array={has_uv} alpha_mode={alpha_mode} cur_color=({:.2},{:.2},{:.2},{:.2})",
             c[0], c[1], c[2], c[3]
         ));
     }

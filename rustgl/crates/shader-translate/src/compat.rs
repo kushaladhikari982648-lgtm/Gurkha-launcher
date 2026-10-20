@@ -189,6 +189,9 @@ const ES_RESERVED: &[&str] = &[
     "partition", "active", "external", "interface", "public", "static", "this", "template",
     "cast", "namespace", "using", "resource", "inline", "noinline", "goto", "class", "enum",
     "union", "typedef", "sizeof", "superp", "asm", "extern",
+    // Minecraft 1.12's post-processing blur shader uses this desktop identifier.
+    // It is reserved for future use in GLSL ES 3.00.
+    "sample",
 ];
 
 /// Prefix for renamed identifiers. Not `gl_` / `GL_` (reserved) and no double underscore.

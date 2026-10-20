@@ -20,7 +20,40 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  RustGLChecks:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test RustGL on software GLES
+        id: render_tests
+        env:
+          EGL_PLATFORM: surfaceless
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set -o pipefail
+          {
+            sudo apt-get update -q
+            sudo apt-get install -y --no-install-recommends libegl1 libgles2 libgles1 libegl-dev libgles-dev libgl1-mesa-dri
+            cd rustgl
+            cargo test -p renderer-core -p gl-compat -p shader-translate -- --test-threads=1
+            cargo build -p gl-compat
+            python3 tests/render_smoke.py
+            MESA_EXTENSION_OVERRIDE=-GL_EXT_buffer_storage python3 tests/render_smoke.py
+          } 2>&1 | tee "$RUNNER_TEMP/rustgl-render-tests.log"
+      - name: Report rendering test failure
+        if: failure()
+        run: |
+          python3 - "$RUNNER_TEMP/rustgl-render-tests.log" <<'PYTEST'
+          import pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text(errors="replace") if path.exists() else "Test log missing"
+          text = text[-12000:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print("::error title=RustGL rendering regression::" + text)
+          PYTEST
+
   BuildDebug:
+    needs: RustGLChecks
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-22.04
     # contents: write lets the "Commit the RustGL renderer library" step push the built AAR
@@ -225,7 +258,7 @@ jobs:
           # rustgl-release.aar next to them for local Gradle builds. Commit it only when the
           # rustgl/ source changed, otherwise rebuilds would make a commit each push.
           TREE=$(git rev-parse "HEAD:rustgl")
-          CURRENT=$(sed -n 's/^Source-tree: //p' ZalithLauncher/libs/rustgl-release.txt)
+          CURRENT=$(sed -n 's/^Source-tree: \([0-9a-f]*\).*/\1/p' ZalithLauncher/libs/rustgl-release.txt)
           if [ "$TREE" = "$CURRENT" ] && git cat-file -e "HEAD:ZalithLauncher/libs/rustgl-release.aar" 2>/dev/null; then
             echo "rustgl-release.aar is already committed for rustgl source tree $TREE"
             exit 0
@@ -312,7 +345,7 @@ jobs:
           rm -f "$KEYSTORE"
 
   BuildRelease:
-    needs: ReleasePreflight
+    needs: [ReleasePreflight, RustGLChecks]
     runs-on: ubuntu-22.04
     strategy:
       matrix:
