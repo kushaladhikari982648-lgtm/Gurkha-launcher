@@ -11,6 +11,7 @@ import zipfile
 
 from build import ROOT, ABIS, fetch, run, verify_elf
 from build_combined import source_archive
+import identity
 
 
 def integrate(source):
@@ -33,6 +34,9 @@ def integrate(source):
         '#include "pv_context_cache.h"\n' + marker + '\n        struct pv_mdi_cache pv_mdi;', 1))
     cmake = source / "CMakeLists.txt"
     cmake.write_text(cmake.read_text() + '\nset_target_properties(ng_gl4es PROPERTIES OUTPUT_NAME "powervr")\n')
+    # Krypton hardcodes its own name in the GL strings the game reports, so the
+    # renderer would appear as "Krypton Wrapper" in Minecraft's F3 screen and log.
+    identity.apply(source)
     shutil.copytree(ROOT / "licenses", source / "powervr-licenses")
     shutil.copy2(ROOT / "docs/UNIFIED.md", source / "POWERVR-INTEGRATION.md")
 
@@ -75,7 +79,8 @@ def main():
     shutil.copy2(ROOT / "docs/UNIFIED.md", output / "README.md")
     (output / "build.json").write_text(json.dumps({
         "abi": args.abi, "base": lock, "ltw_port_origin": locks["ltw"],
-        "integration": "native/ltw_multidraw.inc", "status": "experimental partial integration",
+        "integration": "native/ltw_multidraw.inc", "identity": identity.NEW,
+        "status": "experimental partial integration",
         "cache_header_sha256": hashlib.sha256((ROOT / "native/pv_context_cache.h").read_bytes()).hexdigest(),
         "module_sha256": hashlib.sha256((ROOT / "native/ltw_multidraw.inc").read_bytes()).hexdigest(),
         "sha256": hashlib.sha256(library.read_bytes()).hexdigest(),

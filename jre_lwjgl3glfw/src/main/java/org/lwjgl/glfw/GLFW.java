@@ -1080,7 +1080,10 @@ public class GLFW
             glMinor = 6;
         } else if (System.getenv("POJAV_RENDERER").equals("gallium_virgl")) {
             glMajor = 4;
-        } else if (System.getenv("POJAV_RENDERER").equals("opengles3")) {
+        } else if (System.getenv("POJAV_RENDERER").equals("opengles3")
+                || System.getenv("POJAV_RENDERER").equals("opengles3_powervr")) {
+            // opengles3 is Krypton; opengles3_powervr (Proton Renderer) is the same Krypton base
+            // with the LTW-derived multidraw port, so it needs the same hints.
             glMajor = 4;
             glMinor = 0;
         }

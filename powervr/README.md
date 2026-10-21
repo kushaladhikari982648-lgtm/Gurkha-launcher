@@ -40,9 +40,24 @@ The ported multidraw functions require the driver's real `GL_EXT_multi_draw_indi
 No performance improvement or compatibility with all Minecraft versions is claimed.
 In particular this integration does not establish support for Minecraft 1.21.10.
 
+## Renderer identity in game
+
+The unified build is Krypton with an extra module compiled in, and Krypton
+hardcodes its own brand in the strings Minecraft prints on the F3 debug screen and
+in `latest.log` (`GL_VERSION`, `GL_SHADING_LANGUAGE_VERSION` and the version
+banner). `tools/identity.py` replaces that brand with **Proton Renderer** while
+building, so selecting the Proton Renderer no longer shows "Krypton Wrapper" in
+game. The replacement is fail-closed (it stops the build if the pinned sources no
+longer contain exactly the expected strings), keeps `GL_VENDOR`
+("ptitSeb & BZLZHH"), and changes no version number, capability or error path.
+`Krypton Wrapper` stays a separate renderer with its own library
+(`libng_gl4es.so`).
+
 ## Launcher integration
 
 `PowerVRRenderer.kt` selects `libpowervr.so`, explicitly sets `LIBGL_ES=3`, and
+gets the same GLFW context hints as Krypton (`opengles3_powervr` in
+`GLFW.java`, since it is the same base library), and
 uses the system `libEGL.so` through the launcher's existing GL4ES context bridge.
 This follows upstream's unified Zalith adapter. It does not use LTW's EGL wrappers,
 load Krypton and LTW simultaneously, disable error reporting, or spoof a higher GL

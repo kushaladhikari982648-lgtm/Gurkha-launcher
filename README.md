@@ -103,6 +103,8 @@ Gurkha also includes the single-library PowerVR Unified r2 build from
 [proton-renderer](https://github.com/kushaladhikari982648-lgtm/proton-renderer)
 (formerly `Powervr-the-poop`).
 Select **Proton Renderer** in version renderer settings on ARMv7/ARM64
-devices with GLES 3. This is Krypton with an LTW-derived feature port, not full LTW
+devices with GLES 3. In game it now reports itself as the Proton Renderer
+(Minecraft's F3 screen and log), not as the Krypton Wrapper, which stays a
+separate renderer. This is Krypton with an LTW-derived feature port, not full LTW
 or an all-Minecraft-versions guarantee. Existing renderers remain available.
 See [build provenance, corresponding source, and testing limits](powervr/README.md).

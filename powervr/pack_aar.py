@@ -80,6 +80,7 @@ def main():
         f'Source-tree: {tree}', f'CI run: {run_url}',
         'Build: NDK 28.2.13676358, CMake 3.31.6, android-21, tools/build_unified.py.',
         'ABIs: arm64-v8a armeabi-v7a (no x86 binaries).',
+        'Identity: reports "Proton Renderer" (not "Krypton Wrapper") in GL_VERSION/GL_SHADING_LANGUAGE_VERSION.',
         'Licenses: upstream Krypton/bundled licenses; LTW-derived module LGPL-3.0-only; tooling MIT.',
         'Corresponding source: powervr-unified-sources artifact of the same CI run; also attached to tagged releases.',
     ]

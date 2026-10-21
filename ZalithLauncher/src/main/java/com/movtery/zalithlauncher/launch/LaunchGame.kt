@@ -203,7 +203,10 @@ class LaunchGame {
             Logger.appendToLog("Info: Architecture: ${Architecture.archAsString(Tools.DEVICE_ARCHITECTURE)}")
             Logger.appendToLog("Info: Device model: ${StringUtils.insertSpace(Build.MANUFACTURER, Build.MODEL)}")
             Logger.appendToLog("Info: API version: ${Build.VERSION.SDK_INT}")
-            Logger.appendToLog("Info: Renderer: ${Renderers.getCurrentRenderer().getRendererName()}")
+            // Include the library name: it is what the game actually loads, so a mixed-up
+            // renderer selection can be spotted from the log alone.
+            val renderer = Renderers.getCurrentRenderer()
+            Logger.appendToLog("Info: Renderer: ${renderer.getRendererName()} (${renderer.getRendererId()}, ${renderer.getRendererLibrary()})")
             Logger.appendToLog("Info: Selected Minecraft version: ${minecraftVersion.getVersionName()}")
             Logger.appendToLog("Info: Minecraft Info: $mcInfo")
             Logger.appendToLog("Info: Game Path: ${minecraftVersion.getGameDir().absolutePath} (Isolation: ${minecraftVersion.isIsolation()})")
