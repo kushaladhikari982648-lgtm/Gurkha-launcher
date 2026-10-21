@@ -7,5 +7,5 @@ Build:   built by .github/workflows/android.yml (step "Build RustGL renderer"):
          rustup stable + cargo-ndk, NDK 25.2.9519653 (the launcher's ndkVersion),
          cargo ndk --release -p gl-compat, packed with rustgl/pack_aar.py
 Source-tree: ea56da1d1e95d41f40f602cfe38fb75fd4041b5d   (hash of the rustgl/ directory)
-         CI run: https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/runs/39453111373
+         CI run: https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/runs/39540632718
 ABIs:    arm64-v8a armeabi-v7a x86 x86_64

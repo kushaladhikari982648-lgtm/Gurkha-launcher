@@ -1,10 +1,11 @@
 Proton Renderer (experimental): PowerVR Unified r2, a single Krypton-based libpowervr.so with an LTW-derived feature port.
 Source: https://github.com/kushaladhikari982648-lgtm/proton-renderer @ 8ad4affab77acae64df40de7aac49af6a9d02295 (revision r2)
-Source-tree: 69aef91e8d55a0b45e1c95cc85700e3321f7e87b
-CI run: https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/runs/39453111373
+Source-tree: 30429379a3c726cc213aa3e3286424403ac4b082
+CI run: https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/runs/39540632718
 Build: NDK 28.2.13676358, CMake 3.31.6, android-21, tools/build_unified.py.
 ABIs: arm64-v8a armeabi-v7a (no x86 binaries).
+Identity: reports "Proton Renderer" (not "Krypton Wrapper") in GL_VERSION/GL_SHADING_LANGUAGE_VERSION.
 Licenses: upstream Krypton/bundled licenses; LTW-derived module LGPL-3.0-only; tooling MIT.
 Corresponding source: powervr-unified-sources artifact of the same CI run; also attached to tagged releases.
-SHA256 (arm64-v8a): b0567a75941cca9748abb13fb70fac59cfff05310315f10127756dfd1eb558ad
-SHA256 (armeabi-v7a): 3b66ab4116bbb3f351c45871f9332c20ba5cc8bffd27bac642e9751d356c4a94
+SHA256 (arm64-v8a): 01105d4d535112607f7bfbb01ff1bfbdbc07358d82fb78adbcda8fabdc17a61c
+SHA256 (armeabi-v7a): 4cff753093ec7d9c868185143d8f0e6555474b0d016c686c574e9d474c9a387d
