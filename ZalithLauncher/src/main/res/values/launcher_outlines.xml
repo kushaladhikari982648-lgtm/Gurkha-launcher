@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Outline-only refresh: keep existing fills, corners, spacing and typography.
+         Fixed dp widths stay crisp without becoming oversized on wide displays. -->
+    <dimen name="launcher_outline_width">2dp</dimen>
+    <dimen name="launcher_outline_active_width">3dp</dimen>
+    <color name="launcher_outline">#5B7278</color>
+    <color name="launcher_outline_active">#186675</color>
+    <color name="launcher_outline_disabled">#A7B1B4</color>
+</resources>

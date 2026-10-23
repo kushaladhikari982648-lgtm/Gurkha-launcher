@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Lighter edges on the existing charcoal surfaces; teal remains the accent. -->
+    <color name="launcher_outline">#A2B4B8</color>
+    <color name="launcher_outline_active">#6CD4CB</color>
+    <color name="launcher_outline_disabled">#626E72</color>
+</resources>
