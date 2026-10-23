@@ -25,3 +25,7 @@ local.properties
 /powervr/.work/
 /powervr/artifacts/
 /powervr/**/__pycache__/
+
+# Local Python tooling/test bytecode
+/tools/__pycache__/
+/tests/__pycache__/

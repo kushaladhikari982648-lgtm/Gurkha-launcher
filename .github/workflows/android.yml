@@ -24,8 +24,23 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
-      - name: Check outline states and resources
+      - name: Check launcher resources and CurseForge preflight
         run: python3 -m unittest discover -s tests -v
+
+  CurseForgeChecks:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate CurseForge authentication
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          REQUIRE_KEY: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          if [ "$REQUIRE_KEY" = "true" ]; then
+            python3 tools/check_curseforge.py --require-key
+          else
+            python3 tools/check_curseforge.py
+          fi
 
   RustGLChecks:
     runs-on: ubuntu-22.04
@@ -105,7 +120,7 @@ jobs:
           retention-days: 90
 
   BuildDebug:
-    needs: [RustGLChecks, PowerVRRenderer, LauncherUiChecks]
+    needs: [RustGLChecks, PowerVRRenderer, LauncherUiChecks, CurseForgeChecks]
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-22.04
     # contents: write lets the renderer-library step update the checked-in AARs
@@ -194,9 +209,6 @@ jobs:
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
         run: |
           set -o pipefail
-          if [ -z "$CURSEFORGE_API_KEY" ] && [ "${{ matrix.arch }}" = "all" ]; then
-            echo "::warning title=No CurseForge API key::The CURSEFORGE_API_KEY secret is not set, so CurseForge downloads are disabled in these APKs (Modrinth still works). See RELEASING.md."
-          fi
           ./gradlew ZalithLauncher:assembleDebug -Darch=${{ matrix.arch }} 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: APK size report
@@ -411,7 +423,7 @@ jobs:
           rm -f "$KEYSTORE"
 
   BuildRelease:
-    needs: [ReleasePreflight, RustGLChecks, PowerVRRenderer, LauncherUiChecks]
+    needs: [ReleasePreflight, RustGLChecks, PowerVRRenderer, LauncherUiChecks, CurseForgeChecks]
     runs-on: ubuntu-22.04
     strategy:
       matrix:

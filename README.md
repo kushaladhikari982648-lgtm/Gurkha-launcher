@@ -1,106 +1,106 @@
 <div align="center">
-    <img width="128" src="branding/gurkha-icon.png" alt="Gurkha Launcher logo: two crossed khukuris"></img>
-    <br>
-    <img width="320" src="ZalithLauncher/src/main/res/drawable/app_name_title.png" alt="Gurkha Launcher"></img>
-</div>
 
-<div align="center">
+<img src="branding/gurkha-icon.png" width="112" height="112" alt="Gurkha Launcher — crossed khukuris on crimson">
+
+# Gurkha Launcher
+
+### Minecraft: Java Edition. On Android.
+
+A community-maintained fork of Zalith Launcher.<br>
+Familiar controls. Your modpacks. More renderer choices.
 
 [![Android CI](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/workflows/android.yml/badge.svg)](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/workflows/android.yml)
-[![Latest release](https://img.shields.io/github/v/release/kushaladhikari982648-lgtm/Gurkha-launcher?include_prereleases)](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases)
+[![Releases](https://img.shields.io/github/v/release/kushaladhikari982648-lgtm/Gurkha-launcher?include_prereleases&color=C42425&label=release)](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases)
+![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-186675?logo=android&logoColor=white)
+[![GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-186675)](LICENSE)
+
+**[Download](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases)** ·
+**[Development builds](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/workflows/android.yml)** ·
+**[Report a bug](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/issues/new/choose)** ·
+**[Build & release](RELEASING.md)**
 
 </div>
-
-**Gurkha Launcher** is a Minecraft: Java Edition launcher for Android. It is a fork of
-[Zalith Launcher](https://github.com/ZalithLauncher/ZalithLauncher), which is based on
-[PojavLauncher](https://github.com/PojavLauncherTeam/PojavLauncher). Like both of them, it is free software
-under the [GPL-3.0](LICENSE) license.
-
-- **Download:** [Releases](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases). Pick the `arm64-v8a` APK for most phones, `armeabi-v7a`
-  for 32-bit phones, or the universal APK if you are not sure.
-- It installs as its own app (`com.gurkha.launcher`) next to Zalith Launcher, with its own settings and
-  game files.
-- **Differences from Zalith Launcher:** runs Minecraft 26.1 - 26.4 (LWJGL 3.4, SDL3), plays every version with
-  500 MB of RAM (for phones with 2 GB), adds the LTW and Krypton Wrapper renderers (VirGL and Panfrost are gone),
-  adds the RustGL renderer (built in, tuned for low-end phones like those with IMG PowerVR GE8300 GPUs —
-  source in [`rustgl/`](rustgl/README.md)),
-  PojavLauncher's fix for Minecraft 1.20.5+ on 32-bit ARM devices, working CurseForge downloads, smaller APKs,
-  plus security and stability fixes. See the [release notes](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases).
-- **Maintainers:** publishing a release is described in [RELEASING.md](RELEASING.md).
-
-All credit for the launcher itself goes to the Zalith Launcher and PojavLauncher developers; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the components added from Amethyst and MojoLauncher. The original
-Zalith Launcher README follows.
 
 ---
 
+## Start playing
+
+1. Download an APK from **[Releases](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases)** and choose your architecture below.
+2. Install Gurkha Launcher, add your Minecraft account, and install a game version.
+3. Choose a renderer supported by your device. Start without mods first, then add your packs.
+
+| Your device | Release APK architecture | Actions artifact |
+| :--- | :--- | :--- |
+| Most modern Android phones | `arm64-v8a` | `GurkhaLauncher(Debug) arm64` |
+| Phones with a 32-bit ARM Android system | `armeabi-v7a` | `GurkhaLauncher(Debug) arm` |
+| Not sure | Universal / all | `GurkhaLauncher(Debug) all` |
+| Intel devices or emulators | `x86` or `x86_64` | Matching `x86` or `x86_64` artifact |
+
+For a development build, open a successful **Android CI** run → **Artifacts**, download the matching ZIP, and extract the APK. GitHub sign-in may be required. These are test builds, not stable releases.
+
+> [!TIP]
+> Gurkha installs separately as `com.gurkha.launcher`, alongside Zalith. Settings and game files are separate. Back up your worlds before changing builds; differently signed APKs may not install over one another.
+
+## What makes it Gurkha?
+
+| Familiar foundation | Gurkha additions |
+| :--- | :--- |
+| Version management and a built-in file manager | Separate app identity and crossed-khukuri branding |
+| Customizable touch controls and backgrounds | Stronger, state-aware outlines in light and dark themes |
+| In-app mods, modpacks, resource packs, worlds, and shaders | Modrinth access and credential-gated CurseForge integration |
+| Multiple rendering backends | LTW, Krypton, RustGL, and experimental PowerVR Unified integration |
+| Java runtime and game launch management | Low-memory work and newer LWJGL/SDL integration |
+
+**Compatibility depends on the game version, renderer, Android system, and GPU driver.** Low-memory tuning is not a promise that every Minecraft version or modpack will run with 500 MB. Start with a lightweight configuration on entry-level devices.
+
+## Downloads & CurseForge
+
+**Modrinth does not need a CurseForge key.** CurseForge requires an approved application API key embedded when the APK is built.
+
+> [!IMPORTANT]
+> If the launcher says **“CurseForge is not available in this build”**, that APK was built without a key. Reinstalling the same APK or changing networks will not fix it. A maintainer must configure `CURSEFORGE_API_KEY` and publish a new build. Do not post keys in issues or chat.
+
+**Maintainers:** [configure and validate CurseForge](RELEASING.md#curseforge-api-key). CI checks authentication and Minecraft mod search before building APKs. Keyless development builds are clearly marked; release builds require a working key. A successful check does not guarantee every project's files are available.
+
+## Renderer notes
+
+| Renderer | What to know |
+| :--- | :--- |
+| LTW / Krypton | Alternative backends; choose based on your device and game version. |
+| RustGL | Built-in experimental OpenGL-to-GLES work aimed at low-end hardware. Shader compatibility issues remain. [Source & notes →](rustgl/README.md) |
+| PowerVR Unified | Experimental ARMv7/ARM64, GLES 3 backend: Krypton with an LTW-derived feature port, **not full LTW**. [Build details & limits →](powervr/README.md) |
+
+Passing CI means the tested code and packaging checks passed—not that gameplay has been validated on every phone. PowerVR GE8300 gameplay and Minecraft 1.21.10 compatibility are not confirmed by these builds. Existing renderer choices remain available.
+
+<details>
+<summary><strong>Interface reference · inherited Zalith layout</strong></summary>
+
+These are **upstream Zalith screenshots**, not screenshots of the current Gurkha build. Gurkha keeps the familiar layout, with its own branding and updated outlines.
+
+| Light theme | Dark theme |
+| :---: | :---: |
+| ![Upstream Zalith light launcher](.github/images/Screenshot_Launcher_Light_EN_US.jpg) | ![Upstream Zalith dark launcher](.github/images/Screenshot_Launcher_Dark_EN_US.jpg) |
+
+</details>
+
+## Contribute
+
+- **Found a bug?** [Open a report](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/issues/new/choose) with your launcher version, Android version, device/GPU, renderer, game version, and reproduction steps. Remove credentials and personal information from logs.
+- **Have an idea?** Use the feature request template and explain the problem it solves.
+- **Working on code?** See [build and release instructions](RELEASING.md), [RustGL](rustgl/README.md), and [PowerVR](powervr/README.md). Run the lightweight checks with `python3 -m unittest discover -s tests -v`.
+
+## Built on community work
+
+Gurkha is a fork of **[Zalith Launcher](https://github.com/ZalithLauncher/ZalithLauncher)**, built on **[PojavLauncher](https://github.com/PojavLauncherTeam/PojavLauncher)** and the work of many contributors. Credit for that foundation belongs to its developers.
+
+- [Third-party notices and component licenses](THIRD_PARTY_NOTICES.md)
+- [Archived upstream README and acknowledgements](docs/UPSTREAM_README.md)
+- Upstream language references: [简体中文](README_ZH_CN.md) · [繁體中文](README-ZH_TW.md) *(describe Zalith, not all Gurkha changes)*
+
+Gurkha Launcher is free software under [GPL-3.0](LICENSE). Bundled components retain their own licenses; redistributed PowerVR builds must include the corresponding source described in its documentation.
+
 <div align="center">
 
-[![Android CI](https://github.com/ZalithLauncher/ZalithLauncher/actions/workflows/android.yml/badge.svg)](https://github.com/ZalithLauncher/ZalithLauncher/actions/workflows/android.yml)
-![Downloads](https://img.shields.io/github/downloads/ZalithLauncher/ZalithLauncher/total)
-[![Sponsor](https://img.shields.io/badge/sponsor-30363D?logo=GitHub-Sponsors)](https://afdian.com/a/MovTery)
+<sub>Community maintained · Not affiliated with or endorsed by Mojang, Microsoft, or CurseForge</sub>
 
 </div>
-
-- <a href="/README_ZH_CN.md">简体中文</a>丨<a href="/README-ZH_TW.md">繁體中文</a>
-- Zalith Launcher is a Minecraft launcher based on [PojavLauncher](https://github.com/PojavLauncherTeam/PojavLauncher) that runs [Minecraft: Java Edition](https://www.minecraft.net/) on Android devices.
-- Zalith Launcher aims to enhance user experience by redesigning the app interface, adding more practical features, and lowering the barrier to entry, making it easier for more people to enjoy Minecraft.
-
-> [!WARNING]
-> Attention! This project is only a **community remake**, just like PojavLauncher is developed based on [Boardwalk](https://github.com/zhuowei/Boardwalk).  
-> We are planning to build the official website [zalithlauncher.cn](https://zalithlauncher.cn). Please note, our website domain ends with `.cn`, not `.com`! **That is not our site!** We do not participate in, accept, or trust that site! Please be careful to distinguish it and protect your personal privacy!
-
-<h2 align="center">New Features</h2>
-
-- [x] Refactored app layout for improved aesthetics and usability.
-- [x] Built-in simple file manager to eliminate worries about Android permission restrictions!
-- [x] Better version management, customizable game directory location, allowing settings in external storage directories.
-- [x] Add more renderers, with support for renderer plugins!
-- [x] Download Mods, ModPacks, resource packs, saves, and shader packs directly within the launcher!
-- [x] Customizable virtual mouse icon and launcher background image.
-- [x] Light and dark themes available.
-- [x] And more features!
-
-<h2 align="center">Screenshots</h2>
-
-![Screenshot1](/.github/images/Screenshot_Launcher_Light_EN_US.jpg)
-![Screenshot2](/.github/images/Screenshot_Launcher_Dark_EN_US.jpg)
-![Screenshot3](/.github/images/Screenshot_Game_EN_US.jpg)
-
-<h2 align="center">License</h2>
-
-- Zalith Launcher is open source under the GPL v3 license.
-
-<h2 align="center">Special Thanks</h2>
-
-This project uses several useful code libraries. Special thanks to them!
-
-#### Code Libraries Used by PojavLauncher
-
->- [Boardwalk](https://github.com/zhuowei/Boardwalk) (JVM Launcher): Unknown license / [Apache License 2.0](https://github.com/zhuowei/Boardwalk/blob/master/LICENSE) or GNU GPLv2.
->- Android Support Library: [Apache License 2.0](https://android.googlesource.com/platform/prebuilts/maven_repo/android/+/master/NOTICE.txt).
->- [GL4ES](https://github.com/PojavLauncherTeam/gl4es): [MIT License](https://github.com/ptitSeb/gl4es/blob/master/LICENSE).
->- [OpenJDK](https://github.com/PojavLauncherTeam/openjdk-multiarch-jdk8u): [GNU GPLv2 License](https://openjdk.java.net/legal/gplv2+ce.html).
->- [LWJGL3](https://github.com/PojavLauncherTeam/lwjgl3): [BSD-3 License](https://github.com/LWJGL/lwjgl3/blob/master/LICENSE.md).
->- [LWJGLX](https://github.com/PojavLauncherTeam/lwjglx) (LWJGL2 API compatibility layer for LWJGL3): Unknown license.
->- [Mesa 3D Graphics Library](https://gitlab.freedesktop.org/mesa/mesa): [MIT License](https://docs.mesa3d.org/license.html).
->- [pro-grade](https://github.com/pro-grade/pro-grade) (Java Sandbox Security Manager): [Apache License 2.0](https://github.com/pro-grade/pro-grade/blob/master/LICENSE.txt).
->- [bhook](https://github.com/bytedance/bhook) (For exit code capture): [MIT License](https://github.com/bytedance/bhook/blob/main/LICENSE).
->- [libepoxy](https://github.com/anholt/libepoxy): [MIT License](https://github.com/anholt/libepoxy/blob/master/COPYING).
->- [virglrenderer](https://github.com/PojavLauncherTeam/virglrenderer): [MIT License](https://gitlab.freedesktop.org/virgl/virglrenderer/-/blob/master/COPYING).
-
-#### Additional Code Libraries Used by Zalith Launcher
-
->- [HMCL](https://github.com/HMCL-dev/HMCL) (uses some source code): [GPL-3.0 License](https://github.com/HMCL-dev/HMCL/blob/main/LICENSE)
->- [CommonMark](https://github.com/thephpleague/commonmark) (for rendering Markdown text): [BSD-3-Clause License](https://github.com/thephpleague/commonmark/blob/2.5/LICENSE)
->- [AndroidViewAnimations](https://github.com/daimajia/AndroidViewAnimations) (uses part of the animation source code): [MIT License](https://github.com/daimajia/AndroidViewAnimations/blob/master/License)
->- [TapTargetView](https://github.com/KeepSafe/TapTargetView) (for creating onboarding guides): [Apache License 2.0](https://github.com/KeepSafe/TapTargetView/blob/master/LICENSE)
-
-### PowerVR Unified (Experimental)
-
-Gurkha also includes the single-library PowerVR Unified build from
-[Powervr-the-poop](https://github.com/kushaladhikari982648-lgtm/Powervr-the-poop).
-Select **PowerVR Unified (Experimental)** in version renderer settings on ARMv7/ARM64
-devices with GLES 3. This is Krypton with an LTW-derived feature port, not full LTW
-or an all-Minecraft-versions guarantee. Existing renderers remain available.
-See [build provenance, corresponding source, and testing limits](powervr/README.md).

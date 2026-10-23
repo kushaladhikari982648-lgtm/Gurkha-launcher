@@ -2,7 +2,7 @@
 
 Releases are built and published by GitHub Actions (`.github/workflows/android.yml`) when a tag
 `v<version>` is pushed. The APKs are signed with **your own release key**, which never goes into the
-repository. It is stored in two repository secrets.
+repository. It is stored in two repository secrets. Release builds also require a working CurseForge API key; see below.
 
 ## One-time setup: create the signing key
 
@@ -57,23 +57,61 @@ Optional secrets:
 - `GURKHA_KEY_ALIAS`: only needed if your key alias is not `gurkha`.
 - `GURKHA_KEY_PASSWORD`: only needed if the key password differs from the keystore password
   (PKCS12 keystores always use the same password).
-- `CURSEFORGE_API_KEY`: enables CurseForge inside the launcher (see below). Without it, CurseForge
-  shows "CurseForge is not available in this build" and the download pages start on Modrinth.
+
+Required for release builds:
+
+- `CURSEFORGE_API_KEY`: an approved application key for CurseForge (see below). Development builds
+  can omit it, but then CurseForge is disabled and the download pages start on Modrinth.
 
 ### CurseForge API key
 
-CurseForge only answers apps that send an API key, and each app needs its own: keys of other launchers
-must not be reused. Builds without a key can't use CurseForge at all (every request is rejected), so:
+CurseForge requires an approved application API key. A missing key is a **build configuration problem**,
+not an Android permission or renderer problem. Do not copy keys from other launchers, commit keys to
+source control, or paste them into chat, issues, logs, or screenshots.
 
-1. Sign in at <https://console.curseforge.com/> with a CurseForge account and request an API key for
-   this launcher (free; CurseForge reviews requests for third-party apps, which can take a few days).
-2. Add the key as a repository secret named `CURSEFORGE_API_KEY` (**Settings > Secrets and variables >
-   Actions > New repository secret**).
-3. Push a commit or re-run the latest workflow run: debug builds and releases both include the key from
-   then on. A debug build run shows a "No CurseForge API key" warning while the secret is missing.
+1. Sign in at <https://console.curseforge.com/> and request an API key for this launcher.
+   Follow CurseForge's application approval process.
+2. Add the approved key as a repository secret named **`CURSEFORGE_API_KEY`** under
+   **Settings > Secrets and variables > Actions > New repository secret**. Paste only the key,
+   without surrounding quotes. Keep any `$` characters intact; don't put the key in a shell command.
+3. Run **Actions > Check CurseForge API > Run workflow**. The workflow must first be merged into
+   the default branch to appear in the Actions menu. It sends an authenticated Minecraft mod search
+   to the official `api.curseforge.com` endpoint, never follows redirects, and never prints the key
+   or response body.
+4. Once the check passes, push a commit or choose **Re-run all jobs** on the Android CI run for the
+   code you want to build. Download and install the **new** APK. Existing APKs cannot acquire a key
+   after installation.
 
-For a local build, put the key into a file named `curseforge_key.txt` in the repository root (it is
-ignored by Git).
+Every Android CI run also has a **CurseForgeChecks** job and a status summary:
+
+| Status | Meaning / next step |
+|---|---|
+| `authenticated` | Authentication and Minecraft mod search passed. This does not test every download. |
+| `missing` | No usable key was supplied. Debug/PR builds warn and keep Modrinth; tagged release builds stop. |
+| `invalid` | The value contains invalid header characters. Re-enter the key without quotes or extra lines. |
+| `rejected` | HTTP 401/403: check app approval and whether the key was revoked or copied incorrectly. Replace the secret, then rebuild. |
+| `unavailable` / `unreachable` | Rate limit, server outage, or network failure after three attempts. Retry later; do not assume the key is wrong. |
+| `http-error` / `invalid-response` | Unexpected API response. Check the service and retry; redirects are deliberately blocked. |
+
+An invalid configured key fails **both** debug and release preflight rather than silently producing
+APKs with broken authentication. Pull requests from forks normally receive no repository secrets;
+those development APKs intentionally have CurseForge disabled. Do not change to `pull_request_target`
+or expose a key to untrusted fork code to bypass that restriction.
+
+For a local build, put the key into `curseforge_key.txt` in the repository root (Git ignores it),
+or supply the `CURSEFORGE_API_KEY` environment variable. To run the preflight locally, supply the key
+through that environment variable and run:
+
+```sh
+python3 tools/check_curseforge.py --require-key
+```
+
+The checker does not read the local key file. A missing key is allowed for local/debug builds, but
+CurseForge will remain unavailable. Offline regression tests need no credentials or network:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
 
 ## Publishing a new version
 
