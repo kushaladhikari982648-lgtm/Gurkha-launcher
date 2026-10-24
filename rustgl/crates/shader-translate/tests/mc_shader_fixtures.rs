@@ -491,6 +491,8 @@ fn buffer_samplers_follow_driver_capabilities() {
     ] {
         let text = translate_with_texture_buffers(MC_MODERN_VSH_BUFFER, cap).unwrap();
         assert!(text.starts_with(&format!("#version {version} es\n")), "{text}");
+        let partner = translate_with_texture_buffers("#version 330\nvoid main(){ gl_Position = vec4(0.0); }", cap).unwrap();
+        assert!(partner.starts_with(&format!("#version {version} es\n")), "stages must link: {partner}");
         assert!(text.contains("precision highp isamplerBuffer;"), "{text}");
         assert!(text.contains("texelFetch(CloudFaces, gl_VertexID / 6)"), "{text}");
         if !extension.is_empty() {

@@ -124,7 +124,8 @@ Minecraft. Rendering compatibility follows the Minecraft GL feature set, not the
 
 - Desktop buffer samplers now select **ESSL 320** on GLES 3.2, or **ESSL 310 + EXT/OES_texture_buffer**
   on supported GLES 3.1 drivers. ES 3.0 without buffer textures is still unsupported for these shaders;
-  no false capability or blank replacement shader is used. Ordinary shaders remain ESSL 300.
+  no false capability or blank replacement shader is used. All translated desktop stages use the same
+  context-selected dialect so buffer and non-buffer stages can link; ES 3.0 devices retain ESSL 300.
 - Buffer textures use the supported core/EXT/OES native entry points. `glTextureBuffer`,
   `glTextureBufferRange`, and target-aware `glBindTextureUnit` cover modern DSA callers, with binding
   restoration. Mesa pixel tests sample integer buffer textures, update their backing buffer, and

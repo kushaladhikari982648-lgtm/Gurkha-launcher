@@ -1141,7 +1141,7 @@ pub unsafe extern "C" fn glShaderSource(
             // Preserve a real compile failure. A valid white fragment shader or a vertex
             // shader at (0,0,0,0) hides unsupported features as a successful blank frame.
             log(&format!("[ShaderTranslate] shader {shader} rejected: {e}"));
-            "#error RustGL cannot translate this shader stage\n".into()
+            "#error RustGL shader translation failed; see renderer log\n".into()
         }
     };
     // TEMP(debug): capture every shader source so translation gaps can be reproduced offline.

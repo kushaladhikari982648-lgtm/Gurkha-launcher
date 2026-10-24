@@ -1036,14 +1036,24 @@ pub fn translate_with_texture_buffers(src: &str, texture_buffers: TextureBufferS
     let use_300 = num >= 110;
     let uses_buffer = src.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
         .any(|word| matches!(word, "samplerBuffer" | "isamplerBuffer" | "usamplerBuffer"));
-    let (header, buffer_extension) = if uses_buffer {
+    if uses_buffer && texture_buffers == TextureBufferSupport::None {
+        return Err("buffer textures require GLES 3.2 or GLES 3.1 with EXT/OES_texture_buffer".into());
+    }
+    // GLSL ES requires matching language versions at link time. Use the same
+    // context-selected dialect even for a stage that does not itself use buffers.
+    let header = match texture_buffers {
+        TextureBufferSupport::Core32 => "#version 320 es",
+        TextureBufferSupport::Ext31 | TextureBufferSupport::Oes31 => "#version 310 es",
+        TextureBufferSupport::None if use_300 => "#version 300 es",
+        _ => "#version 100",
+    };
+    let buffer_extension = if uses_buffer {
         match texture_buffers {
-            TextureBufferSupport::Core32 => ("#version 320 es", ""),
-            TextureBufferSupport::Ext31 => ("#version 310 es", "#extension GL_EXT_texture_buffer : require\n"),
-            TextureBufferSupport::Oes31 => ("#version 310 es", "#extension GL_OES_texture_buffer : require\n"),
-            TextureBufferSupport::None => return Err("buffer textures require GLES 3.2 or GLES 3.1 with EXT/OES_texture_buffer".into()),
+            TextureBufferSupport::Ext31 => "#extension GL_EXT_texture_buffer : require\n",
+            TextureBufferSupport::Oes31 => "#extension GL_OES_texture_buffer : require\n",
+            _ => "",
         }
-    } else if use_300 { ("#version 300 es", "") } else { ("#version 100", "") };
+    } else { "" };
     let precision = if use_300 { PRECISION_300 } else { PRECISION_100 };
 
     let fog_sanitized_source = strip_unused_iris_fog_initializer(src);
