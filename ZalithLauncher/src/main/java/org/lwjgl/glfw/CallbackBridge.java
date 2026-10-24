@@ -22,6 +22,10 @@ import java.util.ArrayList;
 import dalvik.annotation.optimization.CriticalNative;
 
 public class CallbackBridge {
+    public static final int WINDOW_STATE_FOCUSED = 1;
+    public static final int WINDOW_STATE_VISIBLE = 2;
+    public static native void nativeSetWindowState(int flag, boolean enabled);
+
     public static final Choreographer sChoreographer = Choreographer.getInstance();
     private static boolean isGrabbing = false;
     private static final ArrayList<GrabListener> grabListeners = new ArrayList<>();

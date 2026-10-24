@@ -356,8 +356,10 @@ fn tokenize(line: &str) -> Vec<Tok<'_>> {
         }
         // Comments are opaque: an operator or identifier inside one must not look like code.
         if line[i..].starts_with("//") {
-            out.push(Tok { kind: Kind::OpaqueLit, start: i, end: line.len(), text: &line[i..] });
-            break;
+            let end = line[i..].find('\n').map_or(line.len(), |n| i + n);
+            out.push(Tok { kind: Kind::OpaqueLit, start: i, end, text: &line[i..end] });
+            i = end;
+            continue;
         }
         if line[i..].starts_with("/*") {
             let end = line[i + 2..].find("*/").map_or(line.len(), |j| i + 2 + j + 2);
@@ -1027,9 +1029,66 @@ pub(crate) fn int_mod_helper() -> &'static str {
     INT_MOD_HELPER_BODY
 }
 
+/// Widen only scalar-float input parameters of unambiguous user functions.
+/// Unlike guessing from a function's return type, this preserves integer indices,
+/// out/inout arguments and overloads. Calls and declarations can span lines.
+fn widen_user_arguments(src: &str, declared: &Declared) -> String {
+    // Keep byte offsets while excluding preprocessor text from declaration matching.
+    let code: String = src.split_inclusive('\n').map(|line| {
+        if line.trim_start().starts_with('#') { " ".repeat(line.len()) } else { line.to_string() }
+    }).collect();
+    let toks: Vec<_> = tokenize(&code).into_iter()
+        .filter(|t| !(t.text.starts_with("//") || t.text.starts_with("/*"))).collect();
+    let mut signatures: HashMap<&str, Option<Vec<bool>>> = HashMap::new();
+    for i in 1..toks.len().saturating_sub(1) {
+        if toks[i].kind != Kind::Ident || !toks[i + 1].is_punct('(') { continue; }
+        let prev = toks[i - 1].text;
+        if !(FLOAT_TYPES.contains(&prev) || INT_SCALAR_TYPES.contains(&prev)
+            || INT_VECTOR_TYPES.iter().any(|(ty, _)| *ty == prev) || matches!(prev, "void" | "bool")) { continue; }
+        let Some(close) = matching_forward(&toks, i + 1, '(', ')') else { continue; };
+        if !toks.get(close + 1).is_some_and(|t| t.is_punct('{') || t.is_punct(';')) { continue; }
+        let params: Vec<bool> = split_args(&toks, i + 1, close).iter().map(|&(a, b)| {
+            let p = &toks[a..b];
+            p.iter().any(|t| t.text == "float") &&
+                !p.iter().any(|t| matches!(t.text, "out" | "inout" | "["))
+        }).collect();
+        signatures.entry(toks[i].text).and_modify(|prior| {
+            if prior.as_ref() != Some(&params) { *prior = None; }
+        }).or_insert(Some(params));
+    }
+    let mut insertions = Vec::new();
+    for i in 0..toks.len().saturating_sub(1) {
+        if !toks[i + 1].is_punct('(') { continue; }
+        let Some(Some(params)) = signatures.get(toks[i].text) else { continue; };
+        let Some(close) = matching_forward(&toks, i + 1, '(', ')') else { continue; };
+        let args = split_args(&toks, i + 1, close);
+        if args.len() != params.len() { continue; }
+        for ((a, b), float_input) in args.into_iter().zip(params) {
+            if !float_input || a == b { continue; }
+            let text = &code[toks[a].start..toks[b - 1].end];
+            // Only scalar integer expressions: a vector must not become its first component.
+            let scalar_arithmetic = toks[a..b].iter().all(|t| match t.kind {
+                Kind::IntLit => true,
+                Kind::Ident => declared.int_scalars.contains(t.text),
+                Kind::Punct => matches!(t.text, "+" | "-" | "*" | "/" | "%" | "(" | ")" | "&" | "|" | "^" | "~" | "<<" | ">>"),
+                _ => false,
+            });
+            if matches!(declared.retype_of(text), Some(Edit::FloatCast)) || scalar_arithmetic {
+                insertions.push((toks[a].start, "float("));
+                insertions.push((toks[b - 1].end, ")"));
+            }
+        }
+    }
+    insertions.sort_by_key(|(at, _)| *at);
+    insertions.dedup();
+    let mut out = src.to_string();
+    for (at, text) in insertions.into_iter().rev() { out.insert_str(at, text); }
+    out
+}
+
 pub(crate) fn widen_int_literals(src: &str) -> String {
     let declared = collect_declared(src);
-    let mut current = src.to_string();
+    let mut current = widen_user_arguments(src, &declared);
     // Types propagate through an expression, and each round only sees the text as it was when
     // it started: in `f * 2 - 1` the `2` is widened first because `f` is a float, and only the
     // next round sees that the product is a float and so is the subtraction. Each round is
@@ -1209,15 +1268,45 @@ mod tests {
     }
 
     #[test]
-    fn user_defined_float_function_args_are_not_widened() {
+    fn user_defined_float_function_args_follow_parameter_types() {
         let src = "float linear_fog_value(float a, float b){ return a + b; }\nfloat f(){ return linear_fog_value(0.0, 1); }\n";
         let out = widen(src);
-        assert!(out.contains("linear_fog_value(0.0, 1)"), "{out}");
+        assert!(out.contains("linear_fog_value(0.0, float(1))"), "{out}");
     }
 
     #[test]
     fn comma_declared_names_are_collected() {
         let out = widen("uniform float density, start;\nfloat f(){ return density * 2; }\n");
         assert!(out.contains("density * 2.0"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod signature_tests {
+    use super::*;
+
+    #[test]
+    fn mixed_parameters_multiline_and_indices() {
+        let src = "float fog(\nfloat distance, int index,\nfloat end) { return distance + end; }\nvoid main() { float f = fog(\n0, 2,\n3); int i = int(texelFetch(tex, 7).r); }\n";
+        let text = widen_int_literals(src);
+        assert!(text.contains("fog(\nfloat(0), 2,\nfloat(3))"), "{text}");
+        assert!(text.contains("texelFetch(tex, 7)"), "{text}");
+        assert!(text.contains("float distance, int index,"), "{text}");
+    }
+
+    #[test]
+    fn overloads_and_out_parameters_are_not_retyped() {
+        let src = "float f(float x) { return x; }\nint f(int x) { return x; }\nvoid g(out float x, inout float y) {}\nvoid main() { int z = f(1); g(a, b); }\n";
+        let text = widen_int_literals(src);
+        assert!(text.contains("f(1)"), "{text}");
+        assert!(text.contains("g(a, b)"), "{text}");
+    }
+
+    #[test]
+    fn unknown_names_and_integer_vectors_are_not_scalar_casts() {
+        let src = "float f(float x) { return x; }\nuniform ivec2 pair;\nvoid main() { f(unknown); f(pair); }\n";
+        let text = widen_int_literals(src);
+        assert!(text.contains("f(unknown)"), "{text}");
+        assert!(text.contains("f(pair)"), "{text}");
     }
 }

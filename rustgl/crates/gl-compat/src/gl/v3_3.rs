@@ -984,7 +984,16 @@ pub unsafe extern "C" fn glBindTextureUnit(unit: u32, texture: u32) {
         get(GL_ACTIVE_TEXTURE, &mut prev);
     }
     active(GL_TEXTURE0 + unit);
-    bind(GL_TEXTURE_2D, texture);
+    if texture != 0 {
+        bind(crate::named_objects::texture_target(texture), texture);
+    } else {
+        // Desktop DSA unbinds every target on the unit, not only GL_TEXTURE_2D.
+        for target in [GL_TEXTURE_2D, 0x806F, 0x8513, 0x8C1A] { bind(target, 0); }
+        let caps = crate::gles3::caps();
+        if caps.has_texture_buffer { bind(0x8C2A, 0); }
+        if caps.es_at_least(3, 1) { bind(0x9100, 0); }
+        if caps.es_at_least(3, 2) { bind(0x9009, 0); bind(0x9102, 0); }
+    }
     // Same rule as TextureBindingGuard::restore: a failed query leaves prev at 0, which is
     // not a valid glActiveTexture argument.
     active(if prev >= GL_TEXTURE0 as i32 { prev as u32 } else { GL_TEXTURE0 });
@@ -1205,10 +1214,20 @@ pub unsafe extern "C" fn glGetProgramResourceName(program: u32, iface: u32, inde
 pub unsafe extern "C" fn glTexSubImage1D(_t: u32, _l: i32, _x: i32, _w: i32, _f: u32, _ty: u32, _data: *const c_void) {
     err(GL_INVALID_ENUM);
 }
+fn texture_buffer_entry(range: bool) -> Option<&'static str> {
+    use shader_translate::TextureBufferSupport::*;
+    match (crate::gles3::texture_buffer_support(&crate::gles3::caps()), range) {
+        (Core32, false) => Some("glTexBuffer"), (Core32, true) => Some("glTexBufferRange"),
+        (Ext31, false) => Some("glTexBufferEXT"), (Ext31, true) => Some("glTexBufferRangeEXT"),
+        (Oes31, false) => Some("glTexBufferOES"), (Oes31, true) => Some("glTexBufferRangeOES"),
+        (None, _) => Option::None,
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn glTexBuffer(target: u32, internalformat: u32, buffer: u32) {
-    if crate::has_texture_buffer() {
-        if let Some(f) = crate::driver_fn_cached::<unsafe extern "C" fn(u32, u32, u32)>("glTexBuffer") {
+    if let Some(name) = texture_buffer_entry(false) {
+        if let Some(f) = crate::driver_fn_cached::<unsafe extern "C" fn(u32, u32, u32)>(name) {
             f(target, internalformat, buffer);
             return;
         }
@@ -1218,8 +1237,8 @@ pub unsafe extern "C" fn glTexBuffer(target: u32, internalformat: u32, buffer: u
 
 #[no_mangle]
 pub unsafe extern "C" fn glTexBufferRange(target: u32, internalformat: u32, buffer: u32, offset: isize, size: isize) {
-    if crate::has_texture_buffer() {
-        if let Some(f) = crate::driver_fn_cached::<unsafe extern "C" fn(u32, u32, u32, isize, isize)>("glTexBufferRange") {
+    if let Some(name) = texture_buffer_entry(true) {
+        if let Some(f) = crate::driver_fn_cached::<unsafe extern "C" fn(u32, u32, u32, isize, isize)>(name) {
             f(target, internalformat, buffer, offset, size);
             return;
         }

@@ -26,6 +26,14 @@ jobs:
       - uses: actions/checkout@v7
       - name: Check launcher resources and CurseForge preflight
         run: python3 -m unittest discover -s tests -v
+      - uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Test GLFW focus and lifecycle state
+        run: |
+          javac --release 8 -d "$RUNNER_TEMP/glfw-tests" jre_lwjgl3glfw/src/main/java/org/lwjgl/glfw/WindowState.java tests/java/WindowStateTest.java
+          java -cp "$RUNNER_TEMP/glfw-tests" org.lwjgl.glfw.WindowStateTest
 
   CurseForgeChecks:
     runs-on: ubuntu-22.04
@@ -63,6 +71,7 @@ jobs:
             cargo build -p gl-compat
             python3 tests/render_smoke.py
             MESA_EXTENSION_OVERRIDE=-GL_EXT_buffer_storage python3 tests/render_smoke.py
+            MESA_GLES_VERSION_OVERRIDE=3.1 python3 tests/render_smoke.py
           } 2>&1 | tee "$RUNNER_TEMP/rustgl-render-tests.log"
       - name: Report rendering test failure
         if: failure()

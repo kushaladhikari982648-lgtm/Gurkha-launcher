@@ -980,7 +980,15 @@ fn rewrite_line_body(
 }
 
 /// Best-effort translate. Only fails hard on geometry/tess/compute.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextureBufferSupport { None, Core32, Ext31, Oes31 }
+
 pub fn translate(src: &str) -> Result<String, String> {
+    translate_with_texture_buffers(src, TextureBufferSupport::None)
+}
+
+/// The GL driver determines this capability; never infer it from the Java or GLSL version.
+pub fn translate_with_texture_buffers(src: &str, texture_buffers: TextureBufferSupport) -> Result<String, String> {
     if looks_like_geometry_or_tess(src) {
         return Err("geometry/tessellation shaders are not supported on GLES passthrough".into());
     }
@@ -1026,11 +1034,17 @@ pub fn translate(src: &str) -> Result<String, String> {
     // where `layout(location = N) out` is not valid GLSL, so every MRT shader failed to
     // compile. ES 3.00 also accepts everything ES 1.00 did, so this is strictly broader.
     let use_300 = num >= 110;
-    let (header, precision) = if use_300 {
-        ("#version 300 es", PRECISION_300)
-    } else {
-        ("#version 100", PRECISION_100)
-    };
+    let uses_buffer = src.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .any(|word| matches!(word, "samplerBuffer" | "isamplerBuffer" | "usamplerBuffer"));
+    let (header, buffer_extension) = if uses_buffer {
+        match texture_buffers {
+            TextureBufferSupport::Core32 => ("#version 320 es", ""),
+            TextureBufferSupport::Ext31 => ("#version 310 es", "#extension GL_EXT_texture_buffer : require\n"),
+            TextureBufferSupport::Oes31 => ("#version 310 es", "#extension GL_OES_texture_buffer : require\n"),
+            TextureBufferSupport::None => return Err("buffer textures require GLES 3.2 or GLES 3.1 with EXT/OES_texture_buffer".into()),
+        }
+    } else if use_300 { ("#version 300 es", "") } else { ("#version 100", "") };
+    let precision = if use_300 { PRECISION_300 } else { PRECISION_100 };
 
     let fog_sanitized_source = strip_unused_iris_fog_initializer(src);
     let suffix_sanitized_source = strip_float_suffixes(&fog_sanitized_source);
@@ -1060,12 +1074,16 @@ pub fn translate(src: &str) -> Result<String, String> {
     let mut out = String::with_capacity(src.len() + 512);
     out.push_str(header);
     out.push('\n');
+    out.push_str(buffer_extension);
     // ES 1.00 only has derivatives behind an extension, and every #extension in the source is
     // dropped below, so the one the shader needs is declared here, before any other token.
     if !use_300 && is_frag && compat::uses_derivatives(src) {
         out.push_str("#extension GL_OES_standard_derivatives : enable\n");
     }
     out.push_str(precision);
+    if uses_buffer {
+        out.push_str("precision highp samplerBuffer;\nprecision highp isamplerBuffer;\nprecision highp usamplerBuffer;\n");
+    }
     if use_300 && compat::needs_fma_macro(src) {
         out.push_str(compat::FMA_MACRO);
     }

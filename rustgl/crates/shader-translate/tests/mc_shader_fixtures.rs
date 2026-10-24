@@ -456,3 +456,52 @@ fn mojang_directives_are_dropped_and_version_collapsed() {
     assert_eq!(out.matches("#version").count(), 1, "{out}");
     assert!(!out.contains("#moj_"), "{out}");
 }
+
+// Reduced modern cloud/fog dialects. Not full game shaders or a gameplay claim.
+const MC_MODERN_VSH_BUFFER: &str = r#"#version 330
+uniform isamplerBuffer CloudFaces;
+flat out int face;
+void main() {
+    face = texelFetch(CloudFaces, gl_VertexID / 6).r;
+    gl_Position = vec4(float(face), 0.0, 0.0, 1.0);
+}
+"#;
+
+const MC_MODERN_FSH_FOG_CALL: &str = r#"#version 330
+in float vertexDistance;
+uniform float FogCloudsEnd;
+out vec4 fragColor;
+float linear_fog_value(float vertexDistance, float fogStart, float fogEnd) {
+    if (vertexDistance <= fogStart) return 0.0;
+    if (vertexDistance >= fogEnd) return 1.0;
+    return (vertexDistance - fogStart) / (fogEnd - fogStart);
+}
+void main() {
+    fragColor = vec4(linear_fog_value(vertexDistance, 0, FogCloudsEnd));
+}
+"#;
+
+#[test]
+fn buffer_samplers_follow_driver_capabilities() {
+    use shader_translate::{translate_with_texture_buffers, TextureBufferSupport::*};
+    assert!(translate_with_texture_buffers(MC_MODERN_VSH_BUFFER, None).is_err());
+    for (cap, version, extension) in [
+        (Core32, "320", ""), (Ext31, "310", "GL_EXT_texture_buffer"),
+        (Oes31, "310", "GL_OES_texture_buffer"),
+    ] {
+        let text = translate_with_texture_buffers(MC_MODERN_VSH_BUFFER, cap).unwrap();
+        assert!(text.starts_with(&format!("#version {version} es\n")), "{text}");
+        assert!(text.contains("precision highp isamplerBuffer;"), "{text}");
+        assert!(text.contains("texelFetch(CloudFaces, gl_VertexID / 6)"), "{text}");
+        if !extension.is_empty() {
+            let directive = format!("#extension {extension} : require");
+            assert!(text.find(&directive).unwrap() < text.find("precision").unwrap());
+        }
+    }
+}
+
+#[test]
+fn fog_call_uses_the_declared_float_parameter() {
+    let text = shader_translate::translate(MC_MODERN_FSH_FOG_CALL).unwrap();
+    assert!(text.contains("linear_fog_value(vertexDistance, float(0), FogCloudsEnd)"), "{text}");
+}

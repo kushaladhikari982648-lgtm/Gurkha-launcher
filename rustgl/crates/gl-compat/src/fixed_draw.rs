@@ -240,12 +240,10 @@ fn build(be: &dyn Backend) -> Option<Gpu> {
     })
 }
 
-/// Picks the unit that carries the lightmap: unit 2 when it has both a UV array and texturing
-/// enabled (1.15/1.16, where unit 1 is the entity overlay), otherwise unit 1 (1.12-1.14).
-fn lightmap_unit(arrays: impl Fn(usize) -> ArraySnapshot, enabled: impl Fn(usize) -> bool) -> Option<usize> {
-    [2usize, 1usize]
-        .into_iter()
-        .find(|&u| arrays(u).enabled && enabled(u))
+/// Enabled lightmap unit, including entity draws that use a constant coordinate
+/// rather than a UV array. Unit 2 is preferred for 1.15/1.16; older games use 1.
+fn lightmap_unit(enabled: impl Fn(usize) -> bool) -> Option<usize> {
+    [2usize, 1usize].into_iter().find(|&u| enabled(u))
 }
 
 fn type_size(ty: u32) -> usize {
@@ -361,18 +359,23 @@ pub unsafe fn try_draw_arrays(mode: u32, first: i32, count: i32) -> bool {
     if !has_uv {
         be.set_vertex_attrib_enabled(2, false);
         if let Some(f) = attrib4f {
-            f(2, 0.0, 0.0, 0.0, 1.0);
+            let uv = fixed_func::current_texcoord(0);
+            f(2, uv[0], uv[1], 0.0, 1.0);
         }
     }
 
-    // Lightmap: a second UV array on unit 1 or 2 plus a texture enabled on that unit.
+    // Lightmap: UV array or current coordinate on an enabled unit 1/2.
     let mut light_unit: Option<usize> = None;
     if gpu.extended {
-        light_unit = lightmap_unit(fixed_func::texcoord_unit, fixed_func::unit_texture_enabled);
+        light_unit = lightmap_unit(fixed_func::unit_texture_enabled);
         if let Some(u) = light_unit {
             let a = fixed_func::texcoord_unit(u);
             if !setup_attrib(be, 3, &a, gpu.vbo[3], first, count, false) {
-                light_unit = None;
+                be.set_vertex_attrib_enabled(3, false);
+                if let Some(f) = attrib4f {
+                    let uv = fixed_func::current_texcoord(u);
+                    f(3, uv[0], uv[1], 0.0, 1.0);
+                }
             }
         }
         if light_unit.is_none() {
@@ -386,7 +389,7 @@ pub unsafe fn try_draw_arrays(mode: u32, first: i32, count: i32) -> bool {
     // The sampler always reads unit 0, regardless of the last active server unit.
     // A bound texture is not an enable bit: legacy GUI passes disable texturing
     // while leaving the atlas bound. Sampling it then paints the wrong fullscreen quad.
-    let use_tex = has_uv && fixed_func::unit_texture_enabled(0);
+    let use_tex = fixed_func::unit_texture_enabled(0);
     let (afunc, aref) = fixed_func::alpha();
     let alpha_mode = if fixed_func::legacy_cap_enabled(GL_ALPHA_TEST) && (0x200..=0x207).contains(&afunc) {
         (afunc - 0x200 + 1) as i32
@@ -477,19 +480,15 @@ pub unsafe fn try_draw_arrays(mode: u32, first: i32, count: i32) -> bool {
 mod tests {
     use super::*;
 
-    fn arr(enabled: bool) -> ArraySnapshot {
-        ArraySnapshot { enabled, ..ArraySnapshot::default() }
-    }
-
     #[test]
     fn lightmap_prefers_unit_two_then_one() {
         // 1.16: overlay on unit 1, lightmap on unit 2.
-        assert_eq!(lightmap_unit(|_| arr(true), |_| true), Some(2));
+        assert_eq!(lightmap_unit(|_| true), Some(2));
         // 1.12-1.14: lightmap on unit 1 only.
-        assert_eq!(lightmap_unit(|u| arr(u == 1), |u| u == 1), Some(1));
+        assert_eq!(lightmap_unit(|u| u == 1), Some(1));
         // A UV array without an enabled texture is not a lightmap.
-        assert_eq!(lightmap_unit(|_| arr(true), |_| false), None);
-        assert_eq!(lightmap_unit(|_| arr(false), |_| true), None);
+        assert_eq!(lightmap_unit(|_| false), None);
+        assert_eq!(lightmap_unit(|_| true), Some(2));
     }
 
     #[test]

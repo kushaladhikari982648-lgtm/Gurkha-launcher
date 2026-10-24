@@ -171,7 +171,7 @@ unsafe fn allocate_msaa_renderbuffer(samples: i32, fmt: u32, w: i32, h: i32) -> 
 /// GL_INVALID_ENUM. Their storage is allocated by `glTexStorage*Multisample` instead.
 pub(crate) fn is_bindable_texture_target(t: u32) -> bool {
     matches!(t, 0x0DE1 /* 2D */ | 0x806F /* 3D */ | 0x8513 /* CUBE_MAP */
-        | 0x8C1A /* 2D_ARRAY */ | 0x9009 /* CUBE_MAP_ARRAY */ | 0x84F5 /* 1D */
+        | 0x8C2A /* BUFFER */ | 0x8C1A /* 2D_ARRAY */ | 0x9009 /* CUBE_MAP_ARRAY */ | 0x84F5 /* 1D */
         | 0x84F6 /* 1D_ARRAY */ | 0x84F7 /* RECT */ | 0x8C18 /* 3D_ARRAY */)
 }
 
@@ -279,9 +279,14 @@ pub unsafe extern "C" fn glCreateTextures(target: u32, n: i32, ids: *mut u32) {
     }
     if is_bindable_texture_target(target) {
         if let Some(bind) = driver_fn_cached::<unsafe extern "C" fn(u32, u32)>("glBindTexture") {
+            let mut previous = 0;
+            let get = driver_fn_cached::<unsafe extern "C" fn(u32, *mut i32)>("glGetIntegerv");
+            let pname = crate::gl::v4_5::binding_pname(target);
+            if let (Some(get), Some(pname)) = (get, pname) { get(pname, &mut previous); }
             for i in 0..n as usize {
                 bind(target, *ids.add(i));
             }
+            if get.is_some() && pname.is_some() { bind(target, previous as u32); }
         }
     }
 }
@@ -1233,8 +1238,8 @@ pub unsafe extern "C" fn glCopyTextureSubImage1D(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn glTextureBuffer(_id: u32, _r: u32, _b: u32) {
-    errors().set(0x0500);
+pub unsafe extern "C" fn glTextureBuffer(id: u32, format: u32, buffer: u32) {
+    crate::gl::v4_5::texture_buffer(id, format, buffer);
 }
 
 /// Texture view (GL 4.4 / ARB_texture_view / ES 3.2+).

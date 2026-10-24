@@ -104,7 +104,7 @@ for match in re.finditer(r'const (\w+): &str = r(#?)"(.*?)"\2;', fixtures, re.S)
     shader = compile_src(text, stage, name)
     delete_shader(shader)
     print(f'PASS: GLES compile {name}', flush=True)
-assert fixture_count == 6, f'Expected all six shader fixtures, found {fixture_count}'
+assert fixture_count == 8, f'Expected all eight shader fixtures, found {fixture_count}'
 shader = compile_src('#version 330\nvoid main(){ EmitVertex(); }', 0x8B31,
                      'unsupported stage must fail instead of becoming a blank shader', False)
 delete_shader(shader)
@@ -166,6 +166,29 @@ disable(0x0DE1)
 background()
 draw(7,0,4)
 pixel((255,255,255,255), 'legacy disabled texture remains untextured despite bound atlas')
+
+# Java-8-era entity lighting: current multitexture coordinate, no lightmap array.
+light = U()
+active(0x84C1)
+gl('glGenTextures', None, I, P)(1, C.byref(light))
+gl('glBindTexture', None, U,U)(0x0DE1, light.value)
+light_pixels = (C.c_ubyte * 8)(255,0,0,255, 0,255,0,255)
+gl('glTexImage2D', None, U,I,I,I,I,I,U,U,P)(0x0DE1,0,0x8058,2,1,0,0x1908,0x1401,light_pixels)
+param(0x0DE1,0x2801,0x2600)
+param(0x0DE1,0x2800,0x2600)
+enable(0x0DE1)
+client_active = gl('glClientActiveTexture', None,U)
+client_active(0x84C1)
+gl('glDisableClientState', None,U)(0x8078)
+multi_uv = gl('glMultiTexCoord2f', None,U,F,F)
+for u, expected in [(0.25,(255,0,0,255)), (0.75,(0,255,0,255))]:
+    multi_uv(0x84C1,u,0.5)
+    background()
+    draw(7,0,4)
+    pixel(expected, f'legacy constant lightmap coordinate {u}')
+disable(0x0DE1)
+active(0x84C0)
+client_active(0x84C0)
 
 # Modern Minecraft: translated #version 330 shader with a std140 UBO. Use a
 # fullscreen triangle generated from gl_VertexID to isolate UBO updates from vertex setup.
@@ -236,6 +259,65 @@ for allocation in ("mutable", "immutable", "named immutable"):
         gl('glBufferData',None,U,Z,P,U)(0x8A11,C.sizeof(values),values,0x88E8)
         assert get_error() == 0x0502, 'immutable storage must reject reallocation'
     gl('glDeleteBuffers',None,I,P)(1,C.byref(ubo))
+
+# Modern cloud/texture-buffer path: translate, DSA attach, sample, update, ranged attach.
+vs_buffer = compile_src('''#version 330
+void main() {
+    vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+''', 0x8B31, 'buffer texture VS')
+fs_buffer = compile_src('''#version 330
+uniform isamplerBuffer Colors;
+out vec4 fragColor;
+void main() { fragColor = vec4(texelFetch(Colors, 0)) / 255.0; }
+''', 0x8B30, 'integer buffer texture FS')
+buffer_program = gl('glCreateProgram', U)()
+attach(buffer_program, vs_buffer)
+attach(buffer_program, fs_buffer)
+gl('glLinkProgram', None,U)(buffer_program)
+gl('glGetProgramiv', None,U,U,P)(buffer_program,0x8B82,C.byref(status))
+assert status.value, 'buffer texture shader link failed'
+gl('glUseProgram', None,U)(buffer_program)
+location = gl('glGetUniformLocation', I,U,C.c_char_p)(buffer_program,b'Colors')
+gl('glUniform1i', None,I,I)(location,0)
+colors = U()
+gl('glGenBuffers',None,I,P)(1,C.byref(colors))
+bind_buffer(0x8892,colors.value)
+red = (I * 4)(255,0,0,255)
+gl('glBufferData',None,U,Z,P,U)(0x8892,C.sizeof(red),red,0x88E8)
+# A sentinel binding catches accidental state changes by glCreateTextures and DSA.
+sentinel, buffer_texture = U(), U()
+gl('glGenTextures',None,I,P)(1,C.byref(sentinel))
+gl('glBindTexture',None,U,U)(0x8C2A,sentinel.value)
+gl('glCreateTextures',None,U,I,P)(0x8C2A,1,C.byref(buffer_texture))
+previous = I()
+get_i(0x8C2C,C.byref(previous))
+assert previous.value == sentinel.value, 'glCreateTextures changed texture-buffer binding'
+gl('glTextureBuffer',None,U,U,U)(buffer_texture.value,0x8D82,colors.value)
+get_i(0x8C2C,C.byref(previous))
+assert previous.value == sentinel.value, 'glTextureBuffer changed texture-buffer binding'
+active(0x84C1)
+gl('glBindTextureUnit',None,U,U)(0,buffer_texture.value)
+get_i(0x84E0,C.byref(previous))
+assert previous.value == 0x84C1, 'glBindTextureUnit changed active texture unit'
+background()
+draw(4,0,3)
+pixel((255,0,0,255), 'integer buffer texture initial sample')
+green = (I * 4)(0,255,0,255)
+subdata(0x8892,0,C.sizeof(green),green)
+background()
+draw(4,0,3)
+pixel((0,255,0,255), 'integer buffer texture reflects buffer updates')
+gl('glTextureBufferRange',None,U,U,U,Z,Z)(buffer_texture.value,0x8D82,colors.value,0,16)
+background()
+draw(4,0,3)
+pixel((0,255,0,255), 'DSA buffer texture range')
+gl('glBindTextureUnit',None,U,U)(0,0)
+active(0x84C0)
+get_i(0x8C2C,C.byref(previous))
+assert previous.value == 0, 'glBindTextureUnit(unit, 0) did not unbind buffer texture'
+no_error('buffer texture DSA state restoration')
 
 # Everything above runs in one process/context, matching the renderer's global state model.
 print('PASS: all RustGL rendering probes', flush=True)

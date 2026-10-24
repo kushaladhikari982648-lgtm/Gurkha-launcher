@@ -32,6 +32,25 @@
 #define EVENT_TYPE_SCROLL 1007
 #define EVENT_TYPE_WINDOW_SIZE 1008
 
+/* Persistent lifecycle state survives events that arrive before the game window/JVM.
+ * Android only writes atomics; GLFW reads them on its own event thread. No callbacks
+ * or game HashMap writes from the Android UI thread. */
+#define WINDOW_STATE_FOCUSED 1
+#define WINDOW_STATE_VISIBLE 2
+static atomic_int android_window_state = 0;
+
+JNIEXPORT void JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeSetWindowState(
+        JNIEnv* env, jclass clazz, jint flag, jboolean enabled) {
+    if (flag != WINDOW_STATE_FOCUSED && flag != WINDOW_STATE_VISIBLE) return;
+    if (enabled) atomic_fetch_or(&android_window_state, flag);
+    else atomic_fetch_and(&android_window_state, ~flag);
+}
+
+JNIEXPORT jint JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeGetWindowState(
+        JNIEnv* env, jclass clazz) {
+    return atomic_load(&android_window_state);
+}
+
 static void registerFunctions(JNIEnv *env);
 
 jint JNI_OnLoad(JavaVM* vm, __attribute__((unused)) void* reserved) {

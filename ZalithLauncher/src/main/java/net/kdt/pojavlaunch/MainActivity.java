@@ -288,10 +288,16 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_FOCUSED, hasFocus);
+    }
+
+    @Override
     public void onResume() {
         super.onResume();
         if (AllStaticSettings.enableGyro) mGyroControl.enable();
-        CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_HOVERED, 1);
+        CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_FOCUSED, hasWindowFocus());
     }
 
     @Override
@@ -300,19 +306,19 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         if (CallbackBridge.isGrabbing()){
             sendKeyPress(LwjglGlfwKeycode.GLFW_KEY_ESCAPE);
         }
-        CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_HOVERED, 0);
+        CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_FOCUSED, false);
         super.onPause();
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_VISIBLE, 1);
+        CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_VISIBLE, true);
     }
 
     @Override
     protected void onStop() {
-        CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_VISIBLE, 0);
+        CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_VISIBLE, false);
         super.onStop();
     }
 

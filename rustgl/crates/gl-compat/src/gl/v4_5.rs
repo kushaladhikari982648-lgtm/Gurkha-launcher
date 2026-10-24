@@ -33,7 +33,7 @@ fn fail(name: &'static str) {
     crate::errors().set(INVALID_OPERATION);
 }
 
-fn binding_pname(target: u32) -> Option<u32> {
+pub(crate) fn binding_pname(target: u32) -> Option<u32> {
     Some(match target {
         0x0DE0 => 0x8068,
         0x0DE1 => 0x8069,
@@ -512,12 +512,12 @@ pub unsafe extern "C" fn glInvalidateNamedFramebufferSubData(
 pub unsafe extern "C" fn glTextureBufferRange(
     texture: u32, internalformat: u32, buffer: u32, offset: isize, size: isize,
 ) {
-    let Some(binding) = bind_texture(texture) else { fail("glTextureBufferRange"); return };
-    if let Some(call) = f::<unsafe extern "C" fn(u32, u32, u32, isize, isize)>("glTexBufferRange") {
-        call(binding.target, internalformat, buffer, offset, size);
-    } else {
-        fail("glTextureBufferRange");
+    if !crate::has_texture_buffer() || crate::named_objects::texture_target(texture) != 0x8C2A {
+        crate::errors().set(INVALID_OPERATION);
+        return;
     }
+    let Some(binding) = bind_texture(texture) else { fail("glTextureBufferRange"); return };
+    crate::gl::v3_3::glTexBufferRange(binding.target, internalformat, buffer, offset, size);
 }
 
 #[no_mangle]
@@ -882,4 +882,14 @@ mod tests {
             assert!(!resolve(name.as_bytes()).is_null(), "{name}");
         }
     }
+}
+
+/// Shared DSA implementation; binding guard restores the caller's buffer-texture binding.
+pub(crate) unsafe fn texture_buffer(texture: u32, format: u32, buffer: u32) {
+    if !crate::has_texture_buffer() || crate::named_objects::texture_target(texture) != 0x8C2A {
+        crate::errors().set(INVALID_OPERATION);
+        return;
+    }
+    let Some(binding) = bind_texture(texture) else { fail("glTextureBuffer"); return };
+    crate::gl::v3_3::glTexBuffer(binding.target, format, buffer);
 }

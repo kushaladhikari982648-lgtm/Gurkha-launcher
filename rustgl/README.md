@@ -59,11 +59,11 @@ The `RustGLChecks` CI job gates APK builds on:
 - `renderer-core`, `gl-compat`, and **shader-translate** unit/fixture tests.
 - Loading the actual Linux `librust_gl.so` under `RTLD_LOCAL` with a Mesa surfaceless GLES
   context, not a mock driver.
-- Driver compilation of six representative shader fixtures from the 1.12.2 post-processing,
+- Driver compilation of eight representative shader fixtures from the 1.12.2 post-processing,
   1.20.1 plain-uniform, and 1.21.7/1.21.10 std140-UBO dialects.
 - Pixel readbacks for legacy client-array quads with texturing enabled/disabled and a different
   active texture unit, plus modern UBO initial uploads and dynamic subdata updates (including
-  named storage). These run both with and without `GL_EXT_buffer_storage` available.
+  named storage). These run with and without `GL_EXT_buffer_storage`, and on an ES 3.1 context to exercise the EXT texture-buffer entry points.
 
 Host reproduction (Linux, Rust, Python 3, Mesa EGL/GLES development libraries installed):
 
@@ -116,3 +116,33 @@ entry points both taken from `librust_gl.so` (it re-exports the EGL surface the 
 
 Debug switches (settable in the version's custom environment): `RENDERER_DEBUG=1` (additional
 draw diagnostics), `RENDERER_TRACE_GL=1` (GL call tracing).
+
+## Cross-version compatibility work (focus / buffer textures / legacy lighting)
+
+This update does **not** make Java 8/17/21/25 interchangeable. Use the Java runtime required by
+Minecraft. Rendering compatibility follows the Minecraft GL feature set, not the Java number.
+
+- Desktop buffer samplers now select **ESSL 320** on GLES 3.2, or **ESSL 310 + EXT/OES_texture_buffer**
+  on supported GLES 3.1 drivers. ES 3.0 without buffer textures is still unsupported for these shaders;
+  no false capability or blank replacement shader is used. Ordinary shaders remain ESSL 300.
+- Buffer textures use the supported core/EXT/OES native entry points. `glTextureBuffer`,
+  `glTextureBufferRange`, and target-aware `glBindTextureUnit` cover modern DSA callers, with binding
+  restoration. Mesa pixel tests sample integer buffer textures, update their backing buffer, and
+  check ranged attachment and unbinding.
+- User-function scalar float parameters get explicit integer conversions when their declaration is
+  unambiguous (including modern `linear_fog_value(distance, 0, end)` calls). Overloads, integer
+  parameters, output parameters, and texel-fetch indices are not blindly rewritten.
+- Legacy fixed-function draws can use current texture/lightmap coordinates when client UV arrays
+  are disabled, including the constant entity lightmap coordinate supplied by `glMultiTexCoord2f`.
+  Pixel tests cover changing that coordinate; this is not complete fixed-function lighting or
+  arbitrary per-vertex multitexture emulation.
+- The launcher's GLFW bridge now reports actual Android focus/visibility and delivers changes on
+  the game event thread. This addresses a possible inactive-window frame limiter affecting PowerVR
+  Unified and other GLFW renderers. It does **not** establish that a specific phone's 30 FPS limit
+  was caused by focus, or promise a frame rate. V-Sync and the game's FPS setting are not overridden.
+
+**Still unconfirmed on device:** full Minecraft gameplay across these version families, especially
+PowerVR GE8300. Minecraft versions routed through SDL still use the existing LTW policy: this patch
+is not a RustGL SDL integration. Full Java-25-era/SDL support needs separate work and device logs.
+Report the exact Minecraft version, Android version, renderer, and launcher/game log for any remaining
+black screen. Compare vanilla with the same settings, and test background/resume as well as gameplay.

@@ -1131,7 +1131,7 @@ pub unsafe extern "C" fn glShaderSource(
     }
     let is_es = shader_translation_is_es();
     let translated = if is_es {
-        shader_translate::translate(&src)
+        shader_translate::translate_with_texture_buffers(&src, gles3::texture_buffer_support(&gles3::caps()))
     } else {
         shader_translate::translate_desktop_450(&src)
     };

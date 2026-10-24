@@ -238,7 +238,8 @@ pub fn probe() -> GlesCapabilities {
 
 
     // Texture buffer detection: ES 3.2+ or GL_EXT_texture_buffer extension
-    caps.has_texture_buffer = caps.es_at_least(3, 2) || caps.has(b"GL_EXT_texture_buffer\0");
+    caps.has_texture_buffer = caps.es_at_least(3, 2) || (caps.es_at_least(3, 1) &&
+        (caps.has(b"GL_EXT_texture_buffer\0") || caps.has(b"GL_OES_texture_buffer\0")));
     // Texture view detection: ES 3.2+ or GL_EXT_texture_view extension
     caps.has_texture_view = caps.es_at_least(3, 2) || caps.has(b"GL_EXT_texture_view\0");
 
@@ -537,5 +538,38 @@ mod tests {
             let name = String::from_utf8_lossy(ext.trim_ascii_end()).into_owned();
             assert!(!name.is_empty());
         }
+    }
+}
+
+/// Select core vs extension entry points explicitly: EGL can return non-null stubs
+/// for unsupported core names, so trying the core name first is not a capability test.
+pub(crate) fn texture_buffer_support(c: &GlesCapabilities) -> shader_translate::TextureBufferSupport {
+    use shader_translate::TextureBufferSupport::*;
+    if !c.valid { return None; }
+    if c.es_at_least(3, 2) { Core32 }
+    else if c.es_at_least(3, 1) && c.has(b"GL_EXT_texture_buffer\0") { Ext31 }
+    else if c.es_at_least(3, 1) && c.has(b"GL_OES_texture_buffer\0") { Oes31 }
+    else { None }
+}
+
+#[cfg(test)]
+mod texture_buffer_tests {
+    use super::*;
+    use shader_translate::TextureBufferSupport::*;
+    #[test]
+    fn capability_selection_does_not_assume_core_entry_points() {
+        let mut c = GlesCapabilities { valid: true, es_major: 3, es_minor: 0, ..Default::default() };
+        assert_eq!(texture_buffer_support(&c), None);
+        c.es_minor = 1;
+        assert_eq!(texture_buffer_support(&c), None);
+        c.extensions.insert(b"GL_EXT_texture_buffer".to_vec());
+        assert_eq!(texture_buffer_support(&c), Ext31);
+        c.extensions.clear();
+        c.extensions.insert(b"GL_OES_texture_buffer".to_vec());
+        assert_eq!(texture_buffer_support(&c), Oes31);
+        c.es_minor = 2;
+        assert_eq!(texture_buffer_support(&c), Core32);
+        c.valid = false;
+        assert_eq!(texture_buffer_support(&c), None);
     }
 }

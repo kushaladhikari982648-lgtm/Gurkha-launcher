@@ -131,10 +131,20 @@ fn set_uv(s: f32, t: f32) {
     if !crate::gl::v1_1::record_command(crate::gl::v1_1::ListCommand::TexCoord([s, t])) {
         return;
     }
+    fixed_func::set_current_texcoord(0, s, t);
     with_imm(|i| {
         i.uv = [s, t];
         i.uv_used = true;
     });
+}
+
+fn set_multi_uv(target: u32, s: f32, t: f32) {
+    if target == GL_TEXTURE0 { set_uv(s, t); return; }
+    if crate::gl::v1_1::record_command(crate::gl::v1_1::ListCommand::MultiTexCoord(target, [s, t])) {
+        if let Some(unit) = target.checked_sub(GL_TEXTURE0) {
+            fixed_func::set_current_texcoord(unit as usize, s, t);
+        }
+    }
 }
 
 pub(crate) fn set_color(r: f32, g: f32, b: f32, a: f32) {
@@ -151,6 +161,7 @@ pub(crate) fn replay_list_command(command: crate::gl::v1_1::ListCommand) {
         ListCommand::Vertex([x, y, z, w]) => push_vertex(x, y, z, w),
         ListCommand::Color([r, g, b, a]) => set_color(r, g, b, a),
         ListCommand::TexCoord([s, t]) => set_uv(s, t),
+        ListCommand::MultiTexCoord(unit, [s, t]) => set_multi_uv(unit, s, t),
         ListCommand::CallList(_) => unreachable!("nested lists are replayed by the list manager"),
     }
 }
@@ -196,8 +207,8 @@ export! {
     // Only s and t are used; r and q are dropped (the emulation has 2D textures only).
     glTexCoord3f(s: f32, t: f32, _r: f32) { set_uv(s, t) }
     glTexCoord4f(s: f32, t: f32, _r: f32, _q: f32) { set_uv(s, t) }
-    // Only unit 0 has a current coordinate; other units are ignored rather than clobbering it.
-    glMultiTexCoord2f(target: u32, s: f32, t: f32) { if target == GL_TEXTURE0 { set_uv(s, t) } }
+    // Old Minecraft supplies a constant lightmap coordinate for entity draws.
+    glMultiTexCoord2f(target: u32, s: f32, t: f32) { set_multi_uv(target, s, t) }
 
     // Normals are accepted so callers keep running; there is no lighting to use them.
     glNormal3f(_x: f32, _y: f32, _z: f32) {}

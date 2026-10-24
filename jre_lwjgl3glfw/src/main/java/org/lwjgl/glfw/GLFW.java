@@ -948,7 +948,15 @@ public class GLFW
     }
 
     public static int glfwGetWindowAttrib(@NativeType("GLFWwindow *") long window, int attrib) {
-        return internalGetWindow(window).windowAttribs.getOrDefault(attrib, 0);
+        GLFWWindowProperties win = internalGetWindow(window);
+        int host = CallbackBridge.nativeGetWindowState();
+        switch (attrib) {
+            case GLFW_FOCUSED: return win.state.focused(host) ? GLFW_TRUE : GLFW_FALSE;
+            case GLFW_HOVERED: return win.state.focused(host) ? GLFW_TRUE : GLFW_FALSE;
+            case GLFW_VISIBLE: return win.state.visible(host) ? GLFW_TRUE : GLFW_FALSE;
+            case GLFW_ICONIFIED: return win.state.iconified(host) ? GLFW_TRUE : GLFW_FALSE;
+            default: return win.windowAttribs.getOrDefault(attrib, 0);
+        }
     }
 
     public static void glfwSetWindowAttrib(@NativeType("GLFWwindow *") long window, int attrib, int value) {
@@ -1067,8 +1075,7 @@ public class GLFW
         win.inputModes.put(GLFW_STICKY_MOUSE_BUTTONS, GLFW_FALSE); // TODO: Fix glfwGetMouseButton() to support this
         win.inputModes.put(GLFW_IME, GLFW_FALSE);
 
-        win.windowAttribs.put(GLFW_HOVERED, 1);
-        win.windowAttribs.put(GLFW_VISIBLE, 1);
+        // WindowState starts hidden; glfwShowWindow below applies creation hints.
 
         // Set the Open GL version for context because Forge and derivatives ask for it
         // Default on 3.3 because mod compat
@@ -1142,18 +1149,33 @@ public class GLFW
 
     public static void glfwShowWindow(long window) {
         GLFWWindowProperties win = internalGetWindow(window);
-        win.windowAttribs.put(GLFW_HOVERED, 1);
-        win.windowAttribs.put(GLFW_VISIBLE, 1);
+        win.state.show();
         nglfwSetShowingWindow(window);
+        internalSyncWindowState(window, win, CallbackBridge.nativeGetWindowState());
     }
 
     public static void glfwHideWindow(long window) {
         GLFWWindowProperties win = internalGetWindow(window);
-        win.windowAttribs.put(GLFW_HOVERED, 0);
-        win.windowAttribs.put(GLFW_VISIBLE, 0);
+        win.state.hide();
+        internalSyncWindowState(window, win, CallbackBridge.nativeGetWindowState());
     }
 
     public static void glfwFocusWindow(@NativeType("GLFWwindow *") long window) {
+        // Never pretend Android is focused while the app is in the background.
+        internalSyncWindowState(window, internalGetWindow(window), CallbackBridge.nativeGetWindowState());
+    }
+
+    private static void internalSyncWindowState(long window, GLFWWindowProperties win, int host) {
+        boolean focused = win.state.focused(host);
+        boolean iconified = win.state.iconified(host);
+        if (win.notifiedFocused != focused) {
+            win.notifiedFocused = focused;
+            if (mGLFWWindowFocusCallback != null) mGLFWWindowFocusCallback.invoke(window, focused);
+        }
+        if (win.notifiedIconified != iconified) {
+            win.notifiedIconified = iconified;
+            if (mGLFWWindowIconifyCallback != null) mGLFWWindowIconifyCallback.invoke(window, iconified);
+        }
     }
 
     public static void glfwWindowHint(int hint, int value) {
@@ -1196,10 +1218,22 @@ public class GLFW
         // Prevent these with this code.
         if(mGLFWInputPumping) return;
         mGLFWInputPumping = true;
-        callV(Functions.StartPumping);
-        for (Long ptr : mGLFWWindowMap.keySet()) callJV(ptr, Functions.PumpEvents);
-        callV(Functions.StopPumping);
-        mGLFWInputPumping = false;
+        try {
+            int host = CallbackBridge.nativeGetWindowState();
+            // Snapshot: callbacks may create/destroy windows or recursively poll events.
+            for (Long ptr : new java.util.ArrayList<>(mGLFWWindowMap.keySet())) {
+                GLFWWindowProperties win = mGLFWWindowMap.get(ptr);
+                if (win != null) internalSyncWindowState(ptr, win, host);
+            }
+            callV(Functions.StartPumping);
+            try {
+                for (Long ptr : mGLFWWindowMap.keySet()) callJV(ptr, Functions.PumpEvents);
+            } finally {
+                callV(Functions.StopPumping);
+            }
+        } finally {
+            mGLFWInputPumping = false;
+        }
     }
 
     public static void internalWindowSizeChanged(long window, int w, int h) {

@@ -93,6 +93,7 @@ struct FixedFuncState {
     active_unit: usize,
     /// Per-unit `GL_TEXTURE_2D` enable for units 0..=2.
     tex_enabled: [bool; 3],
+    current_uv: [[f32; 2]; 3],
     normal: ClientArray,
     client_active_texture: u32, // 0 = GL_TEXTURE0
     color4: [f32; 4],
@@ -124,6 +125,7 @@ impl FixedFuncState {
             texture_x: [vec![Mat4::identity()], vec![Mat4::identity()]],
             active_unit: 0,
             tex_enabled: [false; 3],
+            current_uv: [[0.0; 2]; 3],
             normal: ClientArray::default(),
             client_active_texture: 0,
             color4: [1.0, 1.0, 1.0, 1.0],
@@ -793,4 +795,12 @@ pub fn arrays() -> (ArraySnapshot, ArraySnapshot, ArraySnapshot) {
 
 pub fn alpha() -> (u32, f32) {
     with_ff(|s| s.alpha_func)
+}
+
+/// Legacy current texture coordinates are used when the corresponding client array is off.
+pub fn set_current_texcoord(unit: usize, s: f32, t: f32) {
+    with_ff(|state| { if let Some(uv) = state.current_uv.get_mut(unit) { *uv = [s, t]; } });
+}
+pub fn current_texcoord(unit: usize) -> [f32; 2] {
+    with_ff(|state| state.current_uv.get(unit).copied().unwrap_or([0.0; 2]))
 }

@@ -25,6 +25,7 @@ pub(crate) enum ListCommand {
     Vertex([f32; 4]),
     Color([f32; 4]),
     TexCoord([f32; 2]),
+    MultiTexCoord(u32, [f32; 2]),
     CallList(u32),
 }
 
