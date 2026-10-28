@@ -7,16 +7,43 @@ which rewrites shaders to GLSL ES and forwards to the device's OpenGL ES 3 drive
 
 ## Provenance
 
-- Upstream: <https://github.com/whaltermc/rust-renderer> (a ZalithLauncher 2 renderer plugin,
-  `dev.rustrenderer.plugin`, "RustGL")
-- Vendored revision: `eb22559` ("Merge pull request #2 ... fix-mc-rendering-gl45")
-- `README-upstream.md` is upstream's own README at that revision.
+- **Current source:** [RustGL-for-Gurkha-launcher](https://github.com/kushaladhikari982648-lgtm/RustGL-for-Gurkha-launcher),
+  directory `rustgl/`, branch `arena/23f25781-rustgl-for-gurkha-launcher`, pinned at
+  **`fdcca8d09ca2c810d43c38e68bd1fd80a27ac201`**. Its `main` branch still contains a separate
+  SDL2 desktop demo, not the Android compatibility renderer.
+- That snapshot is based on Gurkha commit `1726782a7989bdf9b5e50e2f3154ae2cfee06fdb`, so it retains
+  the existing focus-independent renderer fixes: buffer textures, fog casts, legacy lightmaps,
+  UBO updates, dispatch, and low-end GLES fallbacks.
+- **Original upstream:** <https://github.com/whaltermc/rust-renderer>, revision
+  `eb22559581cf400af29470205a9ebbff31e0db33`. `README-upstream.md` is its original README.
+- [`source-lock.json`](source-lock.json) records the source revision and SHA-256 of every imported
+  code/build/fixture file. `tests/test_rustgl_source.py` verifies them offline; integration README
+  and provenance files are separate. Runtime code and the packer are copied byte-for-byte.
 
-Upstream publishes **no license file**. Until the upstream author adds one, treat this code as
-"used with the author's permission" rather than GPL code — see `THIRD_PARTY_NOTICES.md` at the
-repository root. Everything else in Gurkha Launcher is GPL-3.0.
+Original upstream publishes **no license file**. The source repository's notice says "used with the
+author's permission"; this update does not establish a new license or independent permission grant.
+See [`NOTICE-source.txt`](NOTICE-source.txt) (preserved source notice) and
+[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) before redistribution. The notice's "synced
+unmodified" paragraph describes its earlier baseline; the pinned snapshot includes the updates below.
 
-## Local changes
+## Updates from RustGL-for-Gurkha-launcher
+
+1. **Driver lookup cache:** shared `RwLock` reads on cache hits instead of an exclusive mutex.
+2. **Shader translation cache:** bounded translated-source caching keyed by a source fingerprint,
+   length, ES/desktop target and buffer-texture capability. At most 128 entries / 2 MB of translated text.
+3. **Compile/link scheduling:** drivers advertising `GL_KHR_parallel_shader_compile` no longer get
+   immediate blocking status checks in the submit calls. Failure reporting remains on the status-query
+   path; drivers without the extension keep the synchronous path.
+4. **Base-vertex staging:** a bounded thread-local pool reuses CPU staging allocations for the
+   emulated base-vertex draw path.
+5. **Broader shader tests:** fourteen shader fixtures, adding representative Iris/OptiFine,
+   Sodium-style and legacy shader dialects to the existing vanilla probes.
+
+These are source-level throughput/latency changes, **not measured phone FPS improvements** and not
+full shader-pack compatibility. The built-in renderer ID, saved selection, EGL library, default
+GLES environment and launcher integration are unchanged; no plugin APK is required.
+
+## Inherited Gurkha changes
 
 The vendored copy is patched for low-end devices (MediaTek Helio A22/P22/P35-class SoCs with
 IMG PowerVR GE8300 GPUs, 2–3 GB RAM, often 32-bit Android):
@@ -59,8 +86,7 @@ The `RustGLChecks` CI job gates APK builds on:
 - `renderer-core`, `gl-compat`, and **shader-translate** unit/fixture tests.
 - Loading the actual Linux `librust_gl.so` under `RTLD_LOCAL` with a Mesa surfaceless GLES
   context, not a mock driver.
-- Driver compilation of eight representative shader fixtures from the 1.12.2 post-processing,
-  1.20.1 plain-uniform, and 1.21.7/1.21.10 std140-UBO dialects.
+- Driver compilation of fourteen representative shader fixtures from the vanilla 1.12.2–1.21.10, modern buffer-texture/fog, and representative Iris/OptiFine/Sodium-style dialects.
 - Pixel readbacks for legacy client-array quads with texturing enabled/disabled and a different
   active texture unit, plus modern UBO initial uploads and dynamic subdata updates (including
   named storage). These run with and without `GL_EXT_buffer_storage`, and on an ES 3.1 context to exercise the EXT texture-buffer entry points.

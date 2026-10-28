@@ -100,11 +100,13 @@ fixture_count = 0
 for match in re.finditer(r'const (\w+): &str = r(#?)"(.*?)"\2;', fixtures, re.S):
     fixture_count += 1
     name, _, text = match.groups()
-    stage = 0x8B31 if '_VSH_' in name else 0x8B30
+    # A fixture whose name carries _VSH is a vertex shader; everything else is a fragment
+    # shader. (The suffix is part of the contract with the fixture file.)
+    stage = 0x8B31 if '_VSH' in name else 0x8B30
     shader = compile_src(text, stage, name)
     delete_shader(shader)
     print(f'PASS: GLES compile {name}', flush=True)
-assert fixture_count == 8, f'Expected all eight shader fixtures, found {fixture_count}'
+assert fixture_count == 14, f'Expected all fourteen shader fixtures, found {fixture_count}'
 shader = compile_src('#version 330\nvoid main(){ EmitVertex(); }', 0x8B31,
                      'unsupported stage must fail instead of becoming a blank shader', False)
 delete_shader(shader)

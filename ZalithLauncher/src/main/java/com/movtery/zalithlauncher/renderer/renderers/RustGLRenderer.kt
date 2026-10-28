@@ -3,14 +3,14 @@ package com.movtery.zalithlauncher.renderer.renderers
 import com.movtery.zalithlauncher.renderer.RendererInterface
 
 /**
- * RustGL (https://github.com/whaltermc/rust-renderer, vendored with fixes under rustgl/): a
+ * RustGL (https://github.com/kushaladhikari982648-lgtm/RustGL-for-Gurkha-launcher): a
  * desktop OpenGL 4.5 compatibility surface written in Rust, running on top of the device's
  * OpenGL ES 3 driver (like GL4ES runs on OpenGL ES 2). It rewrites desktop GLSL to GLSL ES and
  * shims desktop-only entry points. Compatibility is incomplete and depends on the game's
  * GL features and the device driver, not simply on the Java runtime version.
  *
  * The library (ZalithLauncher/libs/rustgl-release.aar) is built from the vendored source in
- * rustgl/ by GitHub Actions, see rustgl/README.md and rustgl-release.txt. It is integrated like
+ * rustgl/ by GitHub Actions; the exact source is pinned in rustgl/source-lock.json. It is integrated like
  * the official RustGL plugin for ZalithLauncher 2 would be, but the library ships inside this
  * launcher: RustGL initializes from here, no plugin install needed.
  *

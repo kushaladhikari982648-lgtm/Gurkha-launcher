@@ -350,12 +350,21 @@ jobs:
             exit 0
           fi
           python3 - "$TREE" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" <<'PYDOC'
-          import pathlib, sys
+          import json, pathlib, sys
           tree, run = sys.argv[1], sys.argv[2]
+          source = json.loads(pathlib.Path("rustgl/source-lock.json").read_text())
           text = pathlib.Path("ZalithLauncher/libs/rustgl-release.txt").read_text()
           out = []
           for line in text.splitlines():
-              if line.startswith("Source-tree:"):
+              if line.startswith("Source:"):
+                  out.append(f"Source:  {source['repository']}, {source['subdirectory']}/ at {source['commit']}")
+                  upstream = source['original_upstream']
+                  out.append(f"Original upstream: {upstream['repository']} at {upstream['commit']}")
+              elif line.startswith("Original upstream:"):
+                  continue  # already emitted above; avoid duplicates on later builds
+              elif line.strip().startswith("with local fixes"):
+                  out.append("         See rustgl/source-lock.json and rustgl/README.md for snapshot verification and integration.")
+              elif line.startswith("Source-tree:"):
                   out.append(f"Source-tree: {tree}   (hash of the rustgl/ directory)")
               elif line.strip().startswith("CI run:"):
                   out.append(f"         CI run: {run}")
