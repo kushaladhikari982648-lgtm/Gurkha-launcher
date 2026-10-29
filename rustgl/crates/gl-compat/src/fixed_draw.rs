@@ -15,7 +15,7 @@ use crate::fixed_func::{self, ArraySnapshot};
 use renderer_core::{Backend, BufferId, ProgramId, VertexArrayId};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 const GL_ARRAY_BUFFER: u32 = 0x8892;
 const GL_ELEMENT_ARRAY_BUFFER: u32 = 0x8893;
@@ -28,6 +28,20 @@ const GL_QUADS: u32 = 0x0007;
 const GL_TRIANGLES: u32 = 0x0004;
 const GL_UNSIGNED_INT: u32 = 0x1405;
 const GL_ALPHA_TEST: u32 = 0x0BC0;
+
+/// Environment lookup allocates/locks; never do it for every draw in normal gameplay.
+fn debug_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("RENDERER_DEBUG").as_deref() == Ok("1"))
+}
+
+/// Geometric growth for small batches, at most 96 KiB of extra indices for large ones.
+/// A staircase of slightly larger chunk batches must not reallocate on every draw.
+fn quad_capacity(quads: usize) -> usize {
+    quads.checked_next_power_of_two().unwrap_or(quads)
+        .min(quads.saturating_add(4096))
+}
+
 
 const VS_BASE: &str = "#version 300 es
 layout(location = 0) in vec4 aPos;
@@ -330,8 +344,8 @@ pub unsafe fn try_draw_arrays(mode: u32, first: i32, count: i32) -> bool {
         None => return false,
     };
 
-    let n = DRAWS.fetch_add(1, Ordering::Relaxed);
-    if (n == 0 || n % 10000 == 0) && std::env::var("RENDERER_DEBUG").map(|v| v == "1").unwrap_or(false) {
+    let n = if debug_enabled() { DRAWS.fetch_add(1, Ordering::Relaxed) } else { 0 };
+    if debug_enabled() && (n == 0 || n % 10000 == 0) {
         crate::log(&format!(
             "[FFDraw] draw #{n}: mode=0x{mode:04X} first={first} count={count} pos(size={} ty=0x{:04X} stride={} vbo={}) color={} uv={}",
             pos.size, pos.ty, pos.stride, pos.buffer, col.enabled, uv.enabled
@@ -401,9 +415,9 @@ pub unsafe fn try_draw_arrays(mode: u32, first: i32, count: i32) -> bool {
         0
     };
 
-    let d = DIAG.fetch_add(1, Ordering::Relaxed);
+    let d = if debug_enabled() { DIAG.fetch_add(1, Ordering::Relaxed) } else { 0 };
     let suspect = !use_tex && !has_color;
-    if std::env::var("RENDERER_DEBUG").map(|v| v == "1").unwrap_or(false)
+    if debug_enabled()
         && (d < 20 || (suspect && SUSPECT.fetch_add(1, Ordering::Relaxed) < 10))
     {
         let c = fixed_func::current_color();
@@ -454,7 +468,9 @@ pub unsafe fn try_draw_arrays(mode: u32, first: i32, count: i32) -> bool {
         be.draw_arrays(mode, 0, count);
     }
 
-    let err = be.get_error();
+    // Do not poll/consume driver errors after every draw in the normal path.
+    // Applications still observe them through glGetError; explicit debug mode logs them.
+    let err = if debug_enabled() { be.get_error() } else { 0 };
     if err != 0 && ERRS.fetch_add(1, Ordering::Relaxed) < 20 {
         crate::log(&format!("[FFDraw] GL error 0x{err:04X} after draw mode=0x{mode:04X} count={count}"));
     }
@@ -478,24 +494,35 @@ pub unsafe fn try_draw_arrays(mode: u32, first: i32, count: i32) -> bool {
 static QUAD_INDICES: Mutex<Option<(BufferId, usize)>> = Mutex::new(None);
 
 unsafe fn quad_indices(be: &dyn Backend, quads: usize) -> Option<(BufferId, usize)> {
-    let need = quads * 6;
+    let need = quads.checked_mul(6)?;
+    if need == 0 || need > i32::MAX as usize { return None; }
     let mut slot = QUAD_INDICES.lock().unwrap_or_else(|e| e.into_inner());
-    let (buf, have) = match *slot {
-        Some(cached) => cached,
-        None => (be.create_buffer().ok()?, 0usize),
-    };
-    if have < need {
-        let mut idx: Vec<u32> = Vec::with_capacity(need);
-        for q in 0..quads {
-            let b = (q * 4) as u32;
-            idx.extend_from_slice(&[b, b + 1, b + 2, b, b + 2, b + 3]);
-        }
-        // SAFETY: reinterpreting a live Vec<u32> as bytes (same allocation, len * 4).
-        let bytes = std::slice::from_raw_parts(idx.as_ptr() as *const u8, idx.len() * 4);
-        be.bind_buffer(GL_ELEMENT_ARRAY_BUFFER, Some(buf));
-        be.buffer_data(GL_ELEMENT_ARRAY_BUFFER, bytes, GL_STREAM_DRAW).ok()?;
-        *slot = Some((buf, need));
+    if let Some((buf, have)) = *slot {
+        if have >= need { return Some((buf, need)); }
     }
+    let capacity = quad_capacity(quads);
+    let capacity_indices = capacity.checked_mul(6)?;
+    let mut idx: Vec<u32> = Vec::new();
+    // Fallible staging allocation: keep the old cache intact if memory is exhausted.
+    idx.try_reserve_exact(capacity_indices).ok()?;
+    for q in 0..capacity {
+        let b = (q * 4) as u32;
+        idx.extend_from_slice(&[b, b + 1, b + 2, b, b + 2, b + 3]);
+    }
+    let buf = match *slot {
+        Some((buf, _)) => buf,
+        None => be.create_buffer().ok()?,
+    };
+    let bytes = std::slice::from_raw_parts(idx.as_ptr() as *const u8, idx.len() * 4);
+    be.bind_buffer(GL_ELEMENT_ARRAY_BUFFER, Some(buf));
+    if be.buffer_data(GL_ELEMENT_ARRAY_BUFFER, bytes, GL_STREAM_DRAW).is_err() {
+        // A failed reallocation must never leave a previously advertised capacity usable.
+        be.delete_buffer(buf);
+        *slot = None;
+        return None;
+    }
+    *slot = Some((buf, capacity_indices));
+    // Draw the requested prefix, NOT the extra capacity.
     Some((buf, need))
 }
 
@@ -714,16 +741,24 @@ unsafe fn draw_arrays_with_program(
     }
 
     if mode == GL_QUADS {
+        // This path uses the game's VAO, unlike the private fixed-function VAO.
+        // Preserve its element binding so a later indexed draw cannot use our cache by accident.
+        let mut previous_element_buffer = 0;
+        get_int(0x8895, &mut previous_element_buffer); // GL_ELEMENT_ARRAY_BUFFER_BINDING
         let quads = (count / 4) as usize;
         if let Some((buf, need)) = quad_indices(be, quads) {
             be.bind_buffer(GL_ELEMENT_ARRAY_BUFFER, Some(buf));
             be.draw_elements(GL_TRIANGLES, need as i32, GL_UNSIGNED_INT, 0);
         }
+        be.bind_buffer(GL_ELEMENT_ARRAY_BUFFER,
+            if previous_element_buffer != 0 { Some(BufferId(previous_element_buffer as u32)) } else { None });
     } else {
         be.draw_arrays(mode, 0, count);
     }
 
-    let err = be.get_error();
+    // Do not poll/consume driver errors after every draw in the normal path.
+    // Applications still observe them through glGetError; explicit debug mode logs them.
+    let err = if debug_enabled() { be.get_error() } else { 0 };
     if err != 0 && ERRS.fetch_add(1, Ordering::Relaxed) < 20 {
         crate::log(&format!(
             "[FFDraw] GL error 0x{err:04X} after a legacy-shader draw mode=0x{mode:04X} count={count}"
@@ -739,6 +774,25 @@ unsafe fn draw_arrays_with_program(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn growing_quad_batches_do_not_reallocate_for_every_new_high_water_mark() {
+        let mut capacity = 0;
+        let mut allocations = 0;
+        for quads in 1..=4096 {
+            if quads > capacity {
+                capacity = quad_capacity(quads);
+                allocations += 1;
+            }
+            assert!(capacity >= quads);
+            assert!(capacity - quads <= 4096);
+        }
+        assert_eq!(allocations, 13); // exact-size growth needed 4096 allocations/uploads
+        for quads in [4097, 16383, 32769, 1000000] {
+            assert!(quad_capacity(quads) >= quads);
+            assert!(quad_capacity(quads) <= quads + 4096);
+        }
+    }
 
     #[test]
     fn lightmap_prefers_unit_two_then_one() {

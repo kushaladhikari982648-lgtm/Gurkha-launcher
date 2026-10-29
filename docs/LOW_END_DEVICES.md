@@ -12,7 +12,7 @@ are respected; no GPU capabilities are spoofed by this detection.
 
 | Resource | Mode on | Mode off |
 |---|---|---|
-| Initial Java heap (`-Xms`) | Up to 256 MB, never greater than your selected maximum | Equal to your selected maximum, as before |
+| Initial Java heap (`-Xms`) | Up to 512 MB, never greater than your selected maximum | Equal to your selected maximum, as before |
 | Maximum Java heap (`-Xmx`) | **Your selected RAM allocation, unchanged** | Your selected RAM allocation |
 | Game/modpack download workers | Effective maximum 4, or a lower saved setting/task count | Saved maximum, validated within 1–64 |
 | Concurrent mod-jar scans | Up to 2 (or fewer CPUs/files) | Up to the CPU count, capped at 8 |
@@ -32,6 +32,13 @@ no longer schedules up to 32 jar readers competing for the same flash storage.
 A detected low-end device also gets **75% resolution as its default** when no resolution preference
 has been saved, extending the existing low-RAM default to MT6761 models with more RAM. This is a
 separate editable graphics preference; toggling the mode does not reset an existing resolution.
+
+### Revised initial-heap budget
+
+The initial-heap ceiling was raised from 256 MB to 512 MB after a report of game stutters. The common
+500 MB selection now starts at 500 MB instead of being forced to grow from 256 MB. This removes that
+particular growth pressure, but commits more memory initially and is not proof that GC caused the
+reported spikes. The maximum selected allocation is still unchanged.
 
 ## Important trade-offs
 

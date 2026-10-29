@@ -150,6 +150,13 @@ object Renderers {
      */
     fun isCurrentRendererValid(): Boolean = isInitialized && this.currentRenderer != null
 
+    /** Label a saved preference without changing the active renderer or probing the GPU. */
+    fun getDisplayName(identifier: String): String {
+        init()
+        return renderers.find { it.getUniqueIdentifier() == identifier || it.getRendererId() == identifier }
+            ?.getRendererName() ?: identifier
+    }
+
     /** The renderers that come with the launcher: their libraries are part of its APK. */
     private fun RendererInterface.isBuiltIn(): Boolean =
         this is GL4ESRenderer || this is KryptonRenderer || this is RustGLRenderer || this is PowerVRRenderer || this is LTWRenderer ||

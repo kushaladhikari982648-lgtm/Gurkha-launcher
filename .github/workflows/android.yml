@@ -361,7 +361,8 @@ jobs:
           out = []
           for line in text.splitlines():
               if line.startswith("Source:"):
-                  out.append(f"Source:  {source['repository']}, {source['subdirectory']}/ at {source['commit']}")
+                  suffix = " + Gurkha local patches (see rustgl/source-lock.json)" if source.get("local_patches") else ""
+                  out.append(f"Source:  {source['repository']}, {source['subdirectory']}/ at {source['commit']}" + suffix)
                   upstream = source['original_upstream']
                   out.append(f"Original upstream: {upstream['repository']} at {upstream['commit']}")
               elif line.startswith("Original upstream:"):

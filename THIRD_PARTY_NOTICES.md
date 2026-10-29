@@ -24,3 +24,9 @@ and `powervr/README.md`.
 The launcher-side SDL integration (`CallbackBridge`, `MinecraftGLSurface`, `SdlSupport`, the
 `nativeNotifyLauncher` bridge) is ported from Amethyst-Android (LGPL-3.0). `ltw_sdl_egl.c` is original
 to Gurkha Launcher and is distributed under the GPL-3.0 like the rest of the launcher.
+
+The RustGL snapshot also carries explicit Gurkha draw-path patches; upstream and patched digests are
+separately recorded in `rustgl/source-lock.json`. See `rustgl/README.md` for their scope.
+
+The Minecraft-inspired launcher scenery is AI-generated original artwork; the small grass, wood and
+stone UI tiles are generated for Gurkha. They are not extracted Minecraft/Mojang assets.

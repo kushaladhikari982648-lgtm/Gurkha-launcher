@@ -16,7 +16,7 @@ class LowEndIntegrationTests(unittest.TestCase):
         self.assertIn("@+id/low_end_mode_layout", ids)
         self.assertIn("@id/low_end_mode", ids)
         strings = {node.get("name"): node.text for node in ET.parse(RES / "values/strings.xml").getroot()}
-        self.assertIn("256 MB", strings["setting_low_end_mode_desc"])
+        self.assertIn("512 MB", strings["setting_low_end_mode_desc"])
         binding = (JAVA / "com/movtery/zalithlauncher/ui/fragment/settings/LauncherSettingsFragment.kt").read_text()
         self.assertIn("AllSettings.lowEndMode,\n            binding.lowEndModeLayout,\n            binding.lowEndMode", binding)
 

@@ -169,6 +169,48 @@ background()
 draw(7,0,4)
 pixel((255,255,255,255), 'legacy disabled texture remains untextured despite bound atlas')
 
+# Increasing then smaller quad batches exercise cache growth and prefix reuse.
+# Keep Python backing memory alive through every draw, then restore the original array.
+for quads in (1, 2, 3, 5, 9, 17, 33, 2, 1):
+    batch_positions = (F * (12 * quads))(*(list(positions) * quads))
+    gl('glVertexPointer', None, I, U, I, P)(3, 0x1406, 0, batch_positions)
+    # UV client array also needs enough backing memory, even with texturing disabled.
+    batch_uvs = (F * (8 * quads))(*(list(uvs) * quads))
+    gl('glTexCoordPointer', None, I, U, I, P)(2, 0x1406, 0, batch_uvs)
+    background()
+    draw(7, 0, quads * 4)
+    pixel((255,255,255,255), f'quad cache growth/reuse ({quads})')
+gl('glVertexPointer', None, I, U, I, P)(3, 0x1406, 0, positions)
+gl('glTexCoordPointer', None, I, U, I, P)(2, 0x1406, 0, uvs)
+
+# Shader-pack style legacy attributes must not replace the game's VAO element binding.
+legacy_vs = compile_src('#version 120\nvarying vec4 tint; void main(){ gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex; tint = gl_Color; }', 0x8B31, 'legacy VS')
+legacy_fs = compile_src('#version 120\nvarying vec4 tint; void main(){ gl_FragColor = tint; }', 0x8B30, 'legacy FS')
+legacy_program = gl('glCreateProgram', U)()
+for shader in (legacy_vs, legacy_fs):
+    gl('glAttachShader', None, U,U)(legacy_program, shader)
+gl('glLinkProgram', None,U)(legacy_program)
+legacy_linked = I()
+gl('glGetProgramiv', None,U,U,P)(legacy_program,0x8B82,C.byref(legacy_linked))
+assert legacy_linked.value, 'legacy program link failed'
+gl('glUseProgram', None,U)(legacy_program)
+saved_element = U()
+gl('glGenBuffers', None,I,P)(1,C.byref(saved_element))
+gl('glBindBuffer', None,U,U)(0x8893,saved_element.value)
+background()
+draw(7,0,4)
+pixel((255,255,255,255), 'legacy shader quad')
+actual_element = I()
+get_i(0x8895,C.byref(actual_element))
+assert actual_element.value == saved_element.value, 'legacy quad changed game VAO element binding'
+gl('glBindBuffer', None,U,U)(0x8893,0)
+gl('glDeleteBuffers', None,I,P)(1,C.byref(saved_element))
+gl('glUseProgram', None,U)(0)
+gl('glDeleteProgram', None,U)(legacy_program)
+for shader in (legacy_vs, legacy_fs):
+    delete_shader(shader)
+no_error('legacy shader state restoration')
+
 # Java-8-era entity lighting: current multitexture coordinate, no lightmap array.
 light = U()
 active(0x84C1)

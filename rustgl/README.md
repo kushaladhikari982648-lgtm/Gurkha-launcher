@@ -18,7 +18,7 @@ which rewrites shaders to GLSL ES and forwards to the device's OpenGL ES 3 drive
   `eb22559581cf400af29470205a9ebbff31e0db33`. `README-upstream.md` is its original README.
 - [`source-lock.json`](source-lock.json) records the source revision and SHA-256 of every imported
   code/build/fixture file. `tests/test_rustgl_source.py` verifies them offline; integration README
-  and provenance files are separate. Runtime code and the packer are copied byte-for-byte.
+  and provenance files are separate. Unpatched files retain their upstream bytes; explicitly listed local patches have separate hashes.
 
 Original upstream publishes **no license file**. The source repository's notice says "used with the
 author's permission"; this update does not establish a new license or independent permission grant.
@@ -47,6 +47,26 @@ fixtures now run through the real Mesa GLES compiler. This is still partial shad
 These are source-level throughput/latency changes, **not measured phone FPS improvements** and not
 full shader-pack compatibility. The built-in renderer ID, saved selection, EGL library, default
 GLES environment and launcher integration are unchanged; no plugin APK is required.
+
+## Local draw-path patches on the pinned base
+
+`source-lock.json` preserves the upstream hashes and separately records the hashes of local patches.
+The renderer is no longer a byte-for-byte copy of `3d13210` in these explicitly listed files.
+
+- Cache `RENDERER_DEBUG` once rather than reading the environment on every fixed-function draw.
+  Draw counters and post-draw `glGetError` diagnostics run only in that explicit debug mode. Normal
+  application error queries remain available; normal draws no longer consume their error flags.
+- Grow the reusable quad index buffer geometrically, with at most 4096 extra quads (96 KiB) reserved.
+  For a synthetic sequence of 1 through 4096 quads this reduces buffer growth events from 4096 to 13;
+  **this is an allocation-count regression test, not a device FPS measurement**. Larger requests still
+  work, drawing only the requested prefix. Staging allocation is fallible and failed uploads invalidate
+  the cache rather than leaving a stale usable capacity or leaking a new GL buffer.
+- Legacy-shader quad draws restore the game VAO’s element-buffer binding instead of leaking the
+  renderer’s index cache into later indexed draws.
+- Pixel probes cover increasing/decreasing batch sizes in addition to the existing fixture suite.
+
+These remove avoidable draw-path work, but cannot fix game-side world generation, all GC pauses,
+thermal throttling or arbitrary shader-pack bugs. No `glFinish` removal or synchronization bypass is used.
 
 ## Inherited Gurkha changes
 

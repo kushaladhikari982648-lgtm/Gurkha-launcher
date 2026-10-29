@@ -28,6 +28,10 @@ class RustGLSourceTests(unittest.TestCase):
     def test_every_imported_source_file_matches_pinned_digest(self):
         for relative, expected in self.lock["sha256"].items():
             with self.subTest(path=relative):
+                patch = self.lock.get("local_patches", {}).get(relative)
+                if patch:
+                    self.assertEqual(patch["upstream_sha256"], expected)
+                    expected = patch["sha256"]
                 path = RUSTGL / relative
                 self.assertTrue(path.resolve().is_relative_to(RUSTGL.resolve()))
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), expected)
@@ -39,6 +43,7 @@ class RustGLSourceTests(unittest.TestCase):
                     if p.is_file() and "__pycache__" not in p.parts}
         expected.update({"Cargo.toml", "Cargo.lock", "pack_aar.py", "README-upstream.md"})
         self.assertEqual(set(self.lock["sha256"]), expected)
+        self.assertLessEqual(set(self.lock.get("local_patches", {})), expected)
 
     def test_all_twenty_shader_fixtures_are_checked(self):
         fixtures = (RUSTGL / "crates/shader-translate/tests/mc_shader_fixtures.rs").read_text()

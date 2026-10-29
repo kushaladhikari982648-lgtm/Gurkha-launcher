@@ -1,0 +1,4 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/mc_panel" />
+    <item android:gravity="top" android:height="6dp" android:drawable="@drawable/mc_grass" />
+</layer-list>
