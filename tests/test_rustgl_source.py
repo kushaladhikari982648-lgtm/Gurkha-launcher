@@ -40,11 +40,11 @@ class RustGLSourceTests(unittest.TestCase):
         expected.update({"Cargo.toml", "Cargo.lock", "pack_aar.py", "README-upstream.md"})
         self.assertEqual(set(self.lock["sha256"]), expected)
 
-    def test_all_fourteen_shader_fixtures_are_checked(self):
+    def test_all_twenty_shader_fixtures_are_checked(self):
         fixtures = (RUSTGL / "crates/shader-translate/tests/mc_shader_fixtures.rs").read_text()
         names = re.findall(r'const (\w+): &str = r#?"', fixtures)
-        self.assertEqual(len(names), 14)
-        self.assertIn("assert fixture_count == 14", (RUSTGL / "tests/render_smoke.py").read_text())
+        self.assertEqual(len(names), 20)
+        self.assertIn("assert fixture_count == 20", (RUSTGL / "tests/render_smoke.py").read_text())
         workflow = (ROOT / ".github/workflows/android.yml").read_text()
         self.assertIn("MESA_GLES_VERSION_OVERRIDE=3.1 python3 tests/render_smoke.py", workflow)
 

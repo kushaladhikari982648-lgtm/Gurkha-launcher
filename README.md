@@ -53,6 +53,14 @@ For a development build, open a successful **Android CI** run → **Artifacts**,
 
 **Compatibility depends on the game version, renderer, Android system, and GPU driver.** Low-memory tuning is not a promise that every Minecraft version or modpack will run with 500 MB. Start with a lightweight configuration on entry-level devices.
 
+### Low-end device mode
+
+For Helio A22 / PowerVR GE8300-class phones, see **Settings → Launcher → Performance → Low-end device mode**.
+It defaults on for devices reporting less than 3 GB RAM and for detected MT6761/Helio A22 hardware.
+The profile reduces initial Java heap commitment, download/scanning concurrency and progress-update
+frequency without changing your maximum RAM allocation or FPS limit. Existing game settings are kept.
+[Exact budgets, opt-out and test plan →](docs/LOW_END_DEVICES.md)
+
 ## Downloads & CurseForge
 
 **Modrinth does not need a CurseForge key.** CurseForge requires an approved application API key embedded when the APK is built.

@@ -34,6 +34,10 @@ jobs:
         run: |
           javac --release 8 -d "$RUNNER_TEMP/glfw-tests" jre_lwjgl3glfw/src/main/java/org/lwjgl/glfw/WindowState.java tests/java/WindowStateTest.java
           java -cp "$RUNNER_TEMP/glfw-tests" org.lwjgl.glfw.WindowStateTest
+      - name: Test low-end resource budgets and download executors
+        run: |
+          javac --release 8 -d "$RUNNER_TEMP/low-end-tests" ZalithLauncher/src/main/java/com/movtery/zalithlauncher/utils/platform/LowEndPolicy.java tests/java/LowEndPolicyTest.java
+          java -cp "$RUNNER_TEMP/low-end-tests" LowEndPolicyTest
 
   CurseForgeChecks:
     runs-on: ubuntu-22.04

@@ -9,7 +9,7 @@ which rewrites shaders to GLSL ES and forwards to the device's OpenGL ES 3 drive
 
 - **Current source:** [RustGL-for-Gurkha-launcher](https://github.com/kushaladhikari982648-lgtm/RustGL-for-Gurkha-launcher),
   directory `rustgl/`, branch `arena/23f25781-rustgl-for-gurkha-launcher`, pinned at
-  **`fdcca8d09ca2c810d43c38e68bd1fd80a27ac201`**. Its `main` branch still contains a separate
+  **`3d132103477ab1a3e0465f4c0eba01f5d389c90f`**. Its `main` branch still contains a separate
   SDL2 desktop demo, not the Android compatibility renderer.
 - That snapshot is based on Gurkha commit `1726782a7989bdf9b5e50e2f3154ae2cfee06fdb`, so it retains
   the existing focus-independent renderer fixes: buffer textures, fog casts, legacy lightmaps,
@@ -36,8 +36,13 @@ unmodified" paragraph describes its earlier baseline; the pinned snapshot includ
    path; drivers without the extension keep the synchronous path.
 4. **Base-vertex staging:** a bounded thread-local pool reuses CPU staging allocations for the
    emulated base-vertex draw path.
-5. **Broader shader tests:** fourteen shader fixtures, adding representative Iris/OptiFine,
+5. **Broader shader tests:** twenty shader fixtures, adding representative Iris/OptiFine,
    Sodium-style and legacy shader dialects to the existing vanilla probes.
+
+The `3d13210` update additionally feeds legacy shader built-ins from tracked client arrays/matrix
+stacks (rather than placeholder identity transforms), tracks the current program to avoid per-draw
+queries, reuses quad indices, and handles legacy texture-uniform name collisions. Twenty shader
+fixtures now run through the real Mesa GLES compiler. This is still partial shader-pack support.
 
 These are source-level throughput/latency changes, **not measured phone FPS improvements** and not
 full shader-pack compatibility. The built-in renderer ID, saved selection, EGL library, default
@@ -86,7 +91,7 @@ The `RustGLChecks` CI job gates APK builds on:
 - `renderer-core`, `gl-compat`, and **shader-translate** unit/fixture tests.
 - Loading the actual Linux `librust_gl.so` under `RTLD_LOCAL` with a Mesa surfaceless GLES
   context, not a mock driver.
-- Driver compilation of fourteen representative shader fixtures from the vanilla 1.12.2–1.21.10, modern buffer-texture/fog, and representative Iris/OptiFine/Sodium-style dialects.
+- Driver compilation of twenty representative shader fixtures from the vanilla 1.12.2–1.21.10, modern buffer-texture/fog, and representative Iris/OptiFine/Sodium-style dialects.
 - Pixel readbacks for legacy client-array quads with texturing enabled/disabled and a different
   active texture unit, plus modern UBO initial uploads and dynamic subdata updates (including
   named storage). These run with and without `GL_EXT_buffer_storage`, and on an ES 3.1 context to exercise the EXT texture-buffer entry points.

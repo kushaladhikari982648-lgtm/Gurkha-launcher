@@ -3,6 +3,7 @@ package net.kdt.pojavlaunch.utils;
 import net.kdt.pojavlaunch.MinecraftGLSurface;
 import com.movtery.zalithlauncher.launch.SdlSupport;
 import com.movtery.zalithlauncher.launch.LowMemoryProfile;
+import com.movtery.zalithlauncher.utils.platform.LowEndPolicy;
 import static com.movtery.zalithlauncher.utils.path.PathManager.DIR_NATIVE_LIB;
 import static net.kdt.pojavlaunch.Architecture.ARCH_X86;
 import static net.kdt.pojavlaunch.Architecture.is64BitsDevice;
@@ -397,8 +398,13 @@ public final class JREUtils {
         userArgs.add("-javaagent:" + LibPath.MIO_LIB_PATCHER.getAbsolutePath());
 
         //Add automatically generated args
-        userArgs.add("-Xms" + AllSettings.getRamAllocation().getValue().getValue() + "M");
-        userArgs.add("-Xmx" + AllSettings.getRamAllocation().getValue().getValue() + "M");
+        int maximumHeapMb = AllSettings.getRamAllocation().getValue().getValue();
+        boolean lowEndMode = AllSettings.getLowEndMode().getValue();
+        int initialHeapMb = LowEndPolicy.initialHeapMb(maximumHeapMb, lowEndMode);
+        userArgs.add("-Xms" + initialHeapMb + "M");
+        userArgs.add("-Xmx" + maximumHeapMb + "M");
+        Logger.appendToLog("Info: Low-end device mode=" + lowEndMode
+                + ", initial heap=" + initialHeapMb + " MB, maximum heap=" + maximumHeapMb + " MB");
         if (Renderers.INSTANCE.isCurrentRendererValid()) userArgs.add("-Dorg.lwjgl.opengl.libname=" + loadGraphicsLibrary());
 
         // Force LWJGL to use the Freetype library intended for it, instead of using the one

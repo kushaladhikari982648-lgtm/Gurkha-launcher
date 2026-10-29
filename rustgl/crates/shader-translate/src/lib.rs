@@ -28,6 +28,252 @@ precision highp samplerCubeShadow;\n";
 
 const PRECISION_100: &str = "precision highp float;\nprecision highp int;\n";
 
+/// Legacy fixed-function builtins GLSL ES does not have.
+///
+/// OptiFine (and every other shader that runs while the game still draws with
+/// `glVertexPointer` / `glColorPointer`) reads `gl_Vertex`, `gl_MultiTexCoord0`,
+/// `gl_ModelViewProjectionMatrix` and friends. GLSL ES has none of them, and replacing them
+/// with identity matrices - what this layer used to do - compiles but collapses the whole
+/// world into one place. So they become attributes and uniforms under these names, and
+/// gl-compat feeds them from the client arrays and matrix stacks it already tracks: what a
+/// desktop compatibility profile does for a shader.
+///
+/// The attribute locations are the ones desktop drivers use for these builtins, so a shader
+/// that also binds its own attributes (OptiFine's `mc_Entity`, `at_tangent`) keeps the
+/// locations it would have got on a desktop driver.
+pub const LEGACY_POSITION_ATTRIB: (&str, u32) = ("rust_gl_Vertex", 0);
+pub const LEGACY_NORMAL_ATTRIB: (&str, u32) = ("rust_gl_Normal", 2);
+pub const LEGACY_COLOR_ATTRIB: (&str, u32) = ("rust_gl_Color", 3);
+/// `gl_MultiTexCoord0..3`: locations follow the desktop compatibility mapping (8 + unit).
+pub const LEGACY_TEXCOORD_ATTRIBS: [(&str, u32); 4] = [
+    ("rust_gl_MultiTexCoord0", 8),
+    ("rust_gl_MultiTexCoord1", 9),
+    ("rust_gl_MultiTexCoord2", 10),
+    ("rust_gl_MultiTexCoord3", 11),
+];
+pub const LEGACY_MVP_UNIFORM: &str = "rust_gl_ModelViewProjectionMatrix";
+pub const LEGACY_MODELVIEW_UNIFORM: &str = "rust_gl_ModelViewMatrix";
+pub const LEGACY_PROJECTION_UNIFORM: &str = "rust_gl_ProjectionMatrix";
+pub const LEGACY_NORMAL_MATRIX_UNIFORM: &str = "rust_gl_NormalMatrix";
+/// `gl_TextureMatrix[0..3]`; the index is the texture unit.
+pub const LEGACY_TEXTURE_MATRIX_UNIFORMS: [&str; 4] = [
+    "rust_gl_TextureMatrix0",
+    "rust_gl_TextureMatrix1",
+    "rust_gl_TextureMatrix2",
+    "rust_gl_TextureMatrix3",
+];
+
+/// Replaces a whole GLSL identifier. `gl_Vertex` must not rewrite `gl_VertexID`, and
+/// `gl_Normal` must not rewrite a user's `gl_NormalScale`.
+fn replace_ident(src: &str, from: &str, to: &str) -> String {
+    let mut out = String::with_capacity(src.len() + 32);
+    let mut rest = src;
+    while let Some(index) = rest.find(from) {
+        let (before, tail) = rest.split_at(index);
+        let tail = &tail[from.len()..];
+        out.push_str(before);
+        let after = tail.chars().next().map_or(true, |c| !(c.is_alphanumeric() || c == '_'));
+        let before_ok = before.chars().last().map_or(true, |c| !(c.is_alphanumeric() || c == '_'));
+        if after && before_ok {
+            out.push_str(to);
+        } else {
+            out.push_str(from);
+        }
+        rest = tail;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Whether `name` appears as a whole identifier in `src`.
+fn ident_used(src: &str, name: &str) -> bool {
+    let mut rest = src;
+    while let Some(index) = rest.find(name) {
+        let (before, tail) = rest.split_at(index);
+        let tail = &tail[name.len()..];
+        let after = tail.chars().next().map_or(true, |c| !(c.is_alphanumeric() || c == '_'));
+        let before_ok = before.chars().last().map_or(true, |c| !(c.is_alphanumeric() || c == '_'));
+        if after && before_ok {
+            return true;
+        }
+        rest = tail;
+    }
+    false
+}
+
+/// Rewrites the fixed-function builtins GLSL ES has no equivalent for.
+///
+/// In a vertex shader they become the attributes and uniforms [`legacy_builtin_decls`]
+/// declares, and gl-compat feeds them. In a fragment shader `gl_Color` / `gl_MultiTexCoordN`
+/// are the interpolated varyings of the same names; nothing feeds those here, so they become
+/// a constant instead of an undeclared identifier that fails the compile.
+fn rewrite_legacy_builtins(src: &str, is_frag: bool) -> String {
+    let mut s = src.to_string();
+    if is_frag {
+        s = replace_ident(&s, "gl_Color", "(vec4(1.0))");
+        for i in 0..LEGACY_TEXCOORD_ATTRIBS.len() {
+            s = replace_ident(&s, &format!("gl_MultiTexCoord{i}"), "(vec4(1.0))");
+        }
+    } else {
+        s = replace_ident(&s, "gl_Vertex", LEGACY_POSITION_ATTRIB.0);
+        s = replace_ident(&s, "gl_Normal", LEGACY_NORMAL_ATTRIB.0);
+        s = replace_ident(&s, "gl_Color", LEGACY_COLOR_ATTRIB.0);
+        for i in 0..LEGACY_TEXCOORD_ATTRIBS.len() {
+            let (name, _) = LEGACY_TEXCOORD_ATTRIBS[i];
+            s = replace_ident(&s, &format!("gl_MultiTexCoord{i}"), name);
+        }
+    }
+    s = replace_ident(&s, "gl_ModelViewProjectionMatrix", LEGACY_MVP_UNIFORM);
+    s = replace_ident(&s, "gl_ModelViewMatrix", LEGACY_MODELVIEW_UNIFORM);
+    s = replace_ident(&s, "gl_ProjectionMatrix", LEGACY_PROJECTION_UNIFORM);
+    s = replace_ident(&s, "gl_NormalMatrix", LEGACY_NORMAL_MATRIX_UNIFORM);
+    for (i, name) in LEGACY_TEXTURE_MATRIX_UNIFORMS.iter().enumerate() {
+        s = s.replace(&format!("gl_TextureMatrix[{i}]"), name);
+    }
+    s
+}
+
+/// Names that are built-in **functions** in GLSL ES 3.00 but were ordinary variable names in
+/// the desktop GLSL the packs were written against. OptiFine's own `gbuffers_terrain`
+/// template opens with `uniform sampler2D texture;`, and once its `texture2D()` calls become
+/// `texture()` calls that sampler hides the function: the driver reports "no function with
+/// name 'texture'" and the pack never compiles.
+/// Only the names the desktop-to-ES rewrite below *introduces* belong here: a pack that
+/// declares one of them worked on the desktop and breaks the moment its own calls are
+/// renamed onto it. `texelFetch` and `textureSize` are spelled the same in both dialects, so
+/// a variable of that name was already broken before this layer saw the shader.
+const ES3_FUNCTION_NAMES: &[&str] = &[
+    "texture",
+    "textureLod",
+    "textureProj",
+    "textureGrad",
+    "textureProjLod",
+    "textureProjGrad",
+];
+
+fn is_glsl_type(word: &str) -> bool {
+    matches!(
+        word,
+        "float"
+            | "int"
+            | "uint"
+            | "bool"
+            | "double"
+            | "vec2"
+            | "vec3"
+            | "vec4"
+            | "ivec2"
+            | "ivec3"
+            | "ivec4"
+            | "uvec2"
+            | "uvec3"
+            | "uvec4"
+            | "bvec2"
+            | "bvec3"
+            | "bvec4"
+            | "mat2"
+            | "mat3"
+            | "mat4"
+            | "mat2x2"
+            | "mat2x3"
+            | "mat2x4"
+            | "mat3x2"
+            | "mat3x3"
+            | "mat3x4"
+            | "mat4x2"
+            | "mat4x3"
+            | "mat4x4"
+    ) || word.contains("sampler")
+}
+
+/// Whether `src` **declares** a variable called `name`, as opposed to calling it.
+///
+/// Two things have to hold: a type word sits immediately before it, and it is not followed by
+/// `(`. The second test is what keeps `vec4(texelFetch(buf, 0))` - a type word directly in
+/// front of a call - from being read as a declaration.
+fn declares_variable(src: &str, name: &str) -> bool {
+    for (start, _) in src.match_indices(name) {
+        let before = src[..start]
+            .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .filter(|w| !w.is_empty())
+            .last()
+            .unwrap_or("");
+        if !is_glsl_type(before) {
+            continue;
+        }
+        let next = src[start + name.len()..]
+            .bytes()
+            .find(|b| !b.is_ascii_whitespace())
+            .map(char::from);
+        if matches!(next, Some(';' | ',' | '[' | '=' | ')')) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Renames variables that would otherwise shadow an ES 3.00 built-in function.
+///
+/// Only the pack's own variable is renamed - a real GLSL 330 `texture()` call is a call, not a
+/// declaration, and is left alone - and the name is not observable from outside the shader, so
+/// nothing the game binds has to know about it.
+fn rename_shadowing_builtins(src: &str) -> String {
+    let mut out = src.to_string();
+    for name in ES3_FUNCTION_NAMES {
+        if declares_variable(&out, name) {
+            out = replace_ident(&out, name, &format!("rust_{name}"));
+        }
+    }
+    out
+}
+
+/// Declares the legacy builtins `src` actually references, as attributes and uniforms.
+///
+/// Only emitted for vertex shaders (the fixed-function builtins are vertex-stage state) and
+/// only for the ones used: an unused attribute still occupies a location the shader author
+/// may have meant for something else.
+fn legacy_builtin_decls(src: &str, uses_ftransform: bool) -> String {
+    let mut out = String::new();
+    let attrib = |out: &mut String, location: u32, ty: &str, name: &str| {
+        out.push_str(&format!("layout(location = {location}) in {ty} {name};\n"));
+    };
+    let matrix = |out: &mut String, name: &str| out.push_str(&format!("uniform mat4 {name};\n"));
+
+    if uses_ftransform || ident_used(src, "gl_Vertex") {
+        attrib(&mut out, LEGACY_POSITION_ATTRIB.1, "vec4", LEGACY_POSITION_ATTRIB.0);
+    }
+    if ident_used(src, "gl_Normal") {
+        attrib(&mut out, LEGACY_NORMAL_ATTRIB.1, "vec3", LEGACY_NORMAL_ATTRIB.0);
+    }
+    if ident_used(src, "gl_Color") {
+        attrib(&mut out, LEGACY_COLOR_ATTRIB.1, "vec4", LEGACY_COLOR_ATTRIB.0);
+    }
+    for i in 0..LEGACY_TEXCOORD_ATTRIBS.len() {
+        if ident_used(src, &format!("gl_MultiTexCoord{i}")) {
+            let (name, location) = LEGACY_TEXCOORD_ATTRIBS[i];
+            attrib(&mut out, location, "vec4", name);
+        }
+    }
+    if uses_ftransform || ident_used(src, "gl_ModelViewProjectionMatrix") {
+        matrix(&mut out, LEGACY_MVP_UNIFORM);
+    }
+    if ident_used(src, "gl_ModelViewMatrix") {
+        matrix(&mut out, LEGACY_MODELVIEW_UNIFORM);
+    }
+    if ident_used(src, "gl_ProjectionMatrix") {
+        matrix(&mut out, LEGACY_PROJECTION_UNIFORM);
+    }
+    if ident_used(src, "gl_NormalMatrix") {
+        out.push_str(&format!("uniform mat3 {LEGACY_NORMAL_MATRIX_UNIFORM};\n"));
+    }
+    for (i, name) in LEGACY_TEXTURE_MATRIX_UNIFORMS.iter().enumerate() {
+        if src.contains(&format!("gl_TextureMatrix[{i}]")) {
+            matrix(&mut out, name);
+        }
+    }
+    out
+}
+
 fn strip_float_suffixes(src: &str) -> String {
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len());
@@ -952,15 +1198,15 @@ fn rewrite_line_body(
 
         // Rare desktop helpers
         if rewrite_ftransform {
-            s = replace_glsl_call(&s, "ftransform()", "(gl_ModelViewProjectionMatrix * gl_Vertex)");
+            s = replace_glsl_call(
+                &s,
+                "ftransform()",
+                &format!("({} * {})", LEGACY_MVP_UNIFORM, LEGACY_POSITION_ATTRIB.0),
+            );
         }
-        s = s
-            .replace("gl_TextureMatrix[0]", "mat4(1.0)")
-            .replace("gl_TextureMatrix[1]", "mat4(1.0)")
-            .replace("gl_ModelViewProjectionMatrix", "mat4(1.0)")
-            .replace("gl_ModelViewMatrix", "mat4(1.0)")
-            .replace("gl_ProjectionMatrix", "mat4(1.0)")
-            .replace("gl_NormalMatrix", "mat3(1.0)");
+        // Fixed-function builtins: real attributes and uniforms, fed by gl-compat from the
+        // arrays and matrix stacks it tracks, instead of identities that flatten the world.
+        s = rewrite_legacy_builtins(&s, is_frag);
 
         if needs_frag_out {
             s = s
@@ -1066,11 +1312,18 @@ pub fn translate_with_texture_buffers(src: &str, texture_buffers: TextureBufferS
     // float call and is left for ES's own overload; what is left taking integers is retargeted
     // to the helper, which is injected only when something actually needed it.
     let (mod_rewritten_source, needs_int_mod) = numeric::rewrite_int_mod(&widened_source);
+    // Before the per-line rewrite below, which turns texture2D() into texture(): the sampler
+    // has to be renamed while it still carries the name it declared.
+    let unshadowed_source = if use_300 {
+        rename_shadowing_builtins(&mod_rewritten_source)
+    } else {
+        mod_rewritten_source
+    };
 
     // Save original source for fragment/vertex detection before macroization
-    let original_source = mod_rewritten_source.clone();
+    let original_source = unshadowed_source.clone();
 
-    let sanitized_source = macroize_nonconstant_globals(&mod_rewritten_source);
+    let sanitized_source = macroize_nonconstant_globals(&unshadowed_source);
     let src = sanitized_source.as_str();
 
     // Fragment/vertex detection must run on the ORIGINAL source before sanitization
@@ -1106,6 +1359,13 @@ pub fn translate_with_texture_buffers(src: &str, texture_buffers: TextureBufferS
     }
     if use_300 && uses_point_size && !is_frag {
         out.push_str("out float gl_PointSize;\n");
+    }
+    if use_300 && !is_frag {
+        let uses_ftransform = src.contains("ftransform()") && !declares_ftransform(src);
+        let decls = legacy_builtin_decls(src, uses_ftransform);
+        if !decls.is_empty() {
+            out.push_str(&decls);
+        }
     }
 
     for line in src.lines() {
@@ -1455,7 +1715,10 @@ mod tests {
         )
         .unwrap();
         assert!(o.contains("vec4 iris_ftransform()"));
-        assert!(o.contains("gl_Position = (mat4(1.0) * gl_Vertex)"));
+        // The builtin becomes the attribute/uniform pair gl-compat feeds, not an identity.
+        assert!(o.contains("gl_Position = (rust_gl_ModelViewProjectionMatrix * rust_gl_Vertex)"), "{o}");
+        assert!(o.contains("layout(location = 0) in vec4 rust_gl_Vertex;"), "{o}");
+        assert!(o.contains("uniform mat4 rust_gl_ModelViewProjectionMatrix;"), "{o}");
     }
 
     #[test]
@@ -1513,9 +1776,102 @@ mod tests {
     }
 
     #[test]
-    fn desktop_ftransform_builtin_is_rewritten_without_a_definition() {
+    fn ftransform_builtin_is_rewritten_without_a_definition() {
         let o = translate("#version 150\nvoid main() { gl_Position = ftransform(); }\n").unwrap();
-        assert!(o.contains("gl_Position = (mat4(1.0) * gl_Vertex)"));
+        assert!(o.contains("gl_Position = (rust_gl_ModelViewProjectionMatrix * rust_gl_Vertex)"), "{o}");
+        assert!(o.contains("layout(location = 0) in vec4 rust_gl_Vertex;"), "{o}");
+        assert!(o.contains("uniform mat4 rust_gl_ModelViewProjectionMatrix;"), "{o}");
+    }
+
+    /// True when `name` still appears *unprefixed*, i.e. as the desktop builtin rather than
+    /// as one of the `rust_<name>` attributes and uniforms this translator emits.
+    fn bare_builtin(source: &str, name: &str) -> bool {
+        source
+            .replace(&format!("rust_{name}"), "")
+            .contains(name)
+    }
+
+    #[test]
+    fn sampler_named_texture_is_renamed_and_real_calls_are_not() {
+        // OptiFine's gbuffers_terrain template: a sampler called `texture`, which in
+        // GLSL ES 3.00 hides the function its texture2D() calls are rewritten to.
+        let o = translate(
+            "#version 120\n\
+             uniform sampler2D texture;\n\
+             varying vec2 uv;\n\
+             void main(){ gl_FragColor = texture2D(texture, uv); }\n",
+        )
+        .unwrap();
+        assert!(o.contains("uniform sampler2D rust_texture;"), "{o}");
+        assert!(o.contains("texture(rust_texture, uv)"), "{o}");
+        assert!(!o.contains("texture2D("), "{o}");
+        // A GLSL 330 pack calling texture() declares no such variable, so it is untouched.
+        let i = translate(
+            "#version 330\n\
+             uniform sampler2D gtexture;\n\
+             in vec2 uv;\n\
+             out vec4 c;\n\
+             void main(){ c = texture(gtexture, uv); }\n",
+        )
+        .unwrap();
+        assert!(i.contains("texture(gtexture, uv)"), "{i}");
+        assert!(!i.contains("rust_texture"), "{i}");
+    }
+
+    #[test]
+    fn a_call_in_front_of_a_type_word_is_not_a_declaration() {
+        // vec4(texture(...)) has a type word immediately before the call, which is also what
+        // a declaration looks like. Only the following `(` says which it is.
+        let o = translate(
+            "#version 330\n\
+             uniform sampler2D gtexture;\n\
+             in vec2 uv;\n\
+             out vec4 c;\n\
+             void main(){ c = vec4(texture(gtexture, uv)); }\n",
+        )
+        .unwrap();
+        assert!(o.contains("texture(gtexture, uv)"), "{o}");
+        assert!(!o.contains("rust_texture"), "{o}");
+    }
+
+    #[test]
+    fn optifine_fixed_function_builtins_become_fed_attributes_and_uniforms() {
+        // The shape every OptiFine / 1.12.2 pack template starts from.
+        let src = "#version 120\n\
+varying vec4 texcoord;\n\
+varying vec4 lmcoord;\n\
+void main() {\n\
+    gl_Position = ftransform();\n\
+    texcoord = gl_TextureMatrix[0] * gl_MultiTexCoord0;\n\
+    lmcoord = gl_TextureMatrix[1] * gl_MultiTexCoord1;\n\
+}\n";
+        let o = translate(src).unwrap();
+        assert!(o.contains("layout(location = 0) in vec4 rust_gl_Vertex;"), "{o}");
+        assert!(o.contains("layout(location = 8) in vec4 rust_gl_MultiTexCoord0;"), "{o}");
+        assert!(o.contains("layout(location = 9) in vec4 rust_gl_MultiTexCoord1;"), "{o}");
+        assert!(o.contains("uniform mat4 rust_gl_TextureMatrix0;"), "{o}");
+        assert!(o.contains("uniform mat4 rust_gl_TextureMatrix1;"), "{o}");
+        assert!(o.contains("gl_Position = (rust_gl_ModelViewProjectionMatrix * rust_gl_Vertex)"), "{o}");
+        assert!(o.contains("texcoord = rust_gl_TextureMatrix0 * rust_gl_MultiTexCoord0;"), "{o}");
+        // No *bare* builtin may survive: rust_gl_MultiTexCoord0 is the attribute gl-compat
+        // feeds, gl_MultiTexCoord0 is the desktop builtin that would fail the compile.
+        assert!(!bare_builtin(&o, "gl_MultiTexCoord"), "{o}");
+        assert!(!o.contains("mat4(1.0)"), "{o}");
+        // A fragment shader gets no vertex attributes and no undeclared identifier.
+        let f = translate("#version 120\nvoid main(){ gl_FragColor = gl_Color; }\n").unwrap();
+        assert!(f.contains("rust_FragColor"), "{f}");
+        assert!(!bare_builtin(&f, "gl_Color"), "{f}");
+    }
+
+    #[test]
+    fn gl_vertex_id_survives_the_fixed_function_rewrite() {
+        // gl_VertexID is ES 3.00 core; rewriting gl_Vertex must not touch it.
+        let o = translate(
+            "#version 330\nvoid main(){ gl_Position = vec4(float(gl_VertexID), gl_Vertex.x, 0.0, 1.0); }\n",
+        )
+        .unwrap();
+        assert!(o.contains("gl_VertexID"), "{o}");
+        assert!(o.contains("rust_gl_Vertex.x"), "{o}");
     }
 
     // ---- OptiFine / Iris era (#version 120) shader packs ----

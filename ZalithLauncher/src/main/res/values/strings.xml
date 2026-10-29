@@ -700,4 +700,7 @@
     <string name="renderer_policy_sdl_use_ltw">%1$s uses SDL3, which only the LTW renderer supports in this launcher, so LTW is used for this launch.</string>
     <string name="renderer_policy_ltw_unsupported">%1$s needs the LTW renderer, but your device doesn\'t support it (it needs OpenGL ES 3). The game will probably not start.</string>
     <string name="ltw_render_distance_warning_msg">Your GPU can\'t render this version above 7 chunks of render distance without Sodium or a similar mod. The render distance will be lowered to 7 when you tap \"OK\".</string>
+    <string name="setting_category_performance">Performance</string>
+    <string name="setting_low_end_mode_title">Low-end device mode</string>
+    <string name="setting_low_end_mode_desc">For low-memory phones and Helio A22-class devices. Limits download workers to 4 and mod scans to 2, reduces progress updates, and starts Java with up to 256 MB before growing to your selected RAM limit. Clouds start disabled in new game profiles only. Existing graphics settings and FPS limits stay unchanged. Applies to the next download, scan or game launch; disable to restore normal resource budgets.</string>
 </resources>

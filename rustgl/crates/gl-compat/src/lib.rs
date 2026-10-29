@@ -27,7 +27,7 @@ mod overlay;
 
 use renderer_core::{Backend, BackendKind, Config, GlErrorState};
 use std::ffi::{c_char, c_void, CStr, CString};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
 use std::collections::HashMap;
 
@@ -1385,9 +1385,45 @@ pub unsafe extern "C" fn glGetShaderiv(shader: u32, pname: u32, params: *mut i32
     report_compile_failure(shader);
 }
 
+/// The program the last `glUseProgram` bound, tracked so the draw paths do not have to ask the
+/// driver. `glDrawArrays` runs this check on every call, and `glGetIntegerv` per draw is a
+/// driver round trip the weakest devices cannot absorb.
+static CURRENT_PROGRAM: AtomicU32 = AtomicU32::new(0);
+
+/// The program the game has bound, or 0 when it is drawing fixed-function.
+pub(crate) fn current_program() -> u32 {
+    CURRENT_PROGRAM.load(Ordering::Relaxed)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn glUseProgram(program: u32) {
+    trace_call("glUseProgram");
+    CURRENT_PROGRAM.store(program, Ordering::Relaxed);
+    match driver_fn_cached::<unsafe extern "C" fn(u32)>("glUseProgram") {
+        Some(f) => f(program),
+        None => errors().set(GL_INVALID_OPERATION),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn glDeleteProgram(program: u32) {
+    trace_call("glDeleteProgram");
+    // Deleting the bound program reverts to "no program", as the driver does.
+    if CURRENT_PROGRAM.load(Ordering::Relaxed) == program {
+        CURRENT_PROGRAM.store(0, Ordering::Relaxed);
+    }
+    fixed_draw::forget_legacy_locations(program);
+    match driver_fn_cached::<unsafe extern "C" fn(u32)>("glDeleteProgram") {
+        Some(f) => f(program),
+        None => errors().set(GL_INVALID_OPERATION),
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn glLinkProgram(program: u32) {
     trace_call("glLinkProgram");
+    // A re-linked program does not keep the locations the legacy-shader draw path cached.
+    fixed_draw::forget_legacy_locations(program);
     let Some(link) = driver_fn_cached::<unsafe extern "C" fn(u32)>("glLinkProgram") else {
         errors().set(GL_INVALID_OPERATION);
         return;
@@ -2112,7 +2148,6 @@ forward_all! {
     glColorMask(r: u8, g: u8, b: u8, a: u8);
     glCullFace(m: u32);
     glDeleteFramebuffers(n: i32, f: *const u32);
-    glDeleteProgram(p: u32);
     glDeleteRenderbuffers(n: i32, r: *const u32);
     glDeleteShader(s: u32);
     glDeleteTextures(n: i32, t: *const u32);
@@ -2161,7 +2196,6 @@ forward_all! {
     glUniformMatrix2fv(l: i32, n: i32, t: u8, v: *const f32);
     glUniformMatrix3fv(l: i32, n: i32, t: u8, v: *const f32);
     glUniformMatrix4fv(l: i32, n: i32, t: u8, v: *const f32);
-    glUseProgram(p: u32);
     glVertexAttribPointer(i: u32, s: i32, t: u32, n: u8, st: i32, p: *const c_void);
     glVertexAttribIPointer(i: u32, s: i32, t: u32, st: i32, p: *const c_void);
     glUnmapBuffer(t: u32) -> u8;
@@ -3461,6 +3495,23 @@ mod tests {
         ("GL_EXT_color_buffer_float", &["glTexImage2D", "glRenderbufferStorage"]),
         ("GL_EXT_color_buffer_half_float", &["glTexImage2D", "glRenderbufferStorage"]),
         ("GL_EXT_texture_format_BGRA8888", &["glTexImage2D", "glTexSubImage2D", "glRenderbufferStorage"]),
+        ("GL_ARB_multitexture", &["glActiveTexture"]),
+        ("GL_EXT_texture_array", &["glTexImage3D", "glFramebufferTextureLayer"]),
+    ];
+
+    /// Advertised extensions that add **no entry point at all**: they are part of the
+    /// shading language or of the texture format list, so the only thing a client can
+    /// do with them is compile a shader that uses them. OptiFine turns every advertised
+    /// name into the `MC_GL_<ext>` macro its shaders test with `#ifdef`, so these have
+    /// to be advertised for a pack to take its real code path - and there is nothing to
+    /// resolve, which is exactly why the table above cannot hold them.
+    const GLSL_OR_FORMAT_ONLY_EXTENSIONS: &[(&str, &str)] = &[
+        ("GL_ARB_shader_texture_lod", "GLSL only: texture2DLod / texture2DGradARB"),
+        ("GL_EXT_shader_texture_lod", "GLSL only: the ES spelling of the same extension"),
+        ("GL_ARB_depth_texture", "formats only: depth textures are created with glTexImage2D"),
+        ("GL_ARB_shadow", "GLSL and TexParameter only: sampler2DShadow and TEXTURE_COMPARE_MODE"),
+        ("GL_ARB_texture_float", "formats only: float internal formats for glTexImage2D"),
+        ("GL_ARB_color_buffer_half_float", "formats only: renderable half-float formats"),
     ];
 
     #[test]
@@ -3504,10 +3555,29 @@ mod tests {
             let listed = ADVERTISED_ENTRY_POINTS
                 .iter()
                 .any(|(e, _)| e.as_bytes() == name);
+            let has_no_entry_points = GLSL_OR_FORMAT_ONLY_EXTENSIONS
+                .iter()
+                .any(|(e, _)| e.as_bytes() == name);
             assert!(
-                listed,
+                listed || has_no_entry_points,
                 "{} is advertised without a tested entry point in ADVERTISED_ENTRY_POINTS",
                 String::from_utf8_lossy(name)
+            );
+        }
+    }
+
+    /// An extension belongs to one table or the other, never both: listing entry points
+    /// for a shading-language extension would mean inventing a call the client would
+    /// then bind, and listing one that has real functions as "nothing to resolve" would
+    /// let a null pointer through the check above.
+    #[test]
+    fn the_two_extension_tables_do_not_overlap() {
+        for (ext, _) in GLSL_OR_FORMAT_ONLY_EXTENSIONS {
+            assert!(
+                !ADVERTISED_ENTRY_POINTS
+                    .iter()
+                    .any(|(e, _)| e == ext),
+                "{ext} is listed as having no entry points but is also in ADVERTISED_ENTRY_POINTS"
             );
         }
     }

@@ -1,5 +1,6 @@
 package com.movtery.zalithlauncher.utils.platform
 
+import android.os.Build
 import java.io.File
 
 /**
@@ -15,6 +16,13 @@ object DeviceMemory {
                 lines.first { it.startsWith("MemTotal:") }.split(Regex("\\s+"))[1].toLong() / 1024
             }.toInt()
         }.getOrDefault(0)
+    }
+
+    /** Context-free default detection; GPU capabilities remain the renderer's responsibility. */
+    @JvmStatic
+    val isLowEnd: Boolean by lazy {
+        LowEndPolicy.defaultEnabled(totalMb, Build.HARDWARE, Build.BOARD,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL else "")
     }
 
     /**

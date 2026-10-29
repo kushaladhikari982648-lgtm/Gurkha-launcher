@@ -27,11 +27,12 @@ class AllSettings {
         val ignoreNotchLauncher = BooleanSettingUnit("ignoreNotchLauncher", true)
 
         /**
-         * Phones with less than 3 GB of RAM have entry-level GPUs: rendering at 75 % of the screen resolution keeps the
-         * game playable there and its frame buffers smaller (only the default; a chosen value is kept)
+         * Conservative default for detected low-memory / MT6761-class hardware. Rendering at 75 %
+         * reduces pixel workload and frame-buffer size; this is not an FPS guarantee.
+         * A previously chosen resolution is kept.
          */
         @JvmStatic
-        val resolutionRatio = IntSettingUnit("resolutionRatio", if (DeviceMemory.isLowRam) 75 else 100)
+        val resolutionRatio = IntSettingUnit("resolutionRatio", if (DeviceMemory.isLowEnd) 75 else 100)
 
         @JvmStatic
         val sustainedPerformance = BooleanSettingUnit("sustainedPerformance", false)
@@ -161,6 +162,10 @@ class AllSettings {
 
         @JvmStatic
         val downloadSource = StringSettingUnit("downloadSource", "default")
+
+        /** Reversible resource budgets. Saved user values still take precedence over defaults. */
+        @JvmStatic
+        val lowEndMode = BooleanSettingUnit("lowEndMode", DeviceMemory.isLowEnd)
 
         @JvmStatic
         val maxDownloadThreads = IntSettingUnit("maxDownloadThreads", 64)
