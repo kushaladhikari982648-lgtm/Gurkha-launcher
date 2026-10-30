@@ -572,6 +572,7 @@
     <string name="download_info_dependencies">依賴類型:</string>
     <string name="download_info_load_screenshot">展示螢幕截圖</string>
     <string name="download_search_failed">搜尋資源時失敗！</string>
+    <string name="download_curseforge_no_api_key">此啟動器版本無法使用 CurseForge：建置時未提供 CurseForge API 金鑰。Modrinth 仍可正常使用。</string>
     <string name="download_search_no_result">未找到相關資源！</string>
     <string name="download_search_platform_not_supported">當前平台不支持下載這類資源，或不支持此類別篩選！</string>
     <string name="download_install_custom_name">自訂檔案名稱</string>
@@ -654,8 +655,9 @@
     <string name="about_sponsors_desc">以下是所有支持開發的贊助者們，萬分感謝！</string>
     <string name="about_sponsors_amount">時間與總金額</string>
     <string name="about_button_support_development">贊助開發</string>
-    <string name="about_MovTery_desc">啟動器的主要作者</string>
+    <string name="about_MovTery_desc">Zalith Launcher 的主要作者</string>
     <string name="about_PojavLauncher_desc">PojavLauncher 的開發團隊，開發並開源了 PojavLauncher</string>
+    <string name="about_zalith_desc">%s 基於 Zalith Launcher 開發，它是由墨北MovTery 及其貢獻者建立的開源啟動器</string>
     <string name="about_mcmod_desc">啟動器使用了來自 MC 百科的模組以及模組包中文翻譯</string>
     <string name="about_VeraFirefly_desc">為啟動器提供渲染方面的技術支持</string>
     <string name="about_LingMuQiuZhu_desc">為啟動器提供了技術支持</string>

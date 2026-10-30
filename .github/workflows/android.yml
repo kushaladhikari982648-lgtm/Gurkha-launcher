@@ -1,97 +1,671 @@
 name: Android CI
 
+# - Every branch push / pull request: debug APKs for all architectures (downloadable from the run page).
+# - Pushing a tag "v<launcher_version_name>" (e.g. v1.0.0-beta.1): signed release APKs, published as a
+#   GitHub release. Needs the GURKHA_KEYSTORE_BASE64 and GURKHA_KEYSTORE_PASSWORD secrets, see RELEASING.md.
+
 on:
   push:
+    branches: [ '**' ]
+    tags: [ 'v*' ]
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A newer push to the same branch supersedes the older build; release (tag) builds always finish.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
-  BuildRelease:
-    if: github.repository_owner == 'ZalithLauncher' && !startsWith(github.ref, 'refs/pull/') && github.ref_name == 'main'
+  LauncherUiChecks:
     runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check launcher resources and CurseForge preflight
+        run: python3 -m unittest discover -s tests -v
+      - uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Test GLFW focus and lifecycle state
+        run: |
+          javac --release 8 -d "$RUNNER_TEMP/glfw-tests" jre_lwjgl3glfw/src/main/java/org/lwjgl/glfw/WindowState.java tests/java/WindowStateTest.java
+          java -cp "$RUNNER_TEMP/glfw-tests" org.lwjgl.glfw.WindowStateTest
+      - name: Test low-end resource budgets and download executors
+        run: |
+          javac --release 8 -d "$RUNNER_TEMP/low-end-tests" ZalithLauncher/src/main/java/com/movtery/zalithlauncher/utils/platform/LowEndPolicy.java tests/java/LowEndPolicyTest.java
+          java -cp "$RUNNER_TEMP/low-end-tests" LowEndPolicyTest
+
+  CurseForgeChecks:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate CurseForge authentication
+        env:
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          REQUIRE_KEY: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          if [ "$REQUIRE_KEY" = "true" ]; then
+            python3 tools/check_curseforge.py --require-key
+          else
+            python3 tools/check_curseforge.py
+          fi
+
+  RustGLChecks:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test RustGL on software GLES
+        id: render_tests
+        env:
+          EGL_PLATFORM: surfaceless
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          CARGO_TERM_COLOR: never
+        run: |
+          set -o pipefail
+          {
+            sudo apt-get update -q
+            sudo apt-get install -y --no-install-recommends libegl1 libgles2 libgles1 libegl-dev libgles-dev libgl1-mesa-dri
+            cd rustgl
+            cargo test -p renderer-core -p gl-compat -p shader-translate -- --test-threads=1
+            cargo build -p gl-compat
+            python3 tests/render_smoke.py
+            MESA_EXTENSION_OVERRIDE=-GL_EXT_buffer_storage python3 tests/render_smoke.py
+            MESA_GLES_VERSION_OVERRIDE=3.1 python3 tests/render_smoke.py
+          } 2>&1 | tee "$RUNNER_TEMP/rustgl-render-tests.log"
+      - name: Report rendering test failure
+        if: failure()
+        run: |
+          python3 - "$RUNNER_TEMP/rustgl-render-tests.log" <<'PYTEST'
+          import pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text(errors="replace") if path.exists() else "Test log missing"
+          text = text[-3000:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print("::error title=RustGL rendering regression::" + text)
+          PYTEST
+
+  PowerVRRenderer:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build pinned PowerVR Unified libraries
+        run: |
+          set -o pipefail
+          {
+            python3 -m venv "$RUNNER_TEMP/powervr-tools"
+            "$RUNNER_TEMP/powervr-tools/bin/pip" install cmake==3.31.6
+            export PATH="$RUNNER_TEMP/powervr-tools/bin:$PATH"
+            python3 -m unittest discover -s powervr/tests -v
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
+            NDK="$ANDROID_HOME/ndk/28.2.13676358"
+            for ABI in arm64-v8a armeabi-v7a; do
+              python3 powervr/tools/build_unified.py --ndk "$NDK" --abi "$ABI" --jobs 2
+            done
+            python3 powervr/verify_native.py "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+            python3 powervr/pack_aar.py
+          } 2>&1 | tee "$RUNNER_TEMP/powervr.log"
+      - name: Report PowerVR build failure
+        if: failure()
+        run: |
+          python3 - "$RUNNER_TEMP/powervr.log" <<'PYERROR'
+          import pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text(errors="replace") if path.exists() else "Build log missing"
+          text = text[-3000:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print("::error title=PowerVR renderer build failed::" + text)
+          PYERROR
+      - uses: actions/upload-artifact@v7
+        with:
+          name: powervr-release-aar
+          path: |
+            ZalithLauncher/libs/powervr-release.aar
+            ZalithLauncher/libs/powervr-release.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: powervr-unified-sources
+          path: powervr/artifacts/*/powervr-unified.zip
+          if-no-files-found: error
+          retention-days: 90
+
+  BuildDebug:
+    needs: [RustGLChecks, PowerVRRenderer, LauncherUiChecks, CurseForgeChecks]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-22.04
+    # contents: write lets the renderer-library step update the checked-in AARs
+    permissions:
+      contents: write
     strategy:
       matrix:
         arch: [ "all", "arm", "arm64", "x86", "x86_64" ]
       fail-fast: false
 
-    env:
-      CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download built PowerVR renderer
+        uses: actions/download-artifact@v8
+        with:
+          name: powervr-release-aar
+          path: ZalithLauncher/libs
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Build RustGL renderer
+        id: rustgl
+        run: |
+          set -o pipefail
+          # librust_gl.so (source in rustgl/) is the RustGL desktop-GL-to-GLES renderer. Build it
+          # with cargo-ndk and pack ZalithLauncher/libs/rustgl-release.aar before Gradle runs, so
+          # every APK ships it like the other renderer libraries. See rustgl/README.md.
+          {
+            cargo install cargo-ndk --locked
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "ndk;25.2.9519653" > /dev/null
+            export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.2.9519653"
+            echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+            cd rustgl
+            # The gl-compat tests resolve some legacy entry points through a real EGL/GLES
+            # stack (Mesa), the same setup upstream verified them with.
+            sudo apt-get update -q
+            sudo apt-get install -y --no-install-recommends \
+              libegl1 libgles2 libgles1 libegl-dev libgles-dev \
+              libgl1 libglx-mesa0 libglvnd0 libglx0 libegl-mesa0
+            cargo test -p renderer-core -p gl-compat -- --test-threads=1
+            cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release -p gl-compat
+            cd ..
+            python3 rustgl/pack_aar.py
+          } 2>&1 | tee "$RUNNER_TEMP/rustgl.log"
+
+      - name: Report RustGL build errors
+        if: failure() && steps.rustgl.outcome != 'success'
+        run: |
+          # The failing Rust/cargo lines as one annotation (same idea as "Report build errors")
+          python3 - "$RUNNER_TEMP/rustgl.log" <<'PY'
+          import os, re, sys
+          path = sys.argv[1]
+          lines = open(path, errors="replace").read().splitlines() if os.path.exists(path) else []
+          idx = set()
+          for i, l in enumerate(lines):
+              if re.search(r"^error|^warning: unused|error\[E\d+\]|error:|FAILED|failures:|panicked at|test result", l):
+                  idx.update(range(i, min(i + 4, len(lines))))
+          keep = [lines[i] for i in sorted(idx) if lines[i].strip()]
+          msg = "\n".join(keep[:80]) or "\n".join(lines[-40:]) or "No RustGL output captured."
+          print("::error title=RustGL build failed::" + msg.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+          PY
+
+      - name: Build JRE JAR files
+        run: |
+          set -o pipefail
+          chmod +x gradlew
+          ./gradlew jre_lwjgl3glfw:build --no-daemon 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Build Debug ${{ matrix.arch }}
+        env:
+          # Without it the CurseForge tab of the launcher can't work (the API rejects every request)
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: |
+          set -o pipefail
+          ./gradlew ZalithLauncher:assembleDebug -Darch=${{ matrix.arch }} 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - name: APK size report
+        run: |
+          # What takes the space in the APK: shown on the run page, so size changes are visible in every build
+          python3 - ZalithLauncher/build/outputs/apk/debug/*.apk <<'PY'
+          import collections, os, sys, zipfile
+          for apk in sys.argv[1:]:
+              groups, entries = collections.Counter(), []
+              for i in zipfile.ZipFile(apk).infolist():
+                  parts = i.filename.split("/")
+                  if parts[0] == "assets" and len(parts) > 2: key = "/".join(parts[:3])
+                  elif parts[0] == "lib": key = "lib (native libraries)"
+                  elif i.filename.endswith(".dex"): key = "classes*.dex"
+                  else: key = parts[0] if len(parts) > 1 else i.filename
+                  groups[key] += i.compress_size
+                  entries.append((i.compress_size, i.file_size, i.filename))
+              lines = [f"{os.path.basename(apk)}: {os.path.getsize(apk) / 1e6:.1f} MB"]
+              lines += [f"{v / 1e6:7.2f} MB  {k}" for k, v in groups.most_common(16)]
+              lines.append("Largest entries (in APK / unpacked):")
+              lines += [f"{c / 1e6:7.2f} / {u / 1e6:7.2f} MB  {n}" for c, u, n in sorted(entries, reverse=True)[:20]]
+              msg = "\n".join(lines)
+              print(msg)
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+                  f.write("```\n" + msg + "\n```\n")
+              print(f"::notice title=APK size {os.path.basename(apk)}::" + msg.replace("%", "%25").replace("\n", "%0A"))
+          PY
+
+      - name: Check the RustGL renderer is in the APK
+        run: |
+          # Every APK must ship librust_gl.so for the ABIs it contains (the RustGL renderer).
+          python3 - ZalithLauncher/build/outputs/apk/debug/*.apk <<'PY'
+          import sys, zipfile
+          for apk in sys.argv[1:]:
+              names = zipfile.ZipFile(apk).namelist()
+              abis = {n.split("/")[1] for n in names if n.startswith("lib/") and n.endswith(".so")}
+              missing = [a for a in sorted(abis) if f"lib/{a}/librust_gl.so" not in names]
+              if missing:
+                  sys.exit(f"::error title=librust_gl.so missing::{apk} has no librust_gl.so for {missing}")
+              if not abis:
+                  sys.exit(f"::error title=No native libraries::{apk}")
+              print(f"{apk}: librust_gl.so present for {', '.join(sorted(abis))}")
+          PY
+
+      - name: Check the packed component jars
+        run: |
+          # The build packs component jars as xz-compressed uncompressed jars (packJarAsXz in build.gradle.kts).
+          # Every packed jar must unpack to a valid jar with exactly the entries of the jar in the repository.
+          python3 - ZalithLauncher/build/outputs/apk/debug/*.apk <<'PY'
+          import glob, io, lzma, os, sys, zipfile
+          repo = {}
+          for path in glob.glob("ZalithLauncher/src/main/assets/components/**/*.jar", recursive=True):
+              repo["assets/components/" + os.path.relpath(path, "ZalithLauncher/src/main/assets/components")] = path
+          for path in glob.glob("ZalithLauncher/src/main/assets/components/lwjgl3/*.jar"):  # built by jre_lwjgl3glfw
+              repo["assets/components/lwjgl3/" + os.path.basename(path)] = path
+          checked = 0
+          for apk in sys.argv[1:]:
+              z = zipfile.ZipFile(apk)
+              leftover = [n for n in z.namelist() if n.startswith("assets/components/") and n.endswith(".jar")]
+              if leftover:
+                  sys.exit(f"::error title=Unpacked jars in the APK::{apk}: {leftover}")
+              for name in z.namelist():
+                  if not (name.startswith("assets/components/") and name.endswith(".jar.xz")):
+                      continue
+                  jar = zipfile.ZipFile(io.BytesIO(lzma.decompress(z.read(name))))
+                  bad = jar.testzip()
+                  if bad or any(i.compress_type != zipfile.ZIP_STORED for i in jar.infolist()):
+                      sys.exit(f"::error title=Broken packed jar::{apk}: {name} ({bad or 'compressed entries'})")
+                  original = repo.get(name[:-3])
+                  if original:
+                      want = zipfile.ZipFile(original)
+                      if [i.filename for i in want.infolist()] != [i.filename for i in jar.infolist()] or \
+                              any(want.read(i.filename) != jar.read(i.filename) for i in want.infolist()):
+                          sys.exit(f"::error title=Packed jar differs::{apk}: {name} does not match {original}")
+                  checked += 1
+          print(f"{checked} packed jars checked")
+          PY
+
+      - name: Report build errors
+        if: failure()
+        run: |
+          # Errors of the failed Gradle step as one annotation, so they show up on the run page without opening the log
+          python3 - "$RUNNER_TEMP/build.log" <<'PY'
+          import os, re, sys
+          path = sys.argv[1]
+          lines = open(path, errors="replace").read().splitlines() if os.path.exists(path) else []
+          idx = set()
+          for i, l in enumerate(lines):
+              if re.search(r"^e: |error:|\berror\b.*\.(java|kt|c|h):|What went wrong|Execution failed|cannot find symbol|Unresolved reference|^> ", l):
+                  idx.add(i)
+              if "What went wrong" in l:  # Gradle prints the reason on the following lines
+                  idx.update(range(i + 1, min(i + 5, len(lines))))
+          keep = [lines[i] for i in sorted(idx) if lines[i].strip()]
+          msg = "\n".join(keep[:80]) or "\n".join(lines[-40:]) or "No Gradle output: a step before the Gradle builds failed."
+          print("::error title=Build failed::" + msg.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+          PY
+
+      - name: Check PowerVR renderer APK contents
+        run: python3 powervr/check_apk.py ZalithLauncher/build/outputs/apk
+
+      - name: Upload Debug ${{ matrix.arch }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: GurkhaLauncher(Debug) ${{ matrix.arch }}
+          path: ZalithLauncher/build/outputs/apk/debug/*
+
+      - name: Upload RustGL renderer library
+        if: matrix.arch == 'all'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustgl-release-aar
+          path: ZalithLauncher/libs/rustgl-release.aar
+
+      - name: Commit built renderer libraries
+        if: matrix.arch == 'all' && github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The renderer AARs live in the repository (see ng_gl4es-release.txt), so keep
+          # RustGL and PowerVR AARs next to them for local Gradle builds. The source-tree
+          # gates avoid bot commits for unchanged renderer sources.
+          TREE=$(git rev-parse "HEAD:rustgl")
+          CURRENT=$(sed -n 's/^Source-tree: \([0-9a-f]*\).*/\1/p' ZalithLauncher/libs/rustgl-release.txt)
+          PV_TREE=$(git rev-parse "HEAD:powervr")
+          PV_CURRENT=$(git show HEAD:ZalithLauncher/libs/powervr-release.txt 2>/dev/null | sed -n 's/^Source-tree: //p' || true)
+          if [ "$TREE" = "$CURRENT" ] && [ "$PV_TREE" = "$PV_CURRENT" ] &&
+             git cat-file -e "HEAD:ZalithLauncher/libs/rustgl-release.aar" 2>/dev/null &&
+             git cat-file -e "HEAD:ZalithLauncher/libs/powervr-release.aar" 2>/dev/null; then
+            echo "Both renderer AARs are already committed for these sources"
+            exit 0
+          fi
+          python3 - "$TREE" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" <<'PYDOC'
+          import json, pathlib, sys
+          tree, run = sys.argv[1], sys.argv[2]
+          source = json.loads(pathlib.Path("rustgl/source-lock.json").read_text())
+          text = pathlib.Path("ZalithLauncher/libs/rustgl-release.txt").read_text()
+          out = []
+          for line in text.splitlines():
+              if line.startswith("Source:"):
+                  suffix = " + Gurkha local patches (see rustgl/source-lock.json)" if source.get("local_patches") else ""
+                  out.append(f"Source:  {source['repository']}, {source['subdirectory']}/ at {source['commit']}" + suffix)
+                  upstream = source['original_upstream']
+                  out.append(f"Original upstream: {upstream['repository']} at {upstream['commit']}")
+              elif line.startswith("Original upstream:"):
+                  continue  # already emitted above; avoid duplicates on later builds
+              elif line.strip().startswith("with local fixes"):
+                  out.append("         See rustgl/source-lock.json and rustgl/README.md for snapshot verification and integration.")
+              elif line.startswith("Source-tree:"):
+                  out.append(f"Source-tree: {tree}   (hash of the rustgl/ directory)")
+              elif line.strip().startswith("CI run:"):
+                  out.append(f"         CI run: {run}")
+              else:
+                  out.append(line)
+          pathlib.Path("ZalithLauncher/libs/rustgl-release.txt").write_text("\n".join(out) + "\n")
+          PYDOC
+          set -x
+          trap 'echo "::error title=Renderer AAR commit failed::command failed with exit $? (see the step log)"' ERR
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ZalithLauncher/libs/rustgl-release.aar ZalithLauncher/libs/rustgl-release.txt ZalithLauncher/libs/powervr-release.aar ZalithLauncher/libs/powervr-release.txt
+          git diff --cached --quiet && exit 0
+          git commit -m "Build: RustGL and PowerVR renderer libraries [skip ci]"
+          git push origin "HEAD:$GITHUB_REF_NAME" || echo "::warning title=Renderer AARs not committed::The workflow token cannot push to this branch; download the rustgl-release-aar and powervr-release-aar artifacts from this run instead."
+
+  # Runs once before the five release builds so that a missing secret or a wrong tag gives one clear error.
+  ReleasePreflight:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-22.04
+    outputs:
+      build_type: ${{ steps.version.outputs.build_type }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Set build type
-        id: set-env
+      - name: Check signing secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.GURKHA_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.GURKHA_KEYSTORE_PASSWORD }}
         run: |
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-          BUILD_TYPE="DEBUG"
-
-          if [[ "$COMMIT_MSG" == *"pre-release"* ]]; then
-            BUILD_TYPE="PRE_RELEASE"
-          elif [[ "$COMMIT_MSG" == *"release"* ]]; then
-            BUILD_TYPE="RELEASE"
+          missing=""
+          [ -n "$KEYSTORE_BASE64" ] || missing="$missing GURKHA_KEYSTORE_BASE64"
+          [ -n "$KEYSTORE_PASSWORD" ] || missing="$missing GURKHA_KEYSTORE_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error title=Release signing key missing::Add the repository secret(s)${missing} under Settings > Secrets and variables > Actions, then re-run this workflow run. See RELEASING.md."
+            exit 1
           fi
 
-          echo "ZL_BUILD_TYPE=${BUILD_TYPE}" >> $GITHUB_ENV
+      - name: Check tag and version
+        id: version
+        run: |
+          VERSION_NAME=$(sed -n 's/^launcher_version_name=//p' ZalithLauncher/gradle.properties | tr -d '\r[:space:]')
+          if [ "$GITHUB_REF_NAME" != "v$VERSION_NAME" ]; then
+            echo "::error title=Tag does not match the version::Tag is $GITHUB_REF_NAME but ZalithLauncher/gradle.properties has launcher_version_name=$VERSION_NAME. Push the tag v$VERSION_NAME instead."
+            exit 1
+          fi
+          case "$VERSION_NAME" in
+            *-*) echo "build_type=PRE_RELEASE" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "build_type=RELEASE" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Check keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.GURKHA_KEYSTORE_BASE64 }}
+          GURKHA_KEYSTORE_PASSWORD: ${{ secrets.GURKHA_KEYSTORE_PASSWORD }}
+          GURKHA_KEY_ALIAS: ${{ secrets.GURKHA_KEY_ALIAS }}
+        run: |
+          KEYSTORE="$RUNNER_TEMP/gurkha-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode --ignore-garbage > "$KEYSTORE"
+          ALIAS="${GURKHA_KEY_ALIAS:-gurkha}"
+          if ! keytool -list -keystore "$KEYSTORE" -storepass:env GURKHA_KEYSTORE_PASSWORD -alias "$ALIAS" > /dev/null; then
+            rm -f "$KEYSTORE"
+            echo "::error title=Keystore check failed::GURKHA_KEYSTORE_BASE64 could not be opened with GURKHA_KEYSTORE_PASSWORD, or it has no key named '$ALIAS'. See RELEASING.md."
+            exit 1
+          fi
+          rm -f "$KEYSTORE"
+
+  BuildRelease:
+    needs: [ReleasePreflight, RustGLChecks, PowerVRRenderer, LauncherUiChecks, CurseForgeChecks]
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        arch: [ "all", "arm", "arm64", "x86", "x86_64" ]
+
+    env:
+      CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+      ZL_BUILD_TYPE: ${{ needs.ReleasePreflight.outputs.build_type }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download built PowerVR renderer
+        uses: actions/download-artifact@v8
+        with:
+          name: powervr-release-aar
+          path: ZalithLauncher/libs
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: gradle
+
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.GURKHA_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode --ignore-garbage > "$RUNNER_TEMP/gurkha-release.jks"
+          echo "GURKHA_KEYSTORE_FILE=$RUNNER_TEMP/gurkha-release.jks" >> "$GITHUB_ENV"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Build RustGL renderer
+        id: rustgl
+        run: |
+          set -o pipefail
+          # librust_gl.so (source in rustgl/) is the RustGL desktop-GL-to-GLES renderer. Build it
+          # with cargo-ndk and pack ZalithLauncher/libs/rustgl-release.aar before Gradle runs, so
+          # every APK ships it like the other renderer libraries. See rustgl/README.md.
+          {
+            cargo install cargo-ndk --locked
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "ndk;25.2.9519653" > /dev/null
+            export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.2.9519653"
+            echo "ANDROID_NDK_ROOT=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+            cd rustgl
+            # The gl-compat tests resolve some legacy entry points through a real EGL/GLES
+            # stack (Mesa), the same setup upstream verified them with.
+            sudo apt-get update -q
+            sudo apt-get install -y --no-install-recommends \
+              libegl1 libgles2 libgles1 libegl-dev libgles-dev \
+              libgl1 libglx-mesa0 libglvnd0 libglx0 libegl-mesa0
+            cargo test -p renderer-core -p gl-compat -- --test-threads=1
+            cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release -p gl-compat
+            cd ..
+            python3 rustgl/pack_aar.py
+          } 2>&1 | tee "$RUNNER_TEMP/rustgl.log"
+
+      - name: Report RustGL build errors
+        if: failure() && steps.rustgl.outcome != 'success'
+        run: |
+          # The failing Rust/cargo lines as one annotation (same idea as "Report build errors")
+          python3 - "$RUNNER_TEMP/rustgl.log" <<'PY'
+          import os, re, sys
+          path = sys.argv[1]
+          lines = open(path, errors="replace").read().splitlines() if os.path.exists(path) else []
+          idx = set()
+          for i, l in enumerate(lines):
+              if re.search(r"^error|^warning: unused|error\[E\d+\]|error:|FAILED|failures:|panicked at|test result", l):
+                  idx.update(range(i, min(i + 4, len(lines))))
+          keep = [lines[i] for i in sorted(idx) if lines[i].strip()]
+          msg = "\n".join(keep[:80]) or "\n".join(lines[-40:]) or "No RustGL output captured."
+          print("::error title=RustGL build failed::" + msg.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+          PY
+
       - name: Build JRE JAR files
         run: |
           chmod +x gradlew
-          mkdir out
           ./gradlew jre_lwjgl3glfw:build --no-daemon
 
       - name: Build Release ${{ matrix.arch }}
         env:
-          MOVTERY_KEYSTORE_PASSWORD: ${{ secrets.MOVTERY_KEYSTORE_PASSWORD }}
-        run: |
-          chmod +x gradlew
-          ./gradlew ZalithLauncher:assemblerelease -Darch=${{ matrix.arch }}
+          GURKHA_KEYSTORE_PASSWORD: ${{ secrets.GURKHA_KEYSTORE_PASSWORD }}
+          GURKHA_KEY_ALIAS: ${{ secrets.GURKHA_KEY_ALIAS }}
+          GURKHA_KEY_PASSWORD: ${{ secrets.GURKHA_KEY_PASSWORD }}
+        run: ./gradlew ZalithLauncher:assembleRelease -Darch=${{ matrix.arch }}
 
-      - name: Upload Release ${{matrix.arch}}
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
+      - name: Remove keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gurkha-release.jks"
+
+      - name: Check PowerVR renderer APK contents
+        run: python3 powervr/check_apk.py ZalithLauncher/build/outputs/apk
+
+      - name: Upload Release ${{ matrix.arch }}
+        uses: actions/upload-artifact@v7
         with:
-          name: ZalithLauncher(Release) ${{ matrix.arch }}
-          path: ZalithLauncher/build/outputs/apk/release/*
+          name: release-${{ matrix.arch }}
+          path: ZalithLauncher/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14
 
-  BuildDebug:
-    if: startsWith(github.ref, 'refs/pull/') || github.ref_name != 'main'
+      - name: Upload RustGL renderer library
+        if: matrix.arch == 'all'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustgl-release-aar
+          path: ZalithLauncher/libs/rustgl-release.aar
+
+  PublishRelease:
+    needs: BuildRelease
     runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        arch: [ "all", "arm", "arm64", "x86", "x86_64" ]
-      fail-fast: false
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Download release APKs
+        uses: actions/download-artifact@v8
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          pattern: release-*
+          path: out
+          merge-multiple: true
 
-      - name: Build JRE JAR files
-        run: |
-          chmod +x gradlew
-          mkdir out
-          ./gradlew jre_lwjgl3glfw:build --no-daemon
-
-      - name: Build Debug ${{matrix.arch}}
-        run: |
-          chmod +x gradlew
-          ./gradlew ZalithLauncher:assembleDebug -Darch=${{ matrix.arch }}
-
-      - name: Upload Debug ${{matrix.arch}}
-        uses: actions/upload-artifact@v4
+      - name: Download PowerVR corresponding source
+        uses: actions/download-artifact@v8
         with:
-          name: ZalithLauncher(Debug) ${{ matrix.arch }}
-          path: ZalithLauncher/build/outputs/apk/debug/*
+          name: powervr-unified-sources
+          path: powervr-sources
+      - name: Include corresponding source with release APKs
+        run: |
+          cp powervr-sources/arm64-v8a/powervr-unified.zip out/powervr-unified-arm64-v8a.zip
+          cp powervr-sources/armeabi-v7a/powervr-unified.zip out/powervr-unified-armeabi-v7a.zip
+
+      - name: Checksums
+        working-directory: out
+        run: |
+          sha256sum *.apk *.zip > SHA256SUMS.txt
+          ls -l
+          cat SHA256SUMS.txt
+
+      # Ready-made update info with the real APK sizes. Copy it to launcher-info/ on the default branch
+      # after the release so installed copies offer the update (see launcher-info/README.md).
+      - name: Generate launcher_version.json
+        working-directory: out
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'EOF'
+          import datetime, json, os
+
+          tag = os.environ["TAG"]
+          props = {}
+          with open("../ZalithLauncher/gradle.properties", encoding="utf-8") as f:
+              for line in f:
+                  line = line.strip()
+                  if line and not line.startswith("#") and "=" in line:
+                      key, value = line.split("=", 1)
+                      props[key.strip()] = value.strip()
+          name, version = props["launcher_name"], props["launcher_version_name"]
+
+          def size(suffix):
+              path = f"{name}-{version}{suffix}.apk"
+              return os.path.getsize(path) if os.path.exists(path) else 0
+
+          notes_path = f"../.github/release-notes/{tag}.md"
+          if os.path.exists(notes_path):
+              with open(notes_path, encoding="utf-8") as f:
+                  notes = f.read().strip()
+          else:
+              notes = f"Gurkha Launcher {version}"
+          title = f"Gurkha Launcher {version}"
+          data = {
+              "version_code": int(props["launcher_version_code"]),
+              "version_name": version,
+              "title": {"en_us": title, "zh_cn": title, "zh_tw": title},
+              "description": {"en_us": notes, "zh_cn": notes, "zh_tw": notes},
+              "published_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "file_size": {
+                  "all": size(""),
+                  "arm": size("-armeabi-v7a"),
+                  "arm64": size("-arm64-v8a"),
+                  "x86": size("-x86"),
+                  "x86_64": size("-x86_64"),
+              },
+              "pre_release": "-" in version,
+          }
+          with open("launcher_version.json", "w", encoding="utf-8") as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          print(json.dumps(data, ensure_ascii=False, indent=2))
+          EOF
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          NOTES=".github/release-notes/$TAG.md"
+          if [ ! -f "$NOTES" ]; then
+            NOTES="$RUNNER_TEMP/notes.md"
+            echo "Gurkha Launcher $VERSION" > "$NOTES"
+          fi
+          PRERELEASE=""
+          case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # Re-run of an already published release: replace the files.
+            gh release upload "$TAG" out/* --clobber
+          else
+            gh release create "$TAG" out/* $PRERELEASE --verify-tag --title "Gurkha Launcher $VERSION" --notes-file "$NOTES"
+          fi

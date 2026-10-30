@@ -55,7 +55,10 @@ struct pojav_environ_s {
     JNIEnv* runtimeJNIEnvPtr_JRE;
     JavaVM* dalvikJavaVMPtr;
     JNIEnv* dalvikJNIEnvPtr_ANDROID;
-    long showingWindow;
+    // GLFW window handle exactly as received from Java (a 64-bit jlong). A C long is 32 bits on 32-bit
+    // devices: storing the handle there and widening it again sign-extended high pointers, so Java no
+    // longer recognised its own window (window size/attribute updates failed on 32-bit).
+    jlong showingWindow;
     bool isInputReady, isCursorEntered, isUseStackQueueCall, shouldUpdateMouse;
     int savedWidth, savedHeight;
 #define ADD_CALLBACK_WWIN(NAME) \

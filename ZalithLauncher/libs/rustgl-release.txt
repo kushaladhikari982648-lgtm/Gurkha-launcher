@@ -1,0 +1,12 @@
+rustgl-release.aar: RustGL, a desktop OpenGL 4.5 compatibility surface on top of OpenGL ES 3
+Source:  https://github.com/kushaladhikari982648-lgtm/RustGL-for-Gurkha-launcher, rustgl/ at 3d132103477ab1a3e0465f4c0eba01f5d389c90f + Gurkha local patches (see rustgl/source-lock.json)
+Original upstream: https://github.com/whaltermc/rust-renderer at eb22559581cf400af29470205a9ebbff31e0db33
+         See rustgl/source-lock.json and rustgl/README.md for snapshot verification and integration.
+License: upstream publishes no license file - used with the author's permission,
+         see THIRD_PARTY_NOTICES.md
+Build:   built by .github/workflows/android.yml (step "Build RustGL renderer"):
+         rustup stable + cargo-ndk, NDK 25.2.9519653 (the launcher's ndkVersion),
+         cargo ndk --release -p gl-compat, packed with rustgl/pack_aar.py
+Source-tree: 2d583cc8cd73080d845c35231946bb4ab6d8c330   (hash of the rustgl/ directory)
+         CI run: https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/runs/40985079632
+ABIs:    arm64-v8a armeabi-v7a x86 x86_64

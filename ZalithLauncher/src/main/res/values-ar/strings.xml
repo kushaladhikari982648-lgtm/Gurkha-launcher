@@ -572,6 +572,7 @@
     <string name="download_info_dependencies">نوع الاعتماد:</string>
     <string name="download_info_load_screenshot">إظهار لقطة الشاشة</string>
     <string name="download_search_failed">فشل في البحث عن الموارد!</string>
+    <string name="download_curseforge_no_api_key">‏CurseForge غير متاح في هذا الإصدار من المشغّل: تم بناؤه بدون مفتاح API الخاص بـ CurseForge. لا يزال Modrinth يعمل.</string>
     <string name="download_search_no_result">لم يتم العثور على موارد ذات صلة!</string>
     <string name="download_search_platform_not_supported">المنصة الحالية لا تدعم تنزيل هذا النوع من الموارد، أو لا تدعم تصفية الفئات هذه!</string>
     <string name="download_install_custom_name">اسم ملف مخصص</string>
@@ -654,8 +655,9 @@
     <string name="about_sponsors_desc">هؤلاء هم جميع الرعاة الذين يدعمون التطوير، شكرًا جزيلًا لكم!</string>
     <string name="about_sponsors_amount">الوقت والإجمالي</string>
     <string name="about_button_support_development">دعم التطوير</string>
-    <string name="about_MovTery_desc">المؤلف الرئيسي للمشغل</string>
+    <string name="about_MovTery_desc">المؤلف الرئيسي لـ Zalith Launcher</string>
     <string name="about_PojavLauncher_desc">فريق تطوير PojavLauncher، الذي طور وفتح مصدر PojavLauncher</string>
+    <string name="about_zalith_desc">%s مبني على Zalith Launcher، المشغل مفتوح المصدر الذي أنشأه MovTery والمساهمون</string>
     <string name="about_mcmod_desc">المشغل يستخدم الترجمات الصينية لـ Mod وحزم التكامل من MC Wiki</string>
     <string name="about_VeraFirefly_desc">قدّم دعمًا تقنيًا في مجال العرض للمشغل</string>
     <string name="about_LingMuQiuZhu_desc">قدّم دعمًا تقنيًا للمشغل</string>

@@ -9,6 +9,9 @@
                 android:bottom="@dimen/padding_input_bottom"
                 android:top="@dimen/padding_input_top" />
             <solid android:color="@color/edit_box_fill" />
+            <stroke
+                android:width="@dimen/launcher_outline_width"
+                android:color="@color/launcher_outline" />
         </shape>
     </item>
     <item android:drawable="?attr/selectableItemBackground"/>

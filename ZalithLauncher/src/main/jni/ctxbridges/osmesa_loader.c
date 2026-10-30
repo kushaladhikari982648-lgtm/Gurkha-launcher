@@ -24,8 +24,7 @@ void (*glReadPixels_p) (GLint x, GLint y, GLsizei width, GLsizei height, GLenum 
 void (*glReadBuffer_p) (GLenum mode);
 
 bool is_renderer_vulkan() {
-    return (pojav_environ->config_renderer == RENDERER_VK_ZINK
-         || pojav_environ->config_renderer == RENDERER_VIRGL);
+    return pojav_environ->config_renderer == RENDERER_VK_ZINK;
 }
 
 char* construct_main_path(const char* mesa_name, const char* pojav_native_dir) {

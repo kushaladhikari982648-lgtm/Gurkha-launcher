@@ -1,0 +1,7 @@
+ng_gl4es-release.aar: Krypton Wrapper (NG-GL4ES), OpenGL 3.1 on top of OpenGL ES 3
+Source:  https://github.com/BZLZHH/NG-GL4ES (MIT), tag R0.4.5 (6e153a1622a8d9ef903f7975aafbef2453571bab)
+         with glslang 7099c12 and SPIRV-Cross adec7ac
+Build:   https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/runs/39094754944
+         NDK 27.3.13750724, android-21, c++_static, Release (the settings of the official plugin app,
+         https://github.com/BZLZHH/NGG-FCLRendererPlugin, which ships an arm64 build only)
+ABIs:    arm64-v8a armeabi-v7a x86 x86_64 

@@ -1,0 +1,10 @@
+PowerVR Unified (experimental): single Krypton-based libpowervr.so with an LTW-derived feature port.
+Source: https://github.com/kushaladhikari982648-lgtm/Powervr-the-poop @ 1999cd5ee8245b20cacd322eeab6ee2d00a81110
+Source-tree: d6a8f7bf6a97bba4c1739758cd2419eb8a461970
+CI run: https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/runs/40985079632
+Build: NDK 28.2.13676358, CMake 3.31.6, android-21, tools/build_unified.py.
+ABIs: arm64-v8a armeabi-v7a (no x86 binaries).
+Licenses: upstream Krypton/bundled licenses; LTW-derived module LGPL-3.0-only; tooling MIT.
+Corresponding source: powervr-unified-sources artifact of the same CI run; also attached to tagged releases.
+SHA256 (arm64-v8a): 087e792057b5b996619e1929e3b305707ac8a773376a0257212c26bfcfab32f3
+SHA256 (armeabi-v7a): fbb6a7266a4276a86902651cf2689b152fab3cb4c902d6f5f704143db613b018

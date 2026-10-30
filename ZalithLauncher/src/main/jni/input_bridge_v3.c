@@ -32,6 +32,25 @@
 #define EVENT_TYPE_SCROLL 1007
 #define EVENT_TYPE_WINDOW_SIZE 1008
 
+/* Persistent lifecycle state survives events that arrive before the game window/JVM.
+ * Android only writes atomics; GLFW reads them on its own event thread. No callbacks
+ * or game HashMap writes from the Android UI thread. */
+#define WINDOW_STATE_FOCUSED 1
+#define WINDOW_STATE_VISIBLE 2
+static atomic_int android_window_state = 0;
+
+JNIEXPORT void JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeSetWindowState(
+        JNIEnv* env, jclass clazz, jint flag, jboolean enabled) {
+    if (flag != WINDOW_STATE_FOCUSED && flag != WINDOW_STATE_VISIBLE) return;
+    if (enabled) atomic_fetch_or(&android_window_state, flag);
+    else atomic_fetch_and(&android_window_state, ~flag);
+}
+
+JNIEXPORT jint JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeGetWindowState(
+        JNIEnv* env, jclass clazz) {
+    return atomic_load(&android_window_state);
+}
+
 static void registerFunctions(JNIEnv *env);
 
 jint JNI_OnLoad(JavaVM* vm, __attribute__((unused)) void* reserved) {
@@ -92,8 +111,11 @@ ADD_CALLBACK_WWIN(WindowSize)
 
 #undef ADD_CALLBACK_WWIN
 
-void handleFramebufferSizeJava(long window, int w, int h) {
-    (*pojav_environ->runtimeJNIEnvPtr_JRE)->CallStaticVoidMethod(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, pojav_environ->method_internalWindowSizeChanged, (long)window, w, h);
+void handleFramebufferSizeJava(jlong window, jint w, jint h) {
+    // internalWindowSizeChanged is "(JII)V": the window must be passed as a 64-bit jlong. On 32-bit
+    // devices a C long is only 32 bits, so passing (long)window shifted every vararg and Java received a
+    // garbage window and size, which broke resizing and crashed the game (PojavLauncher b5de32d3b).
+    (*pojav_environ->runtimeJNIEnvPtr_JRE)->CallStaticVoidMethod(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, pojav_environ->method_internalWindowSizeChanged, window, w, h);
 }
 
 void pojavPumpEvents(void* window) {
@@ -293,6 +315,44 @@ JNIEXPORT jstring JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeClipboard(JNI
     return pasteDst;
 }
 
+/**
+ * Called from the JRE side (org.lwjgl.glfw.CallbackBridge of the lwjgl3-sdl component, for example right
+ * before SDL_Init) to notify the launcher: calls the launcher's CallbackBridge.notifyLauncher(int, int[]).
+ */
+JNIEXPORT jboolean JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeNotifyLauncher(JNIEnv* env, __attribute__((unused)) jclass clazz, jint type, jintArray action) {
+    JavaVM* dalvikVM = pojav_environ->dalvikJavaVMPtr;
+    if (dalvikVM == NULL || pojav_environ->bridgeClazz == NULL) return JNI_FALSE;
+
+    JNIEnv* dalvikEnv = NULL;
+    bool attachedHere = false;
+    if ((*dalvikVM)->GetEnv(dalvikVM, (void**) &dalvikEnv, JNI_VERSION_1_4) == JNI_EDETACHED) {
+        if ((*dalvikVM)->AttachCurrentThread(dalvikVM, &dalvikEnv, NULL) != JNI_OK) return JNI_FALSE;
+        attachedHere = true;
+    }
+
+    jsize count = action != NULL ? (*env)->GetArrayLength(env, action) : 0;
+    jintArray dalvikAction = (*dalvikEnv)->NewIntArray(dalvikEnv, count);
+    if (count > 0) {
+        jint* values = (*env)->GetIntArrayElements(env, action, NULL);
+        (*dalvikEnv)->SetIntArrayRegion(dalvikEnv, dalvikAction, 0, count, values);
+        (*env)->ReleaseIntArrayElements(env, action, values, JNI_ABORT);
+    }
+
+    jboolean result = JNI_FALSE;
+    jmethodID notifyLauncher = (*dalvikEnv)->GetStaticMethodID(dalvikEnv, pojav_environ->bridgeClazz, "notifyLauncher", "(I[I)Z");
+    if (notifyLauncher != NULL) {
+        result = (*dalvikEnv)->CallStaticBooleanMethod(dalvikEnv, pojav_environ->bridgeClazz, notifyLauncher, type, dalvikAction);
+    }
+    if ((*dalvikEnv)->ExceptionCheck(dalvikEnv)) {
+        (*dalvikEnv)->ExceptionDescribe(dalvikEnv);
+        (*dalvikEnv)->ExceptionClear(dalvikEnv);
+        result = JNI_FALSE;
+    }
+    (*dalvikEnv)->DeleteLocalRef(dalvikEnv, dalvikAction);
+    if (attachedHere) (*dalvikVM)->DetachCurrentThread(dalvikVM);
+    return result;
+}
+
 JNIEXPORT jboolean JNICALL JavaCritical_org_lwjgl_glfw_CallbackBridge_nativeSetInputReady(jboolean inputReady) {
 #ifdef DEBUG
     LOGD("Debug: Changing input state, isReady=%d, pojav_environ->isUseStackQueueCall=%d\n", inputReady, pojav_environ->isUseStackQueueCall);
@@ -348,7 +408,7 @@ jboolean noncritical_send_char_mods(__attribute__((unused)) JNIEnv* env, __attri
 /*
 JNIEXPORT void JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeSendCursorEnter(JNIEnv* env, jclass clazz, jint entered) {
     if (pojav_environ->GLFW_invoke_CursorEnter && pojav_environ->isInputReady) {
-        pojav_environ->GLFW_invoke_CursorEnter(pojav_environ->showingWindow, entered);
+        pojav_environ->GLFW_invoke_CursorEnter((void*) pojav_environ->showingWindow, entered);
     }
 }
 */
@@ -463,7 +523,7 @@ void noncritical_send_scroll(__attribute__((unused)) JNIEnv* env, __attribute__(
 
 
 JNIEXPORT void JNICALL Java_org_lwjgl_glfw_GLFW_nglfwSetShowingWindow(__attribute__((unused)) JNIEnv* env, __attribute__((unused)) jclass clazz, jlong window) {
-    pojav_environ->showingWindow = (long) window;
+    pojav_environ->showingWindow = (jlong) window;
 }
 
 JNIEXPORT void JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeSetWindowAttrib(__attribute__((unused)) JNIEnv* env, __attribute__((unused)) jclass clazz, jint attrib, jint value) {

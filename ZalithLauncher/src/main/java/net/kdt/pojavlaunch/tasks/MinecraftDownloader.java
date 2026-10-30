@@ -10,6 +10,7 @@ import com.movtery.zalithlauncher.feature.log.Logging;
 import com.movtery.zalithlauncher.setting.AllSettings;
 import com.movtery.zalithlauncher.task.Task;
 import com.movtery.zalithlauncher.utils.path.PathManager;
+import com.movtery.zalithlauncher.utils.platform.LowEndPolicy;
 
 import net.kdt.pojavlaunch.JAssetInfo;
 import net.kdt.pojavlaunch.JAssets;
@@ -28,7 +29,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -93,7 +93,9 @@ public class MinecraftDownloader {
 
         downloadAndProcessMetadata(verInfo, versionName);
 
-        ThreadPoolExecutor downloaderPool = createThreadPoolExecutor();
+        boolean lowEndMode = AllSettings.getLowEndMode().getValue();
+        ThreadPoolExecutor downloaderPool = createThreadPoolExecutor(lowEndMode);
+        int progressInterval = LowEndPolicy.progressIntervalMs(33, lowEndMode);
 
         // I have tried pre-filling the queue directly instead of doing this, but it didn't work.
         // What a shame.
@@ -102,7 +104,7 @@ public class MinecraftDownloader {
 
         try {
             while (mDownloaderThreadException.get() == null &&
-                    !downloaderPool.awaitTermination(33, TimeUnit.MILLISECONDS)) {
+                    !downloaderPool.awaitTermination(progressInterval, TimeUnit.MILLISECONDS)) {
                 double speed = speedCalculator.feed(mInternetUsageCounter.get()) / ONE_MEGABYTE;
                 if(mUseFileCounter) reportProgressFileCounter(speed);
                 else reportProgressSizeCounter(speed);
@@ -116,25 +118,19 @@ public class MinecraftDownloader {
                 extractNatives(versionName);
             }
         }catch (InterruptedException e) {
-            // Interrupted while waiting, which means that the download was cancelled.
-            // Kill all downloading threads immediately, and ignore any exceptions thrown by them
+            // Preserve cancellation and do not report an incomplete download as successful.
+            Thread.currentThread().interrupt();
+            throw e;
+        } finally {
+            // A failed request must not leave the rest of the pool working in the background.
             downloaderPool.shutdownNow();
         }
     }
 
     @NonNull
-    private ThreadPoolExecutor createThreadPoolExecutor() {
-        int maxThreads = AllSettings.getMaxDownloadThreads().getValue();
-        if (mScheduledDownloadTasks.size() <= maxThreads) {
-            maxThreads = mScheduledDownloadTasks.size();
-        }
-        return new ThreadPoolExecutor(
-                Math.max(1, (int) (maxThreads / 2)),
-                maxThreads,
-                500,
-                TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(mScheduledDownloadTasks.size(), false)
-        );
+    private ThreadPoolExecutor createThreadPoolExecutor(boolean lowEndMode) {
+        return LowEndPolicy.gameDownloadPool(AllSettings.getMaxDownloadThreads().getValue(),
+                mScheduledDownloadTasks.size(), lowEndMode);
     }
 
     private void reportProgressFileCounter(double speed) {

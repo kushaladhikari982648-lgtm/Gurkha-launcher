@@ -16,6 +16,7 @@ import com.movtery.zalithlauncher.feature.download.item.ModVersionItem
 import com.movtery.zalithlauncher.feature.download.item.SearchResult
 import com.movtery.zalithlauncher.feature.download.item.VersionItem
 import com.movtery.zalithlauncher.feature.download.platform.PlatformNotSupportedException
+import com.movtery.zalithlauncher.feature.download.platform.curseforge.CurseForgeCommonUtils.Companion.stringOrNull
 import com.movtery.zalithlauncher.feature.download.utils.DependencyUtils
 import com.movtery.zalithlauncher.feature.download.utils.ModLoaderUtils
 import com.movtery.zalithlauncher.feature.download.utils.PlatformUtils
@@ -50,7 +51,7 @@ class CurseForgeModHelper {
 
             val infoItems: MutableList<InfoItem> = ArrayList()
             for (data in dataArray) {
-                val dataElement = data.asJsonObject
+                val dataElement = data as? JsonObject ?: continue
                 CurseForgeCommonUtils.getInfoItem(dataElement, classify)?.let { item ->
                     infoItems.add(
                         ModInfoItem(
@@ -65,7 +66,7 @@ class CurseForgeModHelper {
                             item.uploadDate,
                             item.iconUrl,
                             item.category,
-                            getModLoaders(dataElement.getAsJsonArray("latestFilesIndexes"))
+                            getModLoaders(dataElement.get("latestFilesIndexes")?.takeIf { it.isJsonArray }?.asJsonArray)
                         )
                     )
                 }
@@ -97,6 +98,8 @@ class CurseForgeModHelper {
             if (!force && cache.containsKey(infoItem.projectId)) return cache.get(infoItem.projectId)
 
             val allModData = CurseForgeCommonUtils.getPaginatedData(api, infoItem.projectId)
+            // The projects the files depend on, loaded with one request instead of one request per project
+            val dependencyProjects = prefetchDependencies(api, allModData)
 
             val versionItems: MutableList<T> = ArrayList()
             val invalidDependencies: MutableList<String> = ArrayList()
@@ -120,38 +123,44 @@ class CurseForgeModHelper {
                     }
                     if (nonMCVersion.isNotEmpty()) mcVersions.removeAll(nonMCVersion)
 
-                    val dependencies = modData.get("dependencies")?.asJsonArray
+                    val dependencies = modData.get("dependencies")?.takeIf { it.isJsonArray }?.asJsonArray
                     val dependencyInfoList: MutableList<DependenciesInfoItem> = ArrayList()
                     if (dependencies != null && dependencies.size() != 0) {
                         for (dependency in dependencies) {
-                            val dObject = dependency.asJsonObject
-                            val modId = dObject.get("modId").asString
+                            val dObject = dependency as? JsonObject ?: continue
+                            val modId = dObject.get("modId")?.takeIf { it.isJsonPrimitive }?.asString ?: continue
                             if (invalidDependencies.contains(modId)) continue
 
                             if (!InfoCache.DependencyInfoCache.containsKey(modId)) {
-                                val response = CurseForgeCommonUtils.searchModFromID(api, modId)
-                                val hit = GsonJsonUtils.getJsonObjectSafe(response, "data")
+                                val hit = dependencyProjects[modId] ?: GsonJsonUtils.getJsonObjectSafe(
+                                    CurseForgeCommonUtils.searchModFromID(api, modId), "data"
+                                )
 
-                                if (hit != null) {
-                                    val dModLoaders = getModLoaders(hit.getAsJsonArray("latestFilesIndexes"))
-                                    InfoCache.DependencyInfoCache.put(
-                                        modId, DependenciesInfoItem(
+                                // A dependency that can't be read is skipped (before, the exception dropped
+                                // every version of the mod that depends on it)
+                                val dependencyItem = hit?.let { project ->
+                                    runCatching {
+                                        DependenciesInfoItem(
                                             infoItem.classify,
                                             Platform.CURSEFORGE,
                                             modId,
-                                            hit.get("slug").asString,
-                                            CurseForgeCommonUtils.getAuthors(hit.get("authors").asJsonArray).toTypedArray(),
-                                            hit.get("name").asString,
-                                            hit.get("summary").asString,
-                                            hit.get("downloadCount").asLong,
-                                            ZHTools.getDate(hit.get("dateCreated").asString),
-                                            CurseForgeCommonUtils.getIconUrl(hit),
-                                            CurseForgeCommonUtils.getAllCategories(hit).toList(),
-                                            dModLoaders,
-                                            DependencyUtils.getDependencyTypeFromCurseForge(dObject.get("relationType").asString)
+                                            project.stringOrNull("slug") ?: "",
+                                            CurseForgeCommonUtils.getAuthors(project.get("authors")?.takeIf { it.isJsonArray }?.asJsonArray ?: JsonArray()).toTypedArray(),
+                                            project.stringOrNull("name") ?: modId,
+                                            project.stringOrNull("summary") ?: "",
+                                            project.get("downloadCount")?.takeIf { it.isJsonPrimitive }?.asLong ?: 0L,
+                                            ZHTools.getDate(project.stringOrNull("dateCreated") ?: project.stringOrNull("dateModified")),
+                                            CurseForgeCommonUtils.getIconUrl(project),
+                                            CurseForgeCommonUtils.getAllCategories(project).toList(),
+                                            getModLoaders(project.get("latestFilesIndexes")?.takeIf { it.isJsonArray }?.asJsonArray),
+                                            DependencyUtils.getDependencyTypeFromCurseForge(dObject.stringOrNull("relationType") ?: "")
                                         )
-                                    )
-                                } else invalidDependencies.add(modId)
+                                    }.onFailure { e ->
+                                        Logging.e("CurseForgeHelper", "Skipping dependency $modId: ${Tools.printToString(e)}")
+                                    }.getOrNull()
+                                }
+                                if (dependencyItem != null) InfoCache.DependencyInfoCache.put(modId, dependencyItem)
+                                else invalidDependencies.add(modId)
                             }
 
                             val cacheItem = InfoCache.DependencyInfoCache.get(modId)
@@ -159,6 +168,8 @@ class CurseForgeModHelper {
                         }
                     }
 
+                    // CurseForge leaves downloadUrl empty for some files: use their CDN link then
+                    val downloadUrl = CurseForgeCommonUtils.getDownloadUrl(modData) ?: continue
                     versionItems.add(
                         createVersionItem(
                             infoItem.projectId,
@@ -168,7 +179,7 @@ class CurseForgeModHelper {
                             mcVersions.toList(),
                             modData.get("releaseType").asString,
                             CurseForgeCommonUtils.getSha1FromData(modData),
-                            modData.get("downloadUrl").asString,
+                            downloadUrl,
                             modloaders,
                             modData.get("fileName").asString,
                             dependencyInfoList.ifEmpty { null }
@@ -231,11 +242,31 @@ class CurseForgeModHelper {
             }
         }
 
-        private fun getModLoaders(data: JsonArray): List<ModLoader> {
+        /**
+         * Loads the projects that the files depend on with the batch endpoint (POST /v1/mods) instead of one
+         * request per project. Returns them by project id (projects already cached or not loaded are missing).
+         */
+        private fun prefetchDependencies(api: ApiHandler, files: List<JsonObject>): Map<String, JsonObject> {
+            val ids = LinkedHashSet<Long>()
+            for (file in files) {
+                val dependencies = file.get("dependencies")?.takeIf { it.isJsonArray }?.asJsonArray ?: continue
+                for (dependency in dependencies) {
+                    val modId = (dependency as? JsonObject)?.get("modId")?.takeIf { it.isJsonPrimitive } ?: continue
+                    if (InfoCache.DependencyInfoCache.containsKey(modId.asString)) continue
+                    runCatching { modId.asLong }.getOrNull()?.let { ids.add(it) }
+                }
+            }
+            if (ids.isEmpty()) return emptyMap()
+            return CurseForgeCommonUtils.getModsByIds(api, ids).mapKeys { it.key.toString() }
+        }
+
+        private fun getModLoaders(data: JsonArray?): List<ModLoader> {
             val modLoaders: MutableSet<ModLoader> = HashSet()
+            if (data == null) return emptyList()
             for (element in data) {
-                val jsonObject = element.asJsonObject
-                val modloader = jsonObject.get("modLoader")?.asString ?: continue
+                val jsonObject = element as? JsonObject ?: continue
+                // "modLoader" is missing or JSON null for files without a loader (Gson's asString throws on null)
+                val modloader = jsonObject.get("modLoader")?.takeIf { it.isJsonPrimitive }?.asString ?: continue
                 ModLoaderUtils.getModLoaderByCurseForge(modloader)?.let {
                     modLoaders.add(it)
                 }

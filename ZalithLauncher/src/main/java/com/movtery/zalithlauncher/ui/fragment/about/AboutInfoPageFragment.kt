@@ -21,6 +21,11 @@ import com.movtery.zalithlauncher.utils.ZHTools
 import com.movtery.zalithlauncher.utils.path.UrlManager
 
 class AboutInfoPageFragment() : Fragment(R.layout.fragment_about_info_page) {
+    companion object {
+        /** Whether to show the upstream (Zalith Launcher) QQ group and Discord buttons. */
+        private const val SHOW_UPSTREAM_COMMUNITY = false
+    }
+
     private lateinit var binding: FragmentAboutInfoPageBinding
     private val mAboutData: MutableList<AboutItemBean> = ArrayList()
     private var parentPager2: ViewPager2? = null
@@ -56,11 +61,15 @@ class AboutInfoPageFragment() : Fragment(R.layout.fragment_about_info_page) {
                 layoutManager = LinearLayoutManager(requireContext())
                 adapter = aboutAdapter
             }
+            //The sponsor list, the QQ group and the Discord server all belong to Zalith Launcher, not to this
+            //fork, so they are hidden. Set SHOW_UPSTREAM_COMMUNITY to true to bring the QQ/Discord buttons back
+            //(e.g. after pointing them at your own community).
+            sponsor.visibility = View.GONE
             sponsor.setOnClickListener { _ ->
                 parentPager2?.currentItem = 1
             }
 
-            if (ZHTools.isChinese(requireActivity())) {
+            if (SHOW_UPSTREAM_COMMUNITY && ZHTools.isChinese(requireActivity())) {
                 qqGroupButton.visibility = View.VISIBLE
                 qqGroupButton.setOnClickListener {
                     TipDialog.Builder(context)
@@ -75,6 +84,7 @@ class AboutInfoPageFragment() : Fragment(R.layout.fragment_about_info_page) {
                 qqGroupButton.visibility = View.GONE
             }
 
+            discordButton.visibility = if (SHOW_UPSTREAM_COMMUNITY) View.VISIBLE else View.GONE
             discordButton.setOnClickListener { ZHTools.openLink(requireActivity(), "https://discord.gg/yDDkTHp4cJ") }
         }
     }
@@ -83,6 +93,15 @@ class AboutInfoPageFragment() : Fragment(R.layout.fragment_about_info_page) {
     private fun loadAboutData(resources: Resources) {
         mAboutData.clear()
 
+        //Gurkha Launcher is a fork of Zalith Launcher: keep crediting it
+        mAboutData.add(
+            AboutItemBean(
+                resources.getDrawable(R.drawable.image_about_zalith, requireContext().theme),
+                "Zalith Launcher",
+                InfoCenter.replaceName(requireContext(), R.string.about_zalith_desc),
+                AboutItemButtonBean(requireActivity(), "Github", UrlManager.URL_UPSTREAM)
+            )
+        )
         mAboutData.add(
             AboutItemBean(
                 resources.getDrawable(R.drawable.ic_pojav_full, requireContext().theme),

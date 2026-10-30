@@ -578,6 +578,7 @@
     <string name="download_info_dependencies">Dependency Type:</string>
     <string name="download_info_load_screenshot">Show Screenshot</string>
     <string name="download_search_failed">Failed to search for resources!</string>
+    <string name="download_curseforge_no_api_key">CurseForge is not available in this build of the launcher: it was built without a CurseForge API key. Modrinth still works.</string>
     <string name="download_search_no_result">No related resources found!</string>
     <string name="download_search_platform_not_supported">The current platform does not support downloading this type of resource, or does not support this category filter!</string>
     <string name="download_install_custom_name">Custom File Name</string>
@@ -660,8 +661,9 @@
     <string name="about_sponsors_desc">The following are all the sponsors who support the development, thank you very much!</string>
     <string name="about_sponsors_amount">Time and Total Amount</string>
     <string name="about_button_support_development">Sponsor Development</string>
-    <string name="about_MovTery_desc">Main author of the launcher</string>
+    <string name="about_MovTery_desc">Main author of Zalith Launcher</string>
     <string name="about_PojavLauncher_desc">The development team of PojavLauncher, who developed and open-sourced PojavLauncher</string>
+    <string name="about_zalith_desc">%s is based on Zalith Launcher, the open-source launcher created by MovTery and its contributors</string>
     <string name="about_mcmod_desc">The launcher uses Mod and modpack Chinese translations from MC Wiki</string>
     <string name="about_VeraFirefly_desc">Provided technical support for rendering in the launcher</string>
     <string name="about_LingMuQiuZhu_desc">Provided technical support for the launcher</string>
@@ -693,4 +695,12 @@
     <!-- Sponsorship Related -->
     <string name="request_sponsorship_title">Support My Development</string>
     <string name="request_sponsorship_message">Most of the content in this software is developed and maintained by me alone. If you find this software helpful and are in a position to do so, I hope you will consider sponsoring me to give me more motivation to continue developing and improving it. Thank you for your support!</string>
+    <string name="renderer_policy_use_ltw">%1$s needs the LTW renderer, so it is used for this launch.</string>
+    <string name="renderer_policy_use_gl4es">%1$s needs the GL4ES renderer (LTW only runs Minecraft 1.17 and newer), so it is used for this launch.</string>
+    <string name="renderer_policy_sdl_use_ltw">%1$s uses SDL3, which only the LTW renderer supports in this launcher, so LTW is used for this launch.</string>
+    <string name="renderer_policy_ltw_unsupported">%1$s needs the LTW renderer, but your device doesn\'t support it (it needs OpenGL ES 3). The game will probably not start.</string>
+    <string name="ltw_render_distance_warning_msg">Your GPU can\'t render this version above 7 chunks of render distance without Sodium or a similar mod. The render distance will be lowered to 7 when you tap \"OK\".</string>
+    <string name="setting_category_performance">Performance</string>
+    <string name="setting_low_end_mode_title">Low-end device mode</string>
+    <string name="setting_low_end_mode_desc">For low-memory phones and Helio A22-class devices. Limits download workers to 4 and mod scans to 2, reduces progress updates, and starts Java with up to 512 MB before growing to your selected RAM limit. Clouds start disabled in new game profiles only. Existing graphics settings and FPS limits stay unchanged. Applies to the next download, scan or game launch; disable to restore normal resource budgets.</string>
 </resources>

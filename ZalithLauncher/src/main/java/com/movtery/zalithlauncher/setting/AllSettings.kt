@@ -7,6 +7,7 @@ import com.movtery.zalithlauncher.setting.unit.IntSettingUnit
 import com.movtery.zalithlauncher.setting.unit.LongSettingUnit
 import com.movtery.zalithlauncher.setting.unit.StringSettingUnit
 import com.movtery.zalithlauncher.utils.path.PathManager
+import com.movtery.zalithlauncher.utils.platform.DeviceMemory
 import net.kdt.pojavlaunch.Tools
 import net.kdt.pojavlaunch.prefs.LauncherPreferences
 
@@ -25,8 +26,13 @@ class AllSettings {
         @JvmStatic
         val ignoreNotchLauncher = BooleanSettingUnit("ignoreNotchLauncher", true)
 
+        /**
+         * Conservative default for detected low-memory / MT6761-class hardware. Rendering at 75 %
+         * reduces pixel workload and frame-buffer size; this is not an FPS guarantee.
+         * A previously chosen resolution is kept.
+         */
         @JvmStatic
-        val resolutionRatio = IntSettingUnit("resolutionRatio", 100)
+        val resolutionRatio = IntSettingUnit("resolutionRatio", if (DeviceMemory.isLowEnd) 75 else 100)
 
         @JvmStatic
         val sustainedPerformance = BooleanSettingUnit("sustainedPerformance", false)
@@ -157,6 +163,10 @@ class AllSettings {
         @JvmStatic
         val downloadSource = StringSettingUnit("downloadSource", "default")
 
+        /** Reversible resource budgets. Saved user values still take precedence over defaults. */
+        @JvmStatic
+        val lowEndMode = BooleanSettingUnit("lowEndMode", DeviceMemory.isLowEnd)
+
         @JvmStatic
         val maxDownloadThreads = IntSettingUnit("maxDownloadThreads", 64)
 
@@ -164,7 +174,7 @@ class AllSettings {
         val launcherTheme = StringSettingUnit("launcherTheme", "system")
 
         @JvmStatic
-        val animation = BooleanSettingUnit("animation", true)
+        val animation = BooleanSettingUnit("animation", !DeviceMemory.isLowRam) // off by default on < 3 GB phones
 
         @JvmStatic
         val animationSpeed = IntSettingUnit("animationSpeed", 600)

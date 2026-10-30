@@ -1,0 +1,23 @@
+{
+  "version_code": 100005,
+  "version_name": "1.0.0-beta.6",
+  "title": {
+    "en_us": "Gurkha Launcher 1.0.0-beta.6",
+    "zh_cn": "Gurkha Launcher 1.0.0-beta.6",
+    "zh_tw": "Gurkha Launcher 1.0.0-beta.6"
+  },
+  "description": {
+    "en_us": "First pre-release of Gurkha Launcher: every Minecraft version plays with 500 MB of RAM, Minecraft 26.1 to 26.4 support, the Krypton Wrapper and LTW renderers, working CurseForge downloads, smaller APKs, fixes for 32-bit devices and a new khukuri logo. See https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases",
+    "zh_cn": "Gurkha Launcher 的第一个预发布版本：所有 Minecraft 版本都可以用 500 MB 内存运行，支持 Minecraft 26.1 至 26.4、Krypton Wrapper 与 LTW 渲染器、可用的 CurseForge 下载、更小的安装包、32 位设备修复以及全新的廓尔喀弯刀图标。详见 https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases",
+    "zh_tw": "Gurkha Launcher 的第一個預發布版本：所有 Minecraft 版本都可以用 500 MB 記憶體執行，支援 Minecraft 26.1 至 26.4、Krypton Wrapper 與 LTW 渲染器、可用的 CurseForge 下載、更小的安裝包、32 位元裝置修復以及全新的廓爾喀彎刀圖示。詳見 https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases"
+  },
+  "published_at": "2026-10-17T00:00:00Z",
+  "file_size": {
+    "all": 0,
+    "arm": 0,
+    "arm64": 0,
+    "x86": 0,
+    "x86_64": 0
+  },
+  "pre_release": true
+}

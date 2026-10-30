@@ -14,7 +14,6 @@
 #include "ctxbridges/egl_loader.h"
 #include "ctxbridges/osmesa_loader.h"
 #include "ctxbridges/renderer_config.h"
-#include "ctxbridges/virgl_bridge.h"
 #include "driver_helper/nsbypass.h"
 
 #ifdef GLES_TEST
@@ -64,7 +63,6 @@ EXTERNAL_API void pojavTerminate() {
             potatoBridge.eglSurface = EGL_NO_SURFACE;
         } break;
 
-            //case RENDERER_VIRGL:
         case RENDERER_VK_ZINK: {
             // Nothing to do here
         } break;
@@ -82,9 +80,6 @@ Java_net_kdt_pojavlaunch_utils_JREUtils_releaseBridgeWindow(ABI_COMPAT JNIEnv *e
 }
 
 EXTERNAL_API void* pojavGetCurrentContext() {
-    if (pojav_environ->config_renderer == RENDERER_VIRGL)
-        return virglGetCurrentContext();
-
     return br_get_current();
 }
 
@@ -152,28 +147,6 @@ int pojavInitOpenGL() {
         set_osm_bridge_tbl();
     }
 
-    if (!strcmp(renderer, "gallium_panfrost"))
-    {
-        pojav_environ->config_renderer = RENDERER_VK_ZINK;
-        setenv("GALLIUM_DRIVER", "panfrost", 1);
-        setenv("MESA_DISK_CACHE_SINGLE_FILE", "1", 1);
-        set_osm_bridge_tbl();
-    }
-
-    if (!strcmp(renderer, "gallium_virgl"))
-    {
-        pojav_environ->config_renderer = RENDERER_VIRGL;
-        setenv("GALLIUM_DRIVER", "virpipe", 1);
-        setenv("OSMESA_NO_FLUSH_FRONTBUFFER", "1", false);
-        setenv("MESA_GL_VERSION_OVERRIDE", "4.3", 1);
-        setenv("MESA_GLSL_VERSION_OVERRIDE", "430", 1);
-        if (!strcmp(getenv("OSMESA_NO_FLUSH_FRONTBUFFER"), "1"))
-            printf("VirGL: OSMesa buffer flush is DISABLED!\n");
-        loadSymbolsVirGL();
-        virglInit();
-        return 0;
-    }
-
     if (br_init()) br_setup_window();
 
     return 0;
@@ -215,11 +188,6 @@ EXTERNAL_API void pojavSwapBuffers() {
         br_swap_buffers();
     }
 
-    if (pojav_environ->config_renderer == RENDERER_VIRGL)
-    {
-        virglSwapBuffers();
-    }
-
 }
 
 EXTERNAL_API void pojavMakeCurrent(void* window) {
@@ -229,19 +197,11 @@ EXTERNAL_API void pojavMakeCurrent(void* window) {
         br_make_current((basic_render_window_t*)window);
     }
 
-    if (pojav_environ->config_renderer == RENDERER_VIRGL)
-    {
-        virglMakeCurrent(window);
-    }
-
 }
 
 EXTERNAL_API void* pojavCreateContext(void* contextSrc) {
     if (pojav_environ->config_renderer == RENDERER_VULKAN)
         return (void *) pojav_environ->pojavWindow;
-
-    if (pojav_environ->config_renderer == RENDERER_VIRGL)
-        return virglCreateContext(contextSrc);
 
     return br_init_context((basic_render_window_t*)contextSrc);
 }
@@ -285,11 +245,6 @@ EXTERNAL_API void pojavSwapInterval(int interval) {
      || pojav_environ->config_renderer == RENDERER_GL4ES)
     {
         br_swap_interval(interval);
-    }
-
-    if (pojav_environ->config_renderer == RENDERER_VIRGL)
-    {
-        virglSwapInterval(interval);
     }
 
 }

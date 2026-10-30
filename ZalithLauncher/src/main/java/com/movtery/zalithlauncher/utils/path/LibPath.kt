@@ -17,6 +17,8 @@ class LibPath {
         @JvmField val MIO_FABRIC_AGENT = File(COMPONENTS_DIR, "MioFabricAgent.jar")
 
         @JvmField val MIO_LIB_PATCHER = File(COMPONENTS_DIR, "MioLibPatcher.jar")
+        /** Smaller spawn area of Minecraft 1.14 - 1.20.4 for low-memory launches (module jre_lowmem_agent). */
+        @JvmField val LOWMEM_AGENT = File(COMPONENTS_DIR, "lowmem-agent.jar")
         @JvmField val OPTIFINE_RENAMER = File(COMPONENTS_DIR, "OptiFineRenamer.jar")
 
         @JvmField val AUTHLIB_INJECTOR = File(OTHER_LOGIN_DIR, "authlib-injector.jar")

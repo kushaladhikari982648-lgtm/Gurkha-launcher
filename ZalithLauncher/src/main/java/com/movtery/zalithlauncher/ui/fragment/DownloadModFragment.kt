@@ -1,5 +1,6 @@
 package com.movtery.zalithlauncher.ui.fragment
 
+import com.movtery.zalithlauncher.feature.download.platform.curseforge.CurseForgeApiKeyMissingException
 import android.annotation.SuppressLint
 import android.content.Context
 import android.view.Gravity
@@ -124,7 +125,10 @@ class DownloadModFragment : ModListFragment() {
             }.getOrElse { e ->
                 TaskExecutors.runInUIThread {
                     componentProcessing(false)
-                    setFailedToLoad(e.toString())
+                    setFailedToLoad(
+                        if (e is CurseForgeApiKeyMissingException) getString(R.string.download_curseforge_no_api_key)
+                        else e.toString()
+                    )
                 }
                 Logging.e("DownloadModFragment", Tools.printToString(e))
             }

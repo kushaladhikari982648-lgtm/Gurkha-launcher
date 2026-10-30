@@ -4,11 +4,15 @@ import android.content.Context
 import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.renderer.renderers.FreedrenoRenderer
 import com.movtery.zalithlauncher.renderer.renderers.GL4ESRenderer
-import com.movtery.zalithlauncher.renderer.renderers.PanfrostRenderer
-import com.movtery.zalithlauncher.renderer.renderers.VirGLRenderer
+import com.movtery.zalithlauncher.renderer.renderers.KryptonRenderer
+import com.movtery.zalithlauncher.renderer.renderers.LTWRenderer
+import com.movtery.zalithlauncher.renderer.renderers.PowerVRRenderer
+import com.movtery.zalithlauncher.renderer.renderers.RustGLRenderer
 import com.movtery.zalithlauncher.renderer.renderers.VulkanZinkRenderer
 import net.kdt.pojavlaunch.Architecture
 import net.kdt.pojavlaunch.Tools
+import net.kdt.pojavlaunch.utils.JREUtils
+import java.io.File
 
 /**
  * 启动器所有渲染器总管理者，启动器内置的渲染器与渲染器插件加载的渲染器，都会加载到这里
@@ -31,10 +35,12 @@ object Renderers {
 
         addRenderers(
             GL4ESRenderer(),
+            KryptonRenderer(),
+            RustGLRenderer(),
+            PowerVRRenderer(),
+            LTWRenderer(),
             VulkanZinkRenderer(),
-            VirGLRenderer(),
-            FreedrenoRenderer(),
-            PanfrostRenderer()
+            FreedrenoRenderer()
         )
     }
 
@@ -45,11 +51,33 @@ object Renderers {
         val deviceHasVulkan = Tools.checkVulkanSupport(context.packageManager)
         // Currently, only 32-bit x86 does not have the Zink binary
         val deviceHasZinkBinary = !(Architecture.is32BitsDevice() && Architecture.isx86Device())
+        // LTW needs OpenGL ES 3 (and its library, which is missing from builds without ltw-release.aar)
+        val deviceSupportsLtw by lazy {
+            JREUtils.getDetectedVersion() >= 3 &&
+                    File(context.applicationInfo.nativeLibraryDir, LTWRenderer.LIBRARY).exists()
+        }
+
+        val nativeLibraryDir = context.applicationInfo.nativeLibraryDir
 
         val compatibleRenderers1: MutableList<RendererInterface> = mutableListOf()
         renderers.forEach { renderer ->
             if (renderer.getRendererId().contains("vulkan") && !deviceHasVulkan) return@forEach
             if (renderer.getRendererId().contains("zink") && !deviceHasZinkBinary) return@forEach
+            if (renderer.getRendererId() == LTWRenderer.ID && !deviceSupportsLtw) return@forEach
+            // Freedreno drives Qualcomm Adreno GPUs, which x86 devices never have
+            if (renderer is FreedrenoRenderer && Architecture.isx86Device()) return@forEach
+            // Krypton Wrapper and RustGL need OpenGL ES 3, like LTW
+            if (renderer is KryptonRenderer && JREUtils.getDetectedVersion() < 3) return@forEach
+            // Upstream builds only ARMv7 and ARM64; do not offer it on x86 or ES2.
+            if (renderer is PowerVRRenderer &&
+                (Architecture.isx86Device() || JREUtils.getDetectedVersion() < 3)) return@forEach
+            if (renderer is RustGLRenderer && JREUtils.getDetectedVersion() < 3) return@forEach
+            // A built-in renderer whose library is not in this APK would only fail when the game starts
+            // (renderer plugins bring their own libraries, so they are not checked here)
+            if (renderer.isBuiltIn() && !File(nativeLibraryDir, renderer.getRendererLibrary()).exists()) {
+                Logging.i("Renderers", "${renderer.getRendererName()} is not available: ${renderer.getRendererLibrary()} is not in this APK")
+                return@forEach
+            }
             compatibleRenderers1.add(renderer)
         }
 
@@ -121,4 +149,16 @@ object Renderers {
      * 当前是否设置了渲染器
      */
     fun isCurrentRendererValid(): Boolean = isInitialized && this.currentRenderer != null
+
+    /** Label a saved preference without changing the active renderer or probing the GPU. */
+    fun getDisplayName(identifier: String): String {
+        init()
+        return renderers.find { it.getUniqueIdentifier() == identifier || it.getRendererId() == identifier }
+            ?.getRendererName() ?: identifier
+    }
+
+    /** The renderers that come with the launcher: their libraries are part of its APK. */
+    private fun RendererInterface.isBuiltIn(): Boolean =
+        this is GL4ESRenderer || this is KryptonRenderer || this is RustGLRenderer || this is PowerVRRenderer || this is LTWRenderer ||
+                this is VulkanZinkRenderer || this is FreedrenoRenderer
 }

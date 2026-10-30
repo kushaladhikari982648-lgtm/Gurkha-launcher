@@ -1,0 +1,8 @@
+{
+  "description": "Experimental small-draw merging. Compare visual correctness and frame times against safe profile.",
+  "environment": {
+    "LIBGL_ES": "2",
+    "LIBGL_GL": "21",
+    "LIBGL_BATCH": "1"
+  }
+}

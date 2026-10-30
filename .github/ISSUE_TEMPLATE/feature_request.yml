@@ -1,31 +1,30 @@
-name: Feature Request / 功能建议
-description: 'Share your thoughts with me / 将你的想法分享给我'
-labels: [Suggestion]
+name: Feature request
+description: Suggest an improvement to Gurkha Launcher.
 body:
-  - type: textarea
-    id: description
+  - type: markdown
     attributes:
-      label: Feature Description / 功能描述
-      description: |
-        Please describe your idea in detail here.
-        请在这里详细地描述出你的好点子。
+      value: Please search existing requests first. Small, focused suggestions are easier to discuss and test.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation where the current launcher falls short.
     validations:
       required: true
-
   - type: textarea
-    id: more-info
+    id: proposal
     attributes:
-      label: Additional Information / 其他信息
-      description: |
-        If possible, you can also provide images to help me better understand your idea.
-        如果可以的话，你也可以提供图片，帮助我更好的理解你的好想法。
+      label: Your suggested improvement
+      description: Explain how you would like it to work. Mockups are welcome.
     validations:
-      required: false
-
-  - type: checkboxes
-    id: check-issue
+      required: true
+  - type: textarea
+    id: alternatives
     attributes:
-      label: This feature request has not been proposed before / 这个功能建议还没有人提出过
-      options:
-        - label: I have checked the Issues and found no similar feature request / 我已经查看过 Issues，并且没有发现与之类似的功能建议被提出
-          required: true
+      label: Alternatives or workarounds
+      description: What have you tried? Are there simpler ways to solve the same problem?
+  - type: textarea
+    id: context
+    attributes:
+      label: Device details or other context
+      description: For compatibility or performance requests, include Android version, GPU, game version, and renderer.

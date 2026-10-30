@@ -603,6 +603,7 @@
     <string name="download_info_dependencies">依赖类型:</string>
     <string name="download_info_load_screenshot">展示屏幕截图</string>
     <string name="download_search_failed">搜索资源时失败！</string>
+    <string name="download_curseforge_no_api_key">此启动器版本无法使用 CurseForge：构建时未提供 CurseForge API 密钥。Modrinth 仍可正常使用。</string>
     <string name="download_search_no_result">未找到相关资源！</string>
     <string name="download_search_platform_not_supported">当前平台不支持下载这类资源，或不支持此类别筛选！</string>
     <string name="download_install_custom_name">自定义文件名称</string>
@@ -692,8 +693,9 @@
     <string name="about_sponsors_desc">以下是所有支持开发的赞助者们，万分感谢！</string>
     <string name="about_sponsors_amount">时间与总金额</string>
     <string name="about_button_support_development">赞助开发</string>
-    <string name="about_MovTery_desc">启动器的主要作者</string>
+    <string name="about_MovTery_desc">Zalith Launcher 的主要作者</string>
     <string name="about_PojavLauncher_desc">PojavLauncher 的开发团队，开发并开源了 PojavLauncher</string>
+    <string name="about_zalith_desc">%s 基于 Zalith Launcher 开发，它是由墨北MovTery 及其贡献者创建的开源启动器</string>
     <string name="about_mcmod_desc">启动器使用了来自 MC 百科的模组以及整合包中文翻译</string>
     <string name="about_VeraFirefly_desc">为启动器提供渲染方面的技术支持</string>
     <string name="about_LingMuQiuZhu_desc">为启动器提供了技术支持</string>

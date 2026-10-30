@@ -1,0 +1,1 @@
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android" android:src="@drawable/mc_stone_tile" android:tileMode="repeat" android:filter="false" />

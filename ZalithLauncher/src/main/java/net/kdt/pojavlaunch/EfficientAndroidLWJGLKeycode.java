@@ -218,6 +218,41 @@ public class EfficientAndroidLWJGLKeycode {
         return 0;
     }
 
+    private static android.util.SparseIntArray sAndroidByLwjgl;
+    private static android.view.KeyCharacterMap sVirtualKeyboard;
+
+    /**
+     * Takes a GLFW keycode and returns the equivalent Android keycode (used to send keys to SDL, Minecraft 26.3+).
+     * @return the Android keycode, or KeyEvent.KEYCODE_UNKNOWN
+     */
+    public static synchronized int getAndroidKeycode(int lwjglGlfwKeycode) {
+        if (sAndroidByLwjgl == null) {
+            sAndroidByLwjgl = new android.util.SparseIntArray(KEYCODE_COUNT);
+            for (int i = 0; i < mTmpCount; i++) {
+                // Several Android keys can map to one GLFW key: keep the first (the plain key)
+                if (sAndroidByLwjgl.indexOfKey(sLwjglKeycodes[i]) < 0) {
+                    sAndroidByLwjgl.put(sLwjglKeycodes[i], sAndroidKeycodes[i]);
+                }
+            }
+            // Same as Amethyst: these GLFW keys are shared with other Android keys
+            sAndroidByLwjgl.put(LwjglGlfwKeycode.GLFW_KEY_2, KeyEvent.KEYCODE_2);
+            sAndroidByLwjgl.put(LwjglGlfwKeycode.GLFW_KEY_3, KeyEvent.KEYCODE_3);
+        }
+        return sAndroidByLwjgl.get(lwjglGlfwKeycode, KeyEvent.KEYCODE_UNKNOWN);
+    }
+
+    /**
+     * Takes a character and returns the Android keycode that types it on a virtual keyboard.
+     * @return the Android keycode, or KeyEvent.KEYCODE_UNKNOWN
+     */
+    public static synchronized int getAndroidKeycode(char c) {
+        if (sVirtualKeyboard == null) {
+            sVirtualKeyboard = android.view.KeyCharacterMap.load(android.view.KeyCharacterMap.VIRTUAL_KEYBOARD);
+        }
+        KeyEvent[] events = sVirtualKeyboard.getEvents(new char[]{c});
+        return events != null && events.length > 0 ? events[0].getKeyCode() : KeyEvent.KEYCODE_UNKNOWN;
+    }
+
     private static void add(int androidKeycode, short LWJGLKeycode, String name){
         sAndroidKeycodes[mTmpCount] = androidKeycode;
         sLwjglKeycodes[mTmpCount] = LWJGLKeycode;

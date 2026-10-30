@@ -1,5 +1,6 @@
 package net.kdt.pojavlaunch;
 
+import com.movtery.zalithlauncher.launch.SdlSupport;
 import static net.kdt.pojavlaunch.Tools.currentDisplayMetrics;
 import static org.lwjgl.glfw.CallbackBridge.sendKeyPress;
 import static org.lwjgl.glfw.CallbackBridge.windowHeight;
@@ -196,6 +197,11 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             // Minecraft 1.13+
             JMinecraftVersionList.Version mVersionInfo = Tools.getVersionInfo(minecraftVersion);
             isInputStackCall = mVersionInfo.arguments != null;
+            // Minecraft 26.3+ uses SDL3 instead of GLFW: the surface must host SDL (see SdlSupport)
+            MinecraftGLSurface.sdlVersion = SdlSupport.usesSdl(mVersionInfo);
+            // Minecraft 26.2 still uses GLFW but needs LWJGL 3.4.1 (see SdlSupport.usesLwjgl341WithGlfw)
+            SdlSupport.lwjgl341Glfw = SdlSupport.usesLwjgl341WithGlfw(mVersionInfo);
+            MinecraftGLSurface.sdlEnabled = false;
             CallbackBridge.nativeSetUseInputStackQueue(isInputStackCall);
 
             Tools.getDisplayMetrics(this);
@@ -282,10 +288,16 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_FOCUSED, hasFocus);
+    }
+
+    @Override
     public void onResume() {
         super.onResume();
         if (AllStaticSettings.enableGyro) mGyroControl.enable();
-        CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_HOVERED, 1);
+        CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_FOCUSED, hasWindowFocus());
     }
 
     @Override
@@ -294,19 +306,19 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         if (CallbackBridge.isGrabbing()){
             sendKeyPress(LwjglGlfwKeycode.GLFW_KEY_ESCAPE);
         }
-        CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_HOVERED, 0);
+        CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_FOCUSED, false);
         super.onPause();
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_VISIBLE, 1);
+        CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_VISIBLE, true);
     }
 
     @Override
     protected void onStop() {
-        CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_VISIBLE, 0);
+        CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_VISIBLE, false);
         super.onStop();
     }
 

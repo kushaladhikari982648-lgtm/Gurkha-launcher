@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+ android:id="@+id/fragment_menu_main" android:layout_width="match_parent" android:layout_height="match_parent">
+ <ImageView android:id="@+id/overworld_art" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="centerCrop" android:src="@drawable/mc_overworld" android:importantForAccessibility="no" />
+ <ScrollView android:id="@+id/launcher_menu" android:layout_width="0dp" android:layout_height="0dp" android:background="@drawable/mc_panel" android:fillViewport="true" android:padding="8dp"
+ app:layout_constraintWidth_percent="0.42"  app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintBottom_toTopOf="@id/home_footer">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+   <TextView style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center" android:background="@drawable/mc_play" android:text="@string/mc_home" android:textStyle="bold" android:layout_marginBottom="8dp" />
+   <Button android:id="@+id/versions_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="@string/mc_versions" />
+<Button android:id="@+id/mods_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="@string/mc_mods" />
+<Button android:id="@+id/settings_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="@string/mc_settings" />
+<Button android:id="@+id/custom_control_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="@string/custom_control_title" />
+<Button android:id="@+id/open_main_dir_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="@string/main_open_main_dir" />
+<Button android:id="@+id/install_jar_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="@string/main_install_jar_file" />
+<Button android:id="@+id/share_logs_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="@string/main_share_logs" />
+<FrameLayout android:id="@+id/about_button" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:background="@drawable/mc_button" android:focusable="true" android:clickable="true"><TextView android:id="@+id/about_text" style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:padding="8dp" /></FrameLayout>
+  </LinearLayout>
+ </ScrollView>
+ <LinearLayout android:id="@+id/hero_heading" android:background="@drawable/mc_hero_shade" android:visibility="gone" android:layout_width="0dp" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp"
+ app:layout_constraintStart_toEndOf="@id/launcher_menu" app:layout_constraintEnd_toStartOf="@id/play_layout" app:layout_constraintTop_toTopOf="parent">
+  <TextView style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:fontFamily="monospace" android:textSize="24sp" android:textStyle="bold" android:shadowColor="#FF111A10" android:shadowRadius="1" android:shadowDx="2" android:shadowDy="2" android:text="@string/mc_adventure" />
+  <TextView style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:shadowColor="#FF111A10" android:shadowRadius="2" android:text="@string/mc_tagline" />
+ </LinearLayout>
+ <ScrollView android:id="@+id/play_layout" android:layout_width="0dp" android:layout_height="0dp" android:background="@drawable/mc_panel" android:padding="12dp" android:fillViewport="true"
+ app:layout_constraintWidth_percent="0.58"  app:layout_constraintTop_toTopOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintBottom_toTopOf="@id/home_footer">
+  <LinearLayout android:id="@+id/play_buttons_layout" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+   <TextView style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mc_profile" android:textSize="20sp" android:textStyle="bold" android:fontFamily="monospace" android:paddingBottom="12dp" />
+   <LinearLayout android:id="@+id/version" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="64dp" android:padding="6dp" android:gravity="center_vertical" android:background="@drawable/mc_button" android:orientation="horizontal" android:focusable="true" android:clickable="true">
+    <ImageView android:id="@+id/version_icon" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_minecraft" android:importantForAccessibility="no" />
+    <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="8dp" android:paddingEnd="0dp">
+     <TextView android:id="@+id/version_name" style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="2" android:ellipsize="end" android:text="@string/version_no_versions" />
+     <TextView android:id="@+id/version_info" style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#C4CBB9" android:textSize="12sp" android:maxLines="2" android:ellipsize="end" android:visibility="gone" />
+    </LinearLayout>
+   </LinearLayout>
+   <TextView android:id="@+id/renderer_summary" style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingVertical="12dp" />
+   <TextView android:id="@+id/memory_summary" style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingBottom="12dp" />
+   <Button android:id="@+id/manager_profile_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mc_edit_profile" />
+   <TextView android:id="@+id/low_end_status" style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="12dp" android:textColor="#C3DB96" android:textSize="12sp" />
+  </LinearLayout>
+ </ScrollView>
+ <androidx.constraintlayout.widget.ConstraintLayout android:id="@+id/home_footer" android:layout_width="match_parent" android:layout_height="76dp" android:background="@drawable/mc_wood" android:padding="8dp" app:layout_constraintBottom_toBottomOf="parent">
+  <include android:id="@+id/view_account" layout="@layout/view_account" android:layout_width="0dp" android:layout_height="match_parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toStartOf="@id/play_button" app:layout_constraintTop_toTopOf="parent" app:layout_constraintBottom_toBottomOf="parent" />
+  <Button android:id="@+id/play_button" style="@style/MinecraftNav" android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginStart="12dp" android:background="@drawable/mc_play" android:text="@string/main_launch" android:textAllCaps="true" android:textSize="22sp" android:textStyle="bold" app:layout_constraintWidth_percent="0.35" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintBottom_toBottomOf="parent" />
+ </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>
