@@ -68,6 +68,10 @@
     "tests/render_smoke.py": {
       "upstream_sha256": "1bfc6ed835e8bdd1a0ef00adc208c2d4ce98b06bc42f03161a93ff45450072a2",
       "sha256": "8789f40b1dc4094052fa18e5d4bdff3be8c24b9e94447fddb62bb4e35726317c"
+    },
+    "crates/shader-translate/src/lib.rs": {
+      "upstream_sha256": "04ac618639933dcde33f752b88824bead766afae2b9ef90e8e0b40374d8e1106",
+      "sha256": "00f4b3e7a6aaec881429ead63ad65094942f7adf6859c9946d2f392858d9e563"
     }
   }
 }

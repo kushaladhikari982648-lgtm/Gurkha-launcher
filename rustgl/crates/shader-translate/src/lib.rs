@@ -1161,13 +1161,15 @@ fn rewrite_line_body(
     if use_300 {
         if let Some(rest) = t.strip_prefix("attribute ") {
             let rest = compat::rename_reserved_identifiers(rest);
-            return format!("{indent}in {rest}");
-        }
-        if let Some(rest) = t.strip_prefix("varying ") {
+            s = format!("{indent}in {rest}");
+        } else if let Some(rest) = t.strip_prefix("varying ") {
             let kw = if is_frag { "in" } else { "out" };
             let rest = compat::rename_reserved_identifiers(rest);
-            return format!("{indent}{kw} {rest}");
+            s = format!("{indent}{kw} {rest}");
         }
+        // Do not return early: compact/minified shaders can put a function on the same
+        // line as a declaration. Its builtins, texture calls and fragment output still
+        // need the remaining translations below.
 
         // Desktop-only spellings with ES 3.00 equivalents: derivative-control variants,
         // ARB/EXT texture-LOD names and identifiers ES reserves.
@@ -2065,6 +2067,20 @@ void main() {\n\
         assert!(o.contains("dvec3"));
         assert!(o.contains("uniform mat4 m"));
         assert!(!o.contains("precision"));
+    }
+
+    #[test]
+    fn same_line_interface_declarations_do_not_skip_body_translation() {
+        let vertex = translate("#version 120\nvarying vec4 tint; void main(){ gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex; tint = gl_Color; }").unwrap();
+        assert!(vertex.contains("out vec4 tint;"), "{vertex}");
+        assert!(vertex.contains("gl_Position = rust_gl_ModelViewProjectionMatrix * rust_gl_Vertex"), "{vertex}");
+        assert!(vertex.contains("tint = rust_gl_Color"), "{vertex}");
+        let fragment = translate("#version 120\nvarying vec4 tint; void main(){ gl_FragColor = tint; }").unwrap();
+        assert!(fragment.contains("in vec4 tint;"), "{fragment}");
+        assert!(fragment.contains("rust_FragColor = tint;"), "{fragment}");
+        let attribute = translate("#version 120\nattribute vec4 p; void main(){ gl_Position = gl_ModelViewProjectionMatrix * p; }").unwrap();
+        assert!(attribute.contains("in vec4 p;"), "{attribute}");
+        assert!(attribute.contains("gl_Position = rust_gl_ModelViewProjectionMatrix * p"), "{attribute}");
     }
 
     #[test]

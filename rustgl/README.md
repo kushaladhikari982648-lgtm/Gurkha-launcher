@@ -53,6 +53,9 @@ GLES environment and launcher integration are unchanged; no plugin APK is requir
 `source-lock.json` preserves the upstream hashes and separately records the hashes of local patches.
 The renderer is no longer a byte-for-byte copy of `3d13210` in these explicitly listed files.
 
+- Fix early returns after `attribute`/`varying` declarations: compact shaders with code on
+  the same line now receive builtin/fragment-output translation too. The new native probe exposed
+  this existing bug, which has a dedicated translator regression test.
 - Cache `RENDERER_DEBUG` once rather than reading the environment on every fixed-function draw.
   Draw counters and post-draw `glGetError` diagnostics run only in that explicit debug mode. Normal
   application error queries remain available; normal draws no longer consume their error flags.
