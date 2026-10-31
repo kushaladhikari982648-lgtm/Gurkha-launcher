@@ -6,7 +6,7 @@ context or change the selected renderer. Android UI/navigation stay native Java/
 ## Integrated operations
 
 - FileTools' default **SHA-256 file hashing**, including mod scans, now uses RustCrypto SHA-256 with
-  one 64 KiB streaming buffer and cancellation checks. Other digest algorithms and InputStream APIs
+  one 64 KiB streaming buffer and cancellation checks in bounded JNI local-reference frames. Other digest algorithms and InputStream APIs
   retain their Java implementations. Output is identical lowercase SHA-256, so existing caches remain
   compatible. File contents are not loaded wholesale into memory. No throughput improvement over
   Android's crypto provider is claimed without device benchmarks.
@@ -18,6 +18,9 @@ context or change the selected renderer. Android UI/navigation stay native Java/
 - Settings now copy/merge their map under the existing write lock to avoid lost concurrent updates.
   Failed/cancelled mod scans no longer replace a good cache with a partial scan result.
 
+Metadata saves remain synchronous at existing call sites (sliders save on release); syncing is a
+stability/durability trade-off, not a promise of faster settings writes on slow storage.
+
 The JNI boundary converts Rust I/O errors to IOException/InterruptedIOException, preserves pending
 JVM exceptions, catches ordinary unwinding Rust panics, and does not clear the Java interrupt flag.
 Fatal native faults or allocation aborts cannot be recovered this way. If the library or JNI symbol
@@ -28,7 +31,7 @@ our APK packaging checks; fallback is defense in depth, not an excuse for incomp
 ## Build and validation
 
 CI runs Rust tests and loads the actual Linux JNI library from Java, then repeats the Java test in a
-separate process with no native library. It covers chunk boundaries, non-ASCII/emoji paths, empty
+separate process with no native library. It covers chunk boundaries and a 64 MiB stress file, non-ASCII/emoji paths, empty
 files, read/write errors, interruption, concurrent whole-file replacement and temporary-file cleanup.
 Each APK is checked for the correct ELF library in every ABI it contains.
 

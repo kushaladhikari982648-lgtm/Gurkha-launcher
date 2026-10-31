@@ -19,7 +19,7 @@ public final class RustCoreTest {
         Path dir = Files.createTempDirectory("gurkha-core-test");
         try {
             File file = dir.resolve("नेपाली-🌲.json").toFile();
-            for (int length : new int[]{0, 3, 65535, 65536, 65537, 1048579}) {
+            for (int length : new int[]{0, 3, 65535, 65536, 65537, 1048579, 64 * 1024 * 1024 + 17}) {
                 byte[] bytes = new byte[length];
                 new Random(42).nextBytes(bytes);
                 RustCore.atomicWrite(file, bytes);

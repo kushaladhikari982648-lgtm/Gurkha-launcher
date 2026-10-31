@@ -64,8 +64,12 @@ pub extern "system" fn Java_com_movtery_zalithlauncher_utils_file_RustCore_nativ
         let path: String = env.get_string(&path).map_err(io_error)?.into();
         let thread = env.call_static_method("java/lang/Thread", "currentThread", "()Ljava/lang/Thread;", &[])
             .and_then(|v| v.l()).map_err(io_error)?;
-        hash_reader(File::open(path)?, || env.call_method(&thread, "isInterrupted", "()Z", &[])
-            .and_then(|v| v.z()).map_err(io_error))
+        hash_reader(File::open(path)?, || {
+            // Method lookup can create local JNI references. Pop them each chunk instead of
+            // accumulating them for a multi-gigabyte mod/archive in one native invocation.
+            env.with_local_frame(8, |env| env.call_method(&thread, "isInterrupted", "()Z", &[])
+                .and_then(|v| v.z())).map_err(io_error)
+        })
     }));
     match result {
         Ok(Ok(hash)) => match env.new_string(hash) { Ok(s) => s.into_raw(), Err(e) => { report(&mut env, io_error(e)); std::ptr::null_mut() } },
