@@ -9,7 +9,7 @@ import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.setting.unit.AbstractSettingUnit
 import com.movtery.zalithlauncher.utils.path.PathManager
 import net.kdt.pojavlaunch.Tools
-import org.apache.commons.io.FileUtils
+import com.movtery.zalithlauncher.utils.file.RustCore
 import org.greenrobot.eventbus.EventBus
 import java.lang.reflect.Type
 import java.util.concurrent.ConcurrentHashMap
@@ -92,21 +92,16 @@ class Settings {
 
             fun save() {
                 val settingsFile = PathManager.FILE_SETTINGS
-                val newSettings = ConcurrentHashMap(settingsMap)
-
-                valueMap.forEach { (key, value) ->
-                    newSettings[key] = SettingAttribute(key, value.toString())
-                }
-
                 synchronized(settingsLock) {
                     runCatching {
-                        if (!settingsFile.exists() && !settingsFile.createNewFile()) {
-                            throw IllegalStateException("Failed to create settings file")
+                        // Merge under the write lock: concurrent saves must not drop unrelated keys.
+                        val newSettings = ConcurrentHashMap(settingsMap)
+                        valueMap.forEach { (key, value) ->
+                            newSettings[key] = SettingAttribute(key, value.toString())
                         }
-
                         val settingsList = newSettings.values.toList()
                         val json = GSON.toJson(settingsList)
-                        FileUtils.write(settingsFile, json, Charsets.UTF_8)
+                        RustCore.atomicWrite(settingsFile, json.toByteArray(Charsets.UTF_8))
                         refreshSettings()
                         EventBus.getDefault().post(SettingsChangeEvent())
                     }.onFailure { e ->

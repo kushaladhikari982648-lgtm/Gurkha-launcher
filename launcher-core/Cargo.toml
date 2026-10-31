@@ -1,0 +1,20 @@
+[package]
+name = "gurkha-launcher-core"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "gurkha_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni = { version = "=0.21.1", default-features = false }
+sha2 = "=0.10.9"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+panic = "unwind"

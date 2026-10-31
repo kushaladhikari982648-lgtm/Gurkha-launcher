@@ -51,7 +51,7 @@ class MinecraftHomeTests(unittest.TestCase):
         source = (ROOT / 'ZalithLauncher/src/main/java/net/kdt/pojavlaunch/fragments/MainMenuFragment.java').read_text()
         for snippet in ('version.getRenderer()', 'getRamAllocation().getValue().getValue()',
                         'new LaunchGameEvent()', 'ModsFragment.BUNDLE_ROOT_PATH',
-                        'binding.version.performClick()', 'BackgroundManager.hasBackgroundImage',
+                        'binding.version.performClick()', 'binding.overworldArt.setVisibility(View.GONE)',
                         'binding = null;'):
             self.assertIn(snippet, source)
         self.assertNotIn('"500 MB"', source)

@@ -319,7 +319,8 @@ class FileTools {
         @JvmStatic
         @Throws(Exception::class)
         fun calculateFileHash(file: File, algorithm: String = "SHA-256"): String {
-            return calculateFileHash(file.inputStream(), algorithm)
+            return if (algorithm.equals("SHA-256", ignoreCase = true)) RustCore.sha256(file)
+            else calculateFileHash(file.inputStream(), algorithm)
         }
 
         @JvmStatic

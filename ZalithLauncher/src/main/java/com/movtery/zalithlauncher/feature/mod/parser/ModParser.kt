@@ -19,6 +19,8 @@ import org.apache.commons.io.FileUtils
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
+import com.movtery.zalithlauncher.utils.file.RustCore
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.jar.JarInputStream
@@ -52,6 +54,7 @@ class ModParser {
         val infoCacheFile = File(PathManager.DIR_ADDONS_INFO_CACHE, cacheFileName)
         val modInfoQueue = ConcurrentLinkedQueue<ModInfo>()
         val newCacheMap = ConcurrentHashMap<String, ModInfoCache>()
+        val scanCompleted = AtomicBoolean(false)
 
         Task.runTask {
             if (modsFolder.isDirectory) {
@@ -76,10 +79,11 @@ class ModParser {
                     }
                 }
             }
+            scanCompleted.set(true)
         }.onThrowable { e ->
             Logging.e("ModParser", "An exception occurred while parsing all mods!", e)
         }.finallyTask {
-            persistCache(gson, infoCacheFile, newCacheMap.values.toList())
+            if (scanCompleted.get()) persistCache(gson, infoCacheFile, newCacheMap.values.toList())
             listener.onParseEnded(modInfoQueue.toList())
         }.execute()
     }
@@ -254,7 +258,7 @@ class ModParser {
         Task.runTask {
             runCatching {
                 cacheFile.parentFile?.mkdirs()
-                FileUtils.write(cacheFile, gson.toJson(data), Charsets.UTF_8)
+                RustCore.atomicWrite(cacheFile, gson.toJson(data).toByteArray(Charsets.UTF_8))
             }.onFailure { e ->
                 Logging.e("ModParser", "Cache save failed", e)
             }

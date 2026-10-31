@@ -112,3 +112,10 @@ Gurkha Launcher is free software under [GPL-3.0](LICENSE). Bundled components re
 <sub>Community maintained · Not affiliated with or endorsed by Mojang, Microsoft, or CurseForge</sub>
 
 </div>
+
+### Minecraft-style launcher and Rust core
+
+Settings, profiles, mod/download browsers, accounts and dialogs share the home screen’s stone/grass
+theme. The standalone Freedreno renderer is retired; old selections resolve safely to GL4ES.
+A separate Rust launcher core handles streaming SHA-256 and atomic settings/cache writes, with
+Java fallbacks. [Scope, compatibility and validation](docs/LAUNCHER_REDESIGN_AND_RUST.md).

@@ -14,7 +14,7 @@ The renderer label is a preference: launch-time compatibility policy can still c
 There are separate landscape and portrait layouts. Both navigation and profile panes scroll for
 smaller screens / larger fonts. Existing custom backgrounds remain visible instead of being replaced
 by the bundled scenery. The shared account-management layout is unchanged; only its home instance
-gets a compact presentation. Other settings/management pages keep their existing layouts.
+gets a compact presentation. Settings/management pages keep their functional layouts, now restyled by the shared Minecraft theme.
 
 The background is a single WebP no larger than 960 × 540 (about 2 MB decoded as RGBA); tiles are
 32 × 32. There is no WebView, live blur, animated panorama, polling UI or new rendering engine for

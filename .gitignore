@@ -29,3 +29,6 @@ local.properties
 # Local Python tooling/test bytecode
 /tools/__pycache__/
 /tests/__pycache__/
+
+/launcher-core/target/
+/design-previews/

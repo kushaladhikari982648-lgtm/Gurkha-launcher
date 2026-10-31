@@ -39,6 +39,39 @@ jobs:
           javac --release 8 -d "$RUNNER_TEMP/low-end-tests" ZalithLauncher/src/main/java/com/movtery/zalithlauncher/utils/platform/LowEndPolicy.java tests/java/LowEndPolicyTest.java
           java -cp "$RUNNER_TEMP/low-end-tests" LowEndPolicyTest
 
+  LauncherCoreChecks:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Test Rust core and real JNI boundary with Java fallback
+        run: |
+          set -o pipefail
+          {
+            cd launcher-core
+            if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
+            cargo test --locked
+            cargo build --locked
+            cd ..
+            javac --release 8 -d "$RUNNER_TEMP/core-tests" ZalithLauncher/src/main/java/com/movtery/zalithlauncher/utils/file/RustCore.java ZalithLauncher/src/main/java/com/movtery/zalithlauncher/renderer/RendererSelection.java tests/java/RustCoreTest.java
+            java -Djava.library.path=launcher-core/target/debug -cp "$RUNNER_TEMP/core-tests" RustCoreTest native
+            mkdir -p "$RUNNER_TEMP/no-native-libs"
+            java -Djava.library.path="$RUNNER_TEMP/no-native-libs" -cp "$RUNNER_TEMP/core-tests" RustCoreTest fallback
+          } 2>&1 | tee "$RUNNER_TEMP/core.log"
+      - name: Report core test failure
+        if: failure()
+        run: |
+          python3 - "$RUNNER_TEMP/core.log" <<'PYERROR'
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          text = p.read_text(errors="replace")[-4000:] if p.exists() else "Core test log unavailable"
+          print("::error title=Rust launcher core failed::" + text.replace("%", "%25").replace("\n", "%0A").replace("\r", ""))
+          PYERROR
+
   CurseForgeChecks:
     runs-on: ubuntu-22.04
     steps:
@@ -133,7 +166,7 @@ jobs:
           retention-days: 90
 
   BuildDebug:
-    needs: [RustGLChecks, PowerVRRenderer, LauncherUiChecks, CurseForgeChecks]
+    needs: [RustGLChecks, PowerVRRenderer, LauncherUiChecks, CurseForgeChecks, LauncherCoreChecks]
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-22.04
     # contents: write lets the renderer-library step update the checked-in AARs
@@ -192,6 +225,31 @@ jobs:
             cd ..
             python3 rustgl/pack_aar.py
           } 2>&1 | tee "$RUNNER_TEMP/rustgl.log"
+
+      - name: Build Rust launcher core
+        id: launchercore
+        run: |
+          set -o pipefail
+          {
+            export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.2.9519653"
+            cd launcher-core
+            if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
+            cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release --locked
+            cd ..
+            python3 launcher-core/pack_aar.py
+            git add launcher-core/Cargo.lock
+            CORE_TREE=$(git rev-parse "$(git write-tree):launcher-core")
+            printf 'Rust launcher core: streaming SHA-256 and atomic settings/cache writes\nSource-tree: %s\nCI run: %s/%s/actions/runs/%s\n' "$CORE_TREE" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > ZalithLauncher/libs/launcher-core-release.txt
+          } 2>&1 | tee "$RUNNER_TEMP/launcher-core.log"
+      - name: Report Rust launcher core build failure
+        if: failure() && steps.launchercore.outcome == 'failure'
+        run: |
+          python3 - "$RUNNER_TEMP/launcher-core.log" <<'PYERROR'
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          text = p.read_text(errors="replace")[-4000:] if p.exists() else "Core build log unavailable"
+          print("::error title=Rust launcher core build failed::" + text.replace("%", "%25").replace("\n", "%0A").replace("\r", ""))
+          PYERROR
 
       - name: Report RustGL build errors
         if: failure() && steps.rustgl.outcome != 'success'
@@ -321,6 +379,8 @@ jobs:
 
       - name: Check PowerVR renderer APK contents
         run: python3 powervr/check_apk.py ZalithLauncher/build/outputs/apk
+      - name: Check Rust launcher core APK contents
+        run: python3 tools/check_launcher_core.py ZalithLauncher/build/outputs/apk
 
       - name: Upload Debug ${{ matrix.arch }}
         uses: actions/upload-artifact@v7
@@ -335,6 +395,15 @@ jobs:
           name: rustgl-release-aar
           path: ZalithLauncher/libs/rustgl-release.aar
 
+      - name: Upload Rust launcher core
+        if: matrix.arch == 'all'
+        uses: actions/upload-artifact@v7
+        with:
+          name: launcher-core-release-aar
+          path: |
+            ZalithLauncher/libs/launcher-core-release.aar
+            ZalithLauncher/libs/launcher-core-release.txt
+            launcher-core/Cargo.lock
       - name: Commit built renderer libraries
         if: matrix.arch == 'all' && github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
         env:
@@ -347,7 +416,9 @@ jobs:
           CURRENT=$(sed -n 's/^Source-tree: \([0-9a-f]*\).*/\1/p' ZalithLauncher/libs/rustgl-release.txt)
           PV_TREE=$(git rev-parse "HEAD:powervr")
           PV_CURRENT=$(git show HEAD:ZalithLauncher/libs/powervr-release.txt 2>/dev/null | sed -n 's/^Source-tree: //p' || true)
-          if [ "$TREE" = "$CURRENT" ] && [ "$PV_TREE" = "$PV_CURRENT" ] &&
+          CORE_TREE=$(git rev-parse "$(git write-tree):launcher-core")
+          CORE_CURRENT=$(git show HEAD:ZalithLauncher/libs/launcher-core-release.txt 2>/dev/null | sed -n 's/^Source-tree: //p' || true)
+          if [ "$CORE_TREE" = "$CORE_CURRENT" ] && git cat-file -e "HEAD:ZalithLauncher/libs/launcher-core-release.aar" 2>/dev/null && [ "$TREE" = "$CURRENT" ] && [ "$PV_TREE" = "$PV_CURRENT" ] &&
              git cat-file -e "HEAD:ZalithLauncher/libs/rustgl-release.aar" 2>/dev/null &&
              git cat-file -e "HEAD:ZalithLauncher/libs/powervr-release.aar" 2>/dev/null; then
             echo "Both renderer AARs are already committed for these sources"
@@ -381,6 +452,7 @@ jobs:
           trap 'echo "::error title=Renderer AAR commit failed::command failed with exit $? (see the step log)"' ERR
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add launcher-core/Cargo.lock ZalithLauncher/libs/launcher-core-release.aar ZalithLauncher/libs/launcher-core-release.txt
           git add ZalithLauncher/libs/rustgl-release.aar ZalithLauncher/libs/rustgl-release.txt ZalithLauncher/libs/powervr-release.aar ZalithLauncher/libs/powervr-release.txt
           git diff --cached --quiet && exit 0
           git commit -m "Build: RustGL and PowerVR renderer libraries [skip ci]"
@@ -446,7 +518,7 @@ jobs:
           rm -f "$KEYSTORE"
 
   BuildRelease:
-    needs: [ReleasePreflight, RustGLChecks, PowerVRRenderer, LauncherUiChecks, CurseForgeChecks]
+    needs: [ReleasePreflight, RustGLChecks, PowerVRRenderer, LauncherUiChecks, CurseForgeChecks, LauncherCoreChecks]
     runs-on: ubuntu-22.04
     strategy:
       matrix:
@@ -512,6 +584,31 @@ jobs:
             python3 rustgl/pack_aar.py
           } 2>&1 | tee "$RUNNER_TEMP/rustgl.log"
 
+      - name: Build Rust launcher core
+        id: launchercore
+        run: |
+          set -o pipefail
+          {
+            export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/25.2.9519653"
+            cd launcher-core
+            if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
+            cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release --locked
+            cd ..
+            python3 launcher-core/pack_aar.py
+            git add launcher-core/Cargo.lock
+            CORE_TREE=$(git rev-parse "$(git write-tree):launcher-core")
+            printf 'Rust launcher core: streaming SHA-256 and atomic settings/cache writes\nSource-tree: %s\nCI run: %s/%s/actions/runs/%s\n' "$CORE_TREE" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > ZalithLauncher/libs/launcher-core-release.txt
+          } 2>&1 | tee "$RUNNER_TEMP/launcher-core.log"
+      - name: Report Rust launcher core build failure
+        if: failure() && steps.launchercore.outcome == 'failure'
+        run: |
+          python3 - "$RUNNER_TEMP/launcher-core.log" <<'PYERROR'
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          text = p.read_text(errors="replace")[-4000:] if p.exists() else "Core build log unavailable"
+          print("::error title=Rust launcher core build failed::" + text.replace("%", "%25").replace("\n", "%0A").replace("\r", ""))
+          PYERROR
+
       - name: Report RustGL build errors
         if: failure() && steps.rustgl.outcome != 'success'
         run: |
@@ -547,6 +644,8 @@ jobs:
 
       - name: Check PowerVR renderer APK contents
         run: python3 powervr/check_apk.py ZalithLauncher/build/outputs/apk
+      - name: Check Rust launcher core APK contents
+        run: python3 tools/check_launcher_core.py ZalithLauncher/build/outputs/apk
 
       - name: Upload Release ${{ matrix.arch }}
         uses: actions/upload-artifact@v7

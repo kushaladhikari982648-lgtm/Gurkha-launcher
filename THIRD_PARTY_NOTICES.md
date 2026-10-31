@@ -30,3 +30,9 @@ separately recorded in `rustgl/source-lock.json`. See `rustgl/README.md` for the
 
 The Minecraft-inspired launcher scenery is AI-generated original artwork; the small grass, wood and
 stone UI tiles are generated for Gurkha. They are not extracted Minecraft/Mojang assets.
+
+## Rust launcher core dependencies
+
+The independent `launcher-core/` crate uses `jni` 0.21.1 and RustCrypto `sha2` 0.10.9
+under their upstream MIT/Apache-2.0 licensing. Cargo.lock records transitive dependencies; this is
+separate from RustGL and contains no copied renderer code. See `launcher-core/README.md`.

@@ -7,8 +7,6 @@ import android.graphics.Color;
 import androidx.constraintlayout.widget.ConstraintSet;
 import com.movtery.zalithlauncher.setting.AllSettings;
 import com.movtery.zalithlauncher.renderer.Renderers;
-import com.movtery.zalithlauncher.feature.background.BackgroundManager;
-import com.movtery.zalithlauncher.feature.background.BackgroundType;
 import com.movtery.zalithlauncher.ui.fragment.ModsFragment;
 import com.movtery.zalithlauncher.ui.fragment.SettingsFragment;
 import java.io.File;
@@ -66,8 +64,8 @@ public class MainMenuFragment extends FragmentWithAnim {
         binding = FragmentLauncherBinding.inflate(getLayoutInflater());
         // Keep the shared account widget unchanged on the account-management screen.
         compactHomeAccount();
-        binding.overworldArt.setVisibility(BackgroundManager.hasBackgroundImage(BackgroundType.MAIN_MENU)
-                ? View.GONE : View.VISIBLE);
+        // The activity now owns the shared scenery/custom backdrop on every launcher page.
+        binding.overworldArt.setVisibility(View.GONE);
         accountViewWrapper = new AccountViewWrapper(this, binding.viewAccount);
         accountViewWrapper.refreshAccountInfo();
         return binding.getRoot();
