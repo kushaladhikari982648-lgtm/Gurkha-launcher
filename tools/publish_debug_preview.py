@@ -93,7 +93,7 @@ def inspect_apk(path, arch, data, aapt, apksigner):
     require(values.get('versionName') == data['version'], 'APK version name mismatch')
     require(values.get('versionCode') == str(data['version_code']), 'APK version code mismatch')
     require('application-debuggable' in badging, 'Expected a debuggable preview, not a production build')
-    signature = run(str(apksigner), 'verify', '--print-certs', str(path))
+    signature = run(str(apksigner), 'verify', '--verbose', '--print-certs', str(path))
     # New build-tools label v3/v3.1 signers with SDK ranges rather than "#1", and
     # can report the same certificate once per range. Require one unique certificate.
     digest_lines = [line for line in signature.splitlines()
@@ -101,7 +101,7 @@ def inspect_apk(path, arch, data, aapt, apksigner):
     fingerprints = {line.split('certificate SHA-256 digest:', 1)[1].strip().replace(':', '').lower()
                     for line in digest_lines}
     require(len(fingerprints) == 1 and all(re.fullmatch('[0-9a-f]{64}', f) for f in fingerprints),
-            f'Expected one verified APK signer; public fingerprint lines: {digest_lines!r}')
+            f'Expected one verified APK signer; public certificate report: {signature[:3500]!r}')
     with zipfile.ZipFile(path) as archive:
         abis = {n.split('/')[1] for n in archive.namelist() if n.startswith('lib/') and n.endswith('.so')}
         require(abis == ARCHES[arch], f'Wrong ABIs for {arch}: {abis}')
