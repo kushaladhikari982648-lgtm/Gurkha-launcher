@@ -47,6 +47,11 @@ class PreviewPublicationTests(unittest.TestCase):
                     archive.writestr('lib/armeabi-v7a/' + library, elf)
             with patch.object(PREVIEW, 'run', side_effect=[badging, signature]):
                 self.assertEqual(PREVIEW.inspect_apk(path, 'arm', data, 'aapt', 'apksigner'), 'a' * 64)
+            sdk_signatures = '\n'.join('Signer (minSdkVersion=' + str(n) + ') certificate SHA-256 digest: ' + 'a' * 64 for n in (26, 33))
+            with patch.object(PREVIEW, 'run', side_effect=[badging, sdk_signatures]):
+                self.assertEqual(PREVIEW.inspect_apk(path, 'arm', data, 'aapt', 'apksigner'), 'a' * 64)
+            with patch.object(PREVIEW, 'run', side_effect=[badging, signature + '\nSigner #2 certificate SHA-256 digest: ' + 'b' * 64]), self.assertRaises(RuntimeError):
+                PREVIEW.inspect_apk(path, 'arm', data, 'aapt', 'apksigner')
             with patch.object(PREVIEW, 'run', return_value=badging.replace('.debug', '')), self.assertRaises(RuntimeError):
                 PREVIEW.inspect_apk(path, 'arm', data, 'aapt', 'apksigner')
             with patch.object(PREVIEW, 'run', return_value=badging.replace(str(data['version_code']), '1')), self.assertRaises(RuntimeError):

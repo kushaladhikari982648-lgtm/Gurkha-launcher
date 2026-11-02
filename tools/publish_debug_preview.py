@@ -94,8 +94,14 @@ def inspect_apk(path, arch, data, aapt, apksigner):
     require(values.get('versionCode') == str(data['version_code']), 'APK version code mismatch')
     require('application-debuggable' in badging, 'Expected a debuggable preview, not a production build')
     signature = run(str(apksigner), 'verify', '--print-certs', str(path))
-    fingerprints = re.findall(r'^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]+)$', signature, re.M)
-    require(len(fingerprints) == 1, 'Expected one verified APK signer')
+    # New build-tools label v3/v3.1 signers with SDK ranges rather than "#1", and
+    # can report the same certificate once per range. Require one unique certificate.
+    digest_lines = [line for line in signature.splitlines()
+                    if line.startswith('Signer') and 'certificate SHA-256 digest:' in line]
+    fingerprints = {line.split('certificate SHA-256 digest:', 1)[1].strip().replace(':', '').lower()
+                    for line in digest_lines}
+    require(len(fingerprints) == 1 and all(re.fullmatch('[0-9a-f]{64}', f) for f in fingerprints),
+            f'Expected one verified APK signer; public fingerprint lines: {digest_lines!r}')
     with zipfile.ZipFile(path) as archive:
         abis = {n.split('/')[1] for n in archive.namelist() if n.startswith('lib/') and n.endswith('.so')}
         require(abis == ARCHES[arch], f'Wrong ABIs for {arch}: {abis}')
@@ -103,7 +109,7 @@ def inspect_apk(path, arch, data, aapt, apksigner):
             for library in ('libgurkha_core.so', 'librust_gl.so'):
                 blob = archive.read(f'lib/{abi}/{library}')
                 require(blob[:4] == b'\x7fELF' and struct.unpack_from('<H', blob, 18)[0] == MACHINES[abi], f'Invalid {library}/{abi}')
-    return fingerprints[0].lower()
+    return next(iter(fingerprints))
 
 
 def stage(data, downloads, sources, output):
