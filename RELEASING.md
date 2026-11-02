@@ -133,4 +133,20 @@ python3 -m unittest discover -s tests -v
 5. To make installed copies offer the update, copy the release's `launcher_version.json` into
    `launcher-info/` on the `main` branch (see [launcher-info/README.md](launcher-info/README.md)).
 
-Re-running the workflow for a tag that is already released replaces the release's files.
+Published releases are not overwritten. Use a new version for changes; inspect an interrupted draft before retrying.
+
+## Manual signed release from the working branch
+
+The Android CI workflow also accepts the boolean `release` input. This runs the same required
+signing, CurseForge, Rust/JNI/rendering and packaging checks as a tagged release, skips debug APKs,
+and publishes the five signed APKs from the exact workflow commit. No tag is created until all
+builds have passed. Uploads are staged in a draft before publication; existing releases are never
+overwritten. This does not merge the working branch into main or update main’s launcher-info.
+
+```sh
+gh workflow run android.yml --ref arena/a8e9723f-gurkha-launcher -f release=true
+```
+
+If a release/draft already exists, inspect it before retrying; the workflow will not overwrite it.
+If secrets are missing, add them in GitHub Actions settings (never in chat), then rerun the failed
+workflow. Keep the established signing key to preserve update compatibility.

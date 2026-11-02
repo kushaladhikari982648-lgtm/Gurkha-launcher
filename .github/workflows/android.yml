@@ -10,14 +10,20 @@ on:
     tags: [ 'v*' ]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Build and publish signed APKs for the version in gradle.properties'
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.release && 'release' || 'ci' }}
   # A newer push to the same branch supersedes the older build; release (tag) builds always finish.
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && !inputs.release }}
 
 jobs:
   LauncherUiChecks:
@@ -79,7 +85,7 @@ jobs:
       - name: Validate CurseForge authentication
         env:
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
-          REQUIRE_KEY: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          REQUIRE_KEY: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release) }}
         run: |
           if [ "$REQUIRE_KEY" = "true" ]; then
             python3 tools/check_curseforge.py --require-key
@@ -167,7 +173,7 @@ jobs:
 
   BuildDebug:
     needs: [RustGLChecks, PowerVRRenderer, LauncherUiChecks, CurseForgeChecks, LauncherCoreChecks]
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && !(github.event_name == 'workflow_dispatch' && inputs.release) }}
     runs-on: ubuntu-22.04
     # contents: write lets the renderer-library step update the checked-in AARs
     permissions:
@@ -460,10 +466,11 @@ jobs:
 
   # Runs once before the five release builds so that a missing secret or a wrong tag gives one clear error.
   ReleasePreflight:
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release) }}
     runs-on: ubuntu-22.04
     outputs:
       build_type: ${{ steps.version.outputs.build_type }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
 
     steps:
       - name: Checkout
@@ -484,12 +491,29 @@ jobs:
 
       - name: Check tag and version
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           VERSION_NAME=$(sed -n 's/^launcher_version_name=//p' ZalithLauncher/gradle.properties | tr -d '\r[:space:]')
-          if [ "$GITHUB_REF_NAME" != "v$VERSION_NAME" ]; then
+          if [[ ! "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::Invalid release version in gradle.properties"
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]] && [ "$GITHUB_REF_NAME" != "v$VERSION_NAME" ]; then
             echo "::error title=Tag does not match the version::Tag is $GITHUB_REF_NAME but ZalithLauncher/gradle.properties has launcher_version_name=$VERSION_NAME. Push the tag v$VERSION_NAME instead."
             exit 1
           fi
+          TAG="v$VERSION_NAME"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; bump the version instead of overwriting it."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != refs/tags/* ]] && [ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
+            echo "::error::Tag $TAG already exists. Choose a new version for a manual release."
+            exit 1
+          fi
+          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
           case "$VERSION_NAME" in
             *-*) echo "build_type=PRE_RELEASE" >> "$GITHUB_OUTPUT" ;;
             *)   echo "build_type=RELEASE" >> "$GITHUB_OUTPUT" ;;
@@ -638,6 +662,24 @@ jobs:
           GURKHA_KEY_PASSWORD: ${{ secrets.GURKHA_KEY_PASSWORD }}
         run: ./gradlew ZalithLauncher:assembleRelease -Darch=${{ matrix.arch }}
 
+      - name: Verify release APK signatures
+        env:
+          GURKHA_KEYSTORE_PASSWORD: ${{ secrets.GURKHA_KEYSTORE_PASSWORD }}
+          GURKHA_KEY_ALIAS: ${{ secrets.GURKHA_KEY_ALIAS }}
+        run: |
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          keytool -exportcert -keystore "$GURKHA_KEYSTORE_FILE" -storepass:env GURKHA_KEYSTORE_PASSWORD -alias "${GURKHA_KEY_ALIAS:-gurkha}" -file "$RUNNER_TEMP/release-cert.der"
+          EXPECTED=$(sha256sum "$RUNNER_TEMP/release-cert.der" | cut -d ' ' -f1)
+          for apk in ZalithLauncher/build/outputs/apk/release/*.apk; do
+            "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/apk-signature.txt"
+            ACTUAL=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-signature.txt" | tr '[:upper:]' '[:lower:]')
+            if [ "$ACTUAL" != "$EXPECTED" ]; then
+              echo "::error::APK signature does not match the configured release key"
+              exit 1
+            fi
+            echo "Verified release signature: $(basename "$apk")"
+          done
+
       - name: Remove keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/gurkha-release.jks"
@@ -663,7 +705,7 @@ jobs:
           path: ZalithLauncher/libs/rustgl-release.aar
 
   PublishRelease:
-    needs: BuildRelease
+    needs: [BuildRelease, ReleasePreflight]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -701,7 +743,7 @@ jobs:
       - name: Generate launcher_version.json
         working-directory: out
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.ReleasePreflight.outputs.release_tag }}
         run: |
           python3 - <<'EOF'
           import datetime, json, os
@@ -752,7 +794,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.ReleasePreflight.outputs.release_tag }}
         run: |
           VERSION="${TAG#v}"
           NOTES=".github/release-notes/$TAG.md"
@@ -763,8 +805,10 @@ jobs:
           PRERELEASE=""
           case "$VERSION" in *-*) PRERELEASE="--prerelease" ;; esac
           if gh release view "$TAG" > /dev/null 2>&1; then
-            # Re-run of an already published release: replace the files.
-            gh release upload "$TAG" out/* --clobber
-          else
-            gh release create "$TAG" out/* $PRERELEASE --verify-tag --title "Gurkha Launcher $VERSION" --notes-file "$NOTES"
+            echo "::error::Release $TAG already exists; refusing to overwrite it."
+            exit 1
           fi
+          # Creating from this exact tested commit avoids publishing from a moving branch tip.
+          # Keep it a draft until every asset has uploaded successfully.
+          gh release create "$TAG" out/* $PRERELEASE --draft --target "$GITHUB_SHA" --title "Gurkha Launcher $VERSION" --notes-file "$NOTES"
+          gh release edit "$TAG" --draft=false
