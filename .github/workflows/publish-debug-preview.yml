@@ -1,0 +1,83 @@
+name: Stage tested APK preview
+
+# An explicit, reviewed publication request, not a replacement for signed-release CI.
+# Only stages artifacts on an existing draft; final publication is a separate action.
+on:
+  push:
+    branches: ['arena/a8e9723f-gurkha-launcher']
+    paths: ['.github/release-requests/debug-preview.json']
+
+permissions:
+  contents: write
+  actions: read
+  checks: read
+
+concurrency:
+  group: stage-debug-preview
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test publication guardrails
+        run: python3 -m unittest discover -s tests -v
+      - name: Validate pinned source run and empty draft
+        id: source
+        run: |
+          set -o pipefail
+          python3 tools/publish_debug_preview.py validate 2>&1 | tee "$RUNNER_TEMP/preview.log"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Download the five tested APK artifacts
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          pattern: 'GurkhaLauncher(Debug)*'
+          path: downloaded-apks
+      - name: Download matching PowerVR corresponding source
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          name: powervr-unified-sources
+          path: downloaded-sources
+      - name: Verify APK signatures and contents, prepare checksums and notes
+        run: |
+          set -o pipefail
+          python3 tools/publish_debug_preview.py stage 2>&1 | tee -a "$RUNNER_TEMP/preview.log"
+      - name: Attach verified assets to the draft without replacing anything
+        env:
+          PREVIEW_TAG: ${{ steps.source.outputs.tag }}
+        run: |
+          gh release upload "$PREVIEW_TAG" preview-output/*
+          gh release edit "$PREVIEW_TAG" --notes-file preview-notes.md
+      - name: Report staging summary
+        run: |
+          echo 'Five verified debug APKs, two source archives, BUILD_INFO.json and SHA256SUMS.txt attached. Release remains a draft.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve verification report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-verification
+          path: |
+            preview-output/BUILD_INFO.json
+            preview-output/SHA256SUMS.txt
+            preview-notes.md
+          if-no-files-found: ignore
+      - name: Report verification failure
+        if: failure()
+        run: |
+          python3 - "$RUNNER_TEMP/preview.log" <<'PYERROR'
+          import pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text(errors="replace")[-3500:] if path.exists() else "See failing download/upload step for details."
+          print("::error title=Preview staging failed::" + text.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+          PYERROR
