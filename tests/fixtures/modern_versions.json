@@ -1,0 +1,67 @@
+[
+  {
+    "version": "1.21.11",
+    "backend": "legacy",
+    "java": 21,
+    "lwjgl": "3.3.3",
+    "client": {
+      "sha1": "ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd",
+      "size": 31152600,
+      "url": "https://piston-data.mojang.com/v1/objects/ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd/client.jar"
+    },
+    "metadata_blob": "6970858becaacc0a88dad74bdad3c3f9abd586d1",
+    "metadata_source": "https://github.com/PrismLauncher/meta-launcher/blob/master/net.minecraft/1.21.11.json"
+  },
+  {
+    "version": "26.1",
+    "backend": "glfw",
+    "java": 25,
+    "lwjgl": "3.4.1",
+    "client": {
+      "sha1": "191771837687b766537a8c4607cb6fad79c533a1",
+      "size": 38113398,
+      "url": "https://piston-data.mojang.com/v1/objects/191771837687b766537a8c4607cb6fad79c533a1/client.jar"
+    },
+    "metadata_blob": "b2417b2d88469e4eaf5c9db805fa973c404d21f7",
+    "metadata_source": "https://github.com/PrismLauncher/meta-launcher/blob/master/net.minecraft/26.1.json"
+  },
+  {
+    "version": "26.2",
+    "backend": "glfw",
+    "java": 25,
+    "lwjgl": "3.4.1",
+    "client": {
+      "sha1": "2dc72797acbc1b63fc16a11c4ac393605f453754",
+      "size": 39193383,
+      "url": "https://piston-data.mojang.com/v1/objects/2dc72797acbc1b63fc16a11c4ac393605f453754/client.jar"
+    },
+    "metadata_blob": "cd80c81d10b693868f86a127e8096903ae0ed55a",
+    "metadata_source": "https://github.com/PrismLauncher/meta-launcher/blob/master/net.minecraft/26.2.json"
+  },
+  {
+    "version": "26.3",
+    "backend": "sdl",
+    "java": 25,
+    "lwjgl": "3.4.3",
+    "client": {
+      "sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+      "size": 41483720,
+      "url": "https://piston-data.mojang.com/v1/objects/e877b6a07acd633fb3bb475002175cec036e7b87/client.jar"
+    },
+    "metadata_blob": "0d31a5005b029db2c6bc315eb54d87e9e505d4e5",
+    "metadata_source": "https://github.com/PrismLauncher/meta-launcher/blob/master/net.minecraft/26.3.json"
+  },
+  {
+    "version": "26.4-snapshot-7",
+    "backend": "sdl",
+    "java": 25,
+    "lwjgl": "3.4.3",
+    "client": {
+      "sha1": "b9839ca72b634b2fbf3f59eda7938b6110cf08f0",
+      "size": 42349690,
+      "url": "https://piston-data.mojang.com/v1/objects/b9839ca72b634b2fbf3f59eda7938b6110cf08f0/client.jar"
+    },
+    "metadata_blob": "36f02cceb80fbd697d5b5b80f12a184913c6b129",
+    "metadata_source": "https://github.com/PrismLauncher/meta-launcher/blob/master/net.minecraft/26.4-snapshot-7.json"
+  }
+]

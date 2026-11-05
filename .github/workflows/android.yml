@@ -31,6 +31,25 @@ jobs:
       - name: Test runtime selection and bundled 32/64-bit native dependencies
         run: python3 -m unittest discover -s tests -v
 
+  LwjglApiChecks:
+    needs: BuildDebug
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: GurkhaLauncher(Debug) all
+          path: apk-audit
+      - name: Check real Minecraft clients against packaged LWJGL APIs
+        run: python3 tools/audit_lwjgl_api.py apk-audit/*.apk
+      - name: Upload compatibility report (not game binaries)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: minecraft-lwjgl-api-report
+          path: lwjgl-api-report.json
+          if-no-files-found: warn
+
   BuildDebug:
     needs: CompatibilityChecks
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}

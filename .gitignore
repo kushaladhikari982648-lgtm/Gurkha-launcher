@@ -17,3 +17,5 @@ local.properties
 
 # Python compatibility-check caches
 __pycache__/
+/.cache/
+/lwjgl-api-report.json

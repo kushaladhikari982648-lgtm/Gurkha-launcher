@@ -2,6 +2,7 @@ package net.kdt.pojavlaunch.multirt;
 
 import net.kdt.pojavlaunch.Architecture;
 import net.kdt.pojavlaunch.utils.NativeLibraryInfo;
+import net.kdt.pojavlaunch.utils.EglCapabilities;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -9,6 +10,10 @@ import java.util.List;
 
 public class CompatibilityTest {
     public static void main(String[] args) throws Exception {
+        assert EglCapabilities.canQueryEs3Configs(1, 5, false);
+        assert EglCapabilities.canQueryEs3Configs(1, 4, true);
+        assert !EglCapabilities.canQueryEs3Configs(1, 4, false);
+        assert !EglCapabilities.canQueryEs3Configs(0, 0, false);
         android.os.Process.bits64 = false;
         assert Architecture.is64BitsDevice(); // 64-bit phone, 32-bit APK
         assert Architecture.getProcessArchitecture("/data/app/test/lib/arm") == Architecture.ARCH_ARM;

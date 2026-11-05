@@ -721,17 +721,17 @@ public final class JREUtils {
         /*
          * Get all the device configurations and check the EGL_RENDERABLE_TYPE attribute
          * to determine the highest ES version supported by any config. The
-         * EGL_KHR_create_context extension is required to check for ES3 support; if the
-         * extension is not present this test will fail to detect ES3 support. This
-         * effectively makes the extension mandatory for ES3-capable devices.
+         * ES3 bit is defined by EGL 1.5 core or EGL_KHR_create_context. Requiring the
+         * extension string on an EGL 1.5 driver incorrectly hides LTW on some GLES3 GPUs.
          */
         EGL10 egl = (EGL10) EGLContext.getEGL();
         EGLDisplay display = egl.eglGetDisplay(EGL10.EGL_DEFAULT_DISPLAY);
         int[] numConfigs = new int[1];
-        if (egl.eglInitialize(display, null)) {
+        int[] eglVersion = new int[2];
+        if (egl.eglInitialize(display, eglVersion)) {
             try {
-                boolean checkES3 = hasExtension(egl.eglQueryString(display, EGL10.EGL_EXTENSIONS),
-                        "EGL_KHR_create_context");
+                boolean checkES3 = EglCapabilities.canQueryEs3Configs(eglVersion[0], eglVersion[1],
+                        hasExtension(egl.eglQueryString(display, EGL10.EGL_EXTENSIONS), "EGL_KHR_create_context"));
                 if (egl.eglGetConfigs(display, null, 0, numConfigs)) {
                     EGLConfig[] configs = new EGLConfig[numConfigs[0]];
                     if (egl.eglGetConfigs(display, configs, numConfigs[0], numConfigs)) {

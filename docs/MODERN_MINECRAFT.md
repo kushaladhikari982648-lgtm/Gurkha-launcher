@@ -19,13 +19,16 @@
 * CI checks Java runtime selection and ELF headers, and inspects every generated APK for the modern
   GLFW stub, SDL patches, Java runtimes, LTW EGL front, SDL3 and matching LWJGL native files.
 
+* EGL 1.5 drivers no longer need to advertise the promoted `EGL_KHR_create_context` extension to
+  expose GLES3 configurations. Actual ES3 config bits are still required; no GL capability spoofing.
+
 ## Existing graphics paths retained
 
 | Game metadata | Launcher path |
 | --- | --- |
 | GLFW, LWJGL 3.3.x (including 1.21.11) | Existing GLFW bridge and LWJGL 3.3.6 component; renderer policy selects LTW for modern vanilla versions |
 | GLFW, LWJGL 3.4.x | GLFW stub followed by bundled LWJGL 3.4.1 jars and matching natives |
-| `org.lwjgl:lwjgl-sdl` dependency | SDL3 Android window/input bridge, patched SDL classes, LTW and `libltw_sdl_egl.so` |
+| `org.lwjgl:lwjgl-sdl` dependency (26.3/26.4 metadata requests 3.4.3) | SDL3 Android window/input bridge, patched SDL classes, LTW and `libltw_sdl_egl.so` |
 
 The EGL front already translates desktop OpenGL context/config requests into GLES 3 requests and sends
 context creation/current/destruction through LTW. It is built for both ARM32 and ARM64; desktop OpenGL
@@ -65,3 +68,15 @@ require device measurements, not just a successful APK build.
 * Version catalog: https://github.com/misode/mcmeta/tree/summary/versions
   (catalog checked through 26.4-snapshot-7; this is version information, not device compatibility evidence).
 * SDL/LWJGL component origins: THIRD_PARTY_NOTICES.md.
+
+## Client API audit
+
+`tests/fixtures/modern_versions.json` records PrismLauncher metadata blob IDs and official client
+URLs, sizes and hashes for 1.21.11, 26.1, 26.2, 26.3 and 26.4-snapshot-7. The last two request LWJGL
+3.4.3, while the available Android component is 3.4.1. Do not assume the versions are interchangeable.
+`LwjglApiChecks` downloads the pinned public clients only inside CI, verifies their bytes, and compares
+all explicit LWJGL class/field/method references against the APK's actual ordered classpath, including
+launcher patches. Only the JSON report is uploaded, not Minecraft's binaries. Missing references fail
+the check. Passing checks Java API linkage, not reflection, JNI/native behavior, graphics or gameplay.
+
+Metadata source: https://github.com/PrismLauncher/meta-launcher/tree/master/net.minecraft

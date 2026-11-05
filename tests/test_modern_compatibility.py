@@ -22,7 +22,7 @@ class ModernCompatibilityTests(unittest.TestCase):
     def test_actual_java_selection_and_native_guards(self):
         sources = list((ROOT / 'tests/java').rglob('*.java')) + [SRC / name for name in (
             'net/kdt/pojavlaunch/Architecture.java', 'net/kdt/pojavlaunch/multirt/Runtime.java',
-            'net/kdt/pojavlaunch/multirt/RuntimeSelection.java', 'net/kdt/pojavlaunch/utils/NativeLibraryInfo.java')]
+            'net/kdt/pojavlaunch/utils/EglCapabilities.java', 'net/kdt/pojavlaunch/multirt/RuntimeSelection.java', 'net/kdt/pojavlaunch/utils/NativeLibraryInfo.java')]
         with tempfile.TemporaryDirectory() as output:
             subprocess.run(['javac', '-d', output] + list(map(str, sources)), check=True)
             subprocess.run(['java', '-ea', '-cp', output, 'net.kdt.pojavlaunch.multirt.CompatibilityTest'], check=True)
