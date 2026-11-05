@@ -6,6 +6,7 @@ import tarfile
 import tempfile
 import unittest
 import zipfile
+from tools.audit_lwjgl_api import read_class, resolves
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SRC = ROOT / 'ZalithLauncher/src/main/java'
@@ -26,6 +27,27 @@ class ModernCompatibilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as output:
             subprocess.run(['javac', '-d', output] + list(map(str, sources)), check=True)
             subprocess.run(['java', '-ea', '-cp', output, 'net.kdt.pojavlaunch.multirt.CompatibilityTest'], check=True)
+
+    def test_bytecode_auditor_and_inherited_members(self):
+        root = 'org/lwjgl/example/Parent'
+        child = 'org/lwjgl/example/Child'
+        registry = {
+            root: dict(parent='java/lang/Object', interfaces=[], fields={('VALUE', 'I')}, methods={('free', '()V'), ('<init>', '()V')}),
+            child: dict(parent=root, interfaces=[], fields=set(), methods=set())}
+        self.assertTrue(resolves(registry, 'method', child, 'free', '()V'))
+        self.assertTrue(resolves(registry, 'field', child, 'VALUE', 'I'))
+        self.assertFalse(resolves(registry, 'method', child, '<init>', '()V'))
+        self.assertFalse(resolves(registry, 'method', child, 'free', '(J)V'))
+        with self.assertRaises(ValueError): read_class(b'\xca\xfe\xba\xbe')
+        for jar in ('lwjgl.jar', 'lwjgl-sdl.jar'):
+            with zipfile.ZipFile(ROOT / 'ZalithLauncher/src/main/assets/components/lwjgl3-sdl' / jar) as archive:
+                count = 0
+                for name in archive.namelist():
+                    if name.endswith('.class'):
+                        owner, info, refs, types = read_class(archive.read(name))
+                        self.assertTrue(name.endswith(owner + '.class'))
+                        count += 1
+                self.assertGreater(count, 100)
 
     def test_bundled_modern_native_abis(self):
         for name in ('SDL-release.aar', 'ltw-release.aar', 'lwjgl-3.4.1-natives-release.aar', 'spirv-cross-natives.aar'):
