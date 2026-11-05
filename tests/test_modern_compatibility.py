@@ -1,3 +1,4 @@
+import io
 import pathlib
 import shutil
 import struct
@@ -6,7 +7,7 @@ import tarfile
 import tempfile
 import unittest
 import zipfile
-from tools.audit_lwjgl_api import read_class, resolves
+from tools.audit_lwjgl_api import read_class, resolves, classpath
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SRC = ROOT / 'ZalithLauncher/src/main/java'
@@ -48,6 +49,22 @@ class ModernCompatibilityTests(unittest.TestCase):
                         self.assertTrue(name.endswith(owner + '.class'))
                         count += 1
                 self.assertGreater(count, 100)
+
+    def test_multi_release_classpath_skips_directory_entries(self):
+        core = ROOT / 'ZalithLauncher/src/main/assets/components/lwjgl3-sdl/lwjgl.jar'
+        with tempfile.TemporaryDirectory() as directory:
+            empty = io.BytesIO()
+            with zipfile.ZipFile(empty, 'w'): pass
+            apk = pathlib.Path(directory) / 'fixture.apk'
+            with zipfile.ZipFile(apk, 'w') as out:
+                out.writestr('assets/components/lwjgl3-sdl/lwjgl-sdl-patches.jar', empty.getvalue())
+                out.write(core, 'assets/components/lwjgl3-sdl/lwjgl-android-jni.jar')
+            registry = classpath(apk, 'sdl', 21)
+            with zipfile.ZipFile(core) as upstream:
+                _, expected, _, _ = read_class(upstream.read('META-INF/versions/17/org/lwjgl/system/MemoryUtilTunables.class'))
+                self.assertEqual(registry['org/lwjgl/system/MemoryUtilTunables'], expected)
+                _, base_jni, _, _ = read_class(upstream.read('org/lwjgl/system/JNI.class'))
+                self.assertEqual(registry['org/lwjgl/system/JNI'], base_jni)
 
     def test_bundled_modern_native_abis(self):
         for name in ('SDL-release.aar', 'ltw-release.aar', 'lwjgl-3.4.1-natives-release.aar', 'spirv-cross-natives.aar'):

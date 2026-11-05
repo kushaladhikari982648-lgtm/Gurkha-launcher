@@ -105,6 +105,7 @@ def classpath(apk, backend, java_major):
                 manifest = jar.read('META-INF/MANIFEST.MF').decode('utf-8', errors='replace') if 'META-INF/MANIFEST.MF' in jar.namelist() else ''
                 multi_release = 'multi-release: true' in manifest.lower()
                 for entry in jar.namelist():
+                    if not entry.endswith('.class'): continue
                     effective, release = entry, 0
                     if entry.startswith('META-INF/versions/'):
                         if not multi_release: continue
@@ -184,14 +185,18 @@ if __name__ == '__main__':
     registries = {}
     for fixture in json.loads((ROOT / 'tests/fixtures/modern_versions.json').read_text()):
         backend = fixture['backend']
-        if backend not in registries: registries[backend] = classpath(args.apk, backend, fixture['java'])
-        count, missing = audit(download_client(fixture['client'], args.cache), registries[backend])
-        result = dict(version=fixture['version'], java=fixture['java'], requested_lwjgl=fixture['lwjgl'],
-                      backend=backend, checked_references=count, missing=missing)
+        result = dict(version=fixture['version'], java=fixture['java'], requested_lwjgl=fixture['lwjgl'], backend=backend)
+        try:
+            if backend not in registries: registries[backend] = classpath(args.apk, backend, fixture['java'])
+            count, missing = audit(download_client(fixture['client'], args.cache), registries[backend])
+            result.update(checked_references=count, missing=missing)
+        except Exception as error:
+            result.update(checked_references=0, missing=[], error=f'{type(error).__name__}: {error}')
         reports.append(result)
         detail = json.dumps(result)
+        Path('lwjgl-api-report.json').write_text(json.dumps(reports, indent=2) + '\n')
         print(detail)
-        print(('::error' if missing else '::notice') + ' title=Minecraft LWJGL API audit::' +
+        print(('::error' if result['missing'] or 'error' in result else '::notice') + ' title=Minecraft LWJGL API audit::' +
               detail.replace('%', '%25').replace('\n', '%0A'))
     Path('lwjgl-api-report.json').write_text(json.dumps(reports, indent=2) + '\n')
-    raise SystemExit(1 if any(r['missing'] for r in reports) else 0)
+    raise SystemExit(1 if any(r['missing'] or 'error' in r for r in reports) else 0)
