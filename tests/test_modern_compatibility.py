@@ -39,6 +39,11 @@ class ModernCompatibilityTests(unittest.TestCase):
         self.assertTrue(resolves(registry, 'field', child, 'VALUE', 'I'))
         self.assertFalse(resolves(registry, 'method', child, '<init>', '()V'))
         self.assertFalse(resolves(registry, 'method', child, 'free', '(J)V'))
+        enum = 'org/lwjgl/system/Platform$Architecture'
+        registry[enum] = dict(parent='java/lang/Enum', interfaces=[], fields=set(), methods=set())
+        self.assertTrue(resolves(registry, 'method', enum, 'name', '()Ljava/lang/String;'))
+        self.assertTrue(resolves(registry, 'method', enum, 'toString', '()Ljava/lang/String;'))
+        self.assertFalse(resolves(registry, 'method', enum, 'nonexistent', '()V'))
         with self.assertRaises(ValueError): read_class(b'\xca\xfe\xba\xbe')
         for jar in ('lwjgl.jar', 'lwjgl-sdl.jar'):
             with zipfile.ZipFile(ROOT / 'ZalithLauncher/src/main/assets/components/lwjgl3-sdl' / jar) as archive:

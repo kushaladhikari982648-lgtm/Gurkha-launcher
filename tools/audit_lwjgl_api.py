@@ -133,6 +133,15 @@ def resolves(registry, kind, owner, name, desc, visited=None):
         return kind == 'method' and (name, desc) in {
             ('toString', '()Ljava/lang/String;'), ('equals', '(Ljava/lang/Object;)Z'),
             ('hashCode', '()I'), ('getClass', '()Ljava/lang/Class;'), ('clone', '()Ljava/lang/Object;')}
+    if owner == 'java/lang/Enum':
+        # Platform/Architecture are enums. These methods are inherited from the JDK,
+        # which is intentionally not bundled into the APK's LWJGL class registry.
+        if kind == 'method' and (name, desc) in {
+                ('name', '()Ljava/lang/String;'), ('ordinal', '()I'),
+                ('toString', '()Ljava/lang/String;'), ('getDeclaringClass', '()Ljava/lang/Class;'),
+                ('compareTo', '(Ljava/lang/Enum;)I'), ('compareTo', '(Ljava/lang/Object;)I')}:
+            return True
+        return resolves(registry, kind, 'java/lang/Object', name, desc, visited)
     info = registry.get(owner)
     if info is None: return False
     if (name, desc) in info['fields' if kind == 'field' else 'methods']: return True
