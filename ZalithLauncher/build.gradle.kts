@@ -162,6 +162,11 @@ android {
                                     println("delete (no bin-${arch}.tar.xz):${runtimeDir} : ${runtimeDir.deleteRecursively()}")
                                 }
                             }
+                            // Ship the Android JNI core, not the original core whose Java-25
+                            // multi-release classes switch to a platform-dependent FFM backend.
+                            val sdlComponents = File(assetsDir, "components/lwjgl3-sdl")
+                            check(File(sdlComponents, "lwjgl-android-jni.jar").isFile)
+                            File(sdlComponents, "lwjgl.jar").delete()
                             // Component jars (LWJGL, Caciocavallo, authlib-injector, ...) go into the APK as xz-compressed
                             // uncompressed jars: their classes compress far better together than one by one (lwjgl-vulkan.jar
                             // 7.95 MB -> 1.52 MB, 11.5 MB less in total). UnpackComponentsTask restores the .jar.

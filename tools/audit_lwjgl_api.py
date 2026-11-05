@@ -78,7 +78,7 @@ def read_class(data):
     return name, dict(parent=parent, interfaces=interfaces, fields=fields, methods=methods), references, classes
 
 
-def classpath(apk, backend):
+def classpath(apk, backend, java_major):
     prefix = 'assets/components/'
     with zipfile.ZipFile(apk) as package:
         available = {name[:-3] if name.endswith('.xz') else name: name for name in package.namelist()
@@ -100,10 +100,24 @@ def classpath(apk, backend):
             data = package.read(packed)
             if packed.endswith('.xz'): data = lzma.decompress(data)
             with zipfile.ZipFile(io.BytesIO(data)) as jar:
+                # Honor the same multi-release class choice as the selected Java runtime.
+                versions = {}
+                manifest = jar.read('META-INF/MANIFEST.MF').decode('utf-8', errors='replace') if 'META-INF/MANIFEST.MF' in jar.namelist() else ''
+                multi_release = 'multi-release: true' in manifest.lower()
                 for entry in jar.namelist():
-                    if entry.startswith('org/lwjgl/') and entry.endswith('.class'):
-                        owner, info, _, _ = read_class(jar.read(entry))
-                        registry.setdefault(owner, info)  # First class on the launch classpath wins
+                    effective, release = entry, 0
+                    if entry.startswith('META-INF/versions/'):
+                        if not multi_release: continue
+                        parts = entry.split('/', 3)
+                        release = int(parts[2])
+                        effective = parts[3]
+                        if release > java_major: continue
+                    if effective.startswith('org/lwjgl/') and effective.endswith('.class'):
+                        if effective not in versions or release > versions[effective][0]:
+                            versions[effective] = (release, entry)
+                for _, entry in versions.values():
+                    owner, info, _, _ = read_class(jar.read(entry))
+                    registry.setdefault(owner, info)  # First class on the launch classpath wins
         if not registry:
             raise ValueError('Empty LWJGL classpath')
         return registry
@@ -170,7 +184,7 @@ if __name__ == '__main__':
     registries = {}
     for fixture in json.loads((ROOT / 'tests/fixtures/modern_versions.json').read_text()):
         backend = fixture['backend']
-        if backend not in registries: registries[backend] = classpath(args.apk, backend)
+        if backend not in registries: registries[backend] = classpath(args.apk, backend, fixture['java'])
         count, missing = audit(download_client(fixture['client'], args.cache), registries[backend])
         result = dict(version=fixture['version'], java=fixture['java'], requested_lwjgl=fixture['lwjgl'],
                       backend=backend, checked_references=count, missing=missing)

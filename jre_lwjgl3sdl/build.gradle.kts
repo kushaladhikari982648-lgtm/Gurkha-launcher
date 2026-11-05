@@ -15,12 +15,27 @@ plugins {
  */
 val componentDir = rootProject.file("ZalithLauncher/src/main/assets/components/lwjgl3-sdl")
 val patchesJarName = "lwjgl-sdl-patches.jar"
+val androidJniJarName = "lwjgl-android-jni.jar"
+
+// The Java-25 multi-release layer switches JNI to FFM. Android/ARM32 must keep the
+// JNI ABI implemented by the bundled natives, rather than require a desktop FFM linker.
+// Keep Java 11/17 layers, licenses and the original upstream jar; generate a separate core.
+val androidJniCore by tasks.registering(Jar::class) {
+    archiveFileName.set(androidJniJarName)
+    destinationDirectory.set(componentDir)
+    from(zipTree(File(componentDir, "lwjgl.jar"))) {
+        exclude("META-INF/MANIFEST.MF", "META-INF/versions/25/**")
+    }
+    manifest { attributes("Multi-Release" to "true", "Automatic-Module-Name" to "org.lwjgl") }
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}
 val nativesAar = rootProject.file("ZalithLauncher/libs/lwjgl-3.4.1-natives-release.aar")
 
 dependencies {
     compileOnly(fileTree(componentDir) {
         include("*.jar")
-        exclude(patchesJarName)
+        exclude(patchesJarName, androidJniJarName)
     })
     compileOnly("org.jspecify:jspecify:1.0.0")
 }
@@ -31,6 +46,7 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 tasks.jar {
+    dependsOn(androidJniCore)
     inputs.file(nativesAar)
     archiveFileName.set(patchesJarName)
     destinationDirectory.set(componentDir)

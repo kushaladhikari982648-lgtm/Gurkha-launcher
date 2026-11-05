@@ -34,7 +34,10 @@ The EGL front already translates desktop OpenGL context/config requests into GLE
 context creation/current/destruction through LTW. It is built for both ARM32 and ARM64; desktop OpenGL
 is supplied by the renderer, not by pretending the phone's EGL implements desktop GL. Vulkan is not
 required for this LTW path. Do not force Vulkan or arbitrarily spoof OpenGL capabilities on a GE8300.
-No new SDL/renderer binary was substituted in this change. Attribution remains in THIRD_PARTY_NOTICES.md.
+The Android core jar is generated without its Java-25 multi-release FFM classes so the existing
+Android JNI natives are used on both ARM32 and ARM64. Java 11/17 layers and licenses are retained;
+this does not turn the component into an upstream 3.4.3 build.
+No new SDL/renderer native binary was substituted in this change. Attribution remains in THIRD_PARTY_NOTICES.md.
 
 Java requirements come from the resolved game manifest. Bundled Java 21 and 25 have ARM32, ARM64 and
 x86_64 variants. **Java 25 is not bundled for 32-bit x86**; versions requiring it cannot run on that ABI

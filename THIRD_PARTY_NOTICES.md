@@ -17,3 +17,8 @@ projects already ship, it bundles:
 The launcher-side SDL integration (`CallbackBridge`, `MinecraftGLSurface`, `SdlSupport`, the
 `nativeNotifyLauncher` bridge) is ported from Amethyst-Android (LGPL-3.0). `ltw_sdl_egl.c` is original
 to Gurkha Launcher and is distributed under the GPL-3.0 like the rest of the launcher.
+
+`lwjgl-android-jni.jar` is generated from the bundled upstream LWJGL core at build time. It omits
+the Java-25 multi-release FFM classes so Android (including ARM32) keeps the existing JNI backend.
+The upstream jar is retained unchanged in source; licenses and Java 11/17 layers are preserved.
+This is a launcher packaging adaptation, not an upstream LWJGL 3.4.3 build.

@@ -42,7 +42,7 @@ def check_apk(path):
         for component, jar, entry in (
                 ('lwjgl3', 'lwjgl-glfw-stub.jar', 'org/lwjgl/glfw/GLFW.class'),
                 ('lwjgl3-sdl', 'lwjgl-sdl-patches.jar', 'org/lwjgl/sdl/SDLInit.class'),
-                ('lwjgl3-sdl', 'lwjgl.jar', 'org/lwjgl/system/MemoryUtil.class'),
+                ('lwjgl3-sdl', 'lwjgl-android-jni.jar', 'org/lwjgl/system/MemoryUtil.class'),
                 ('lwjgl3-sdl', 'lwjgl-sdl.jar', 'org/lwjgl/sdl/SDL.class'),
                 ('lwjgl3-sdl', 'lwjgl-vulkan.jar', 'org/lwjgl/vulkan/VK.class')):
             prefix = f'assets/components/{component}/'
@@ -51,6 +51,11 @@ def check_apk(path):
             data = (lzma.decompress(archive.read(prefix + jar + '.xz')) if prefix + jar + '.xz' in names
                     else archive.read(prefix + jar))
             with zipfile.ZipFile(io.BytesIO(data)) as classes:
+                if jar == 'lwjgl-android-jni.jar':
+                    if any(n.startswith('META-INF/versions/25/') for n in classes.namelist()):
+                        raise ValueError('Android LWJGL must not switch to the Java 25 FFM backend')
+                    if b'java/lang/foreign/' in classes.read('org/lwjgl/system/JNI.class'):
+                        raise ValueError('Expected the native JNI dispatch backend')
                 if entry not in classes.namelist():
                     raise ValueError(f'Missing {entry} in {jar}')
         print(f'{path}: modern GLFW/SDL components, Java runtimes and native ABI checks passed: {sorted(shipped)}')

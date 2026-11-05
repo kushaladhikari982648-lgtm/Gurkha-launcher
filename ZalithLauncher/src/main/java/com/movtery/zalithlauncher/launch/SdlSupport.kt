@@ -22,6 +22,7 @@ import net.kdt.pojavlaunch.utils.NativeLibraryInfo
 object SdlSupport {
     const val COMPONENT = "lwjgl3-sdl"
     const val NATIVES_COMPONENT = "lwjgl-3.4.1-natives"
+    const val ANDROID_CORE_JAR = "lwjgl-android-jni.jar"
     private const val PATCHES_JAR = "lwjgl-sdl-patches.jar"
     const val GLFW_STUB_JAR = "lwjgl-glfw-stub.jar"
     private const val EGL_FRONT_FOR_LTW = "libltw_sdl_egl.so"
@@ -85,10 +86,10 @@ object SdlSupport {
     /** The LWJGL 3.4.1 classpath; the patched classes must come before the official jars. */
     @JvmStatic
     fun getClassPath(): String {
-        val jars = getComponentDir().listFiles { file -> file.name.endsWith(".jar") }
+        val jars = getComponentDir().listFiles { file -> file.name.endsWith(".jar") && file.name != "lwjgl.jar" }
             ?.sortedWith(compareBy({ it.name != PATCHES_JAR }, { it.name }))
             ?: emptyList()
-        check(jars.any { it.name == PATCHES_JAR } && jars.any { it.name == "lwjgl-sdl.jar" }) {
+        check(jars.any { it.name == PATCHES_JAR } && jars.any { it.name == "lwjgl-sdl.jar" } && jars.any { it.name == ANDROID_CORE_JAR }) {
             "The $COMPONENT component is incomplete, restart the launcher to unpack it again"
         }
         return jars.joinToString(":") { it.absolutePath }
@@ -104,9 +105,9 @@ object SdlSupport {
         val stub = File(File(PathManager.DIR_GAME_HOME, "lwjgl3"), GLFW_STUB_JAR)
         check(stub.isFile) { "${stub.name} is missing, restart the launcher to unpack the LWJGL components again" }
         val jars = getComponentDir().listFiles { file ->
-            file.name.endsWith(".jar") && file.name != PATCHES_JAR && file.name != "lwjgl-sdl.jar"
+            file.name.endsWith(".jar") && file.name != "lwjgl.jar" && file.name != PATCHES_JAR && file.name != "lwjgl-sdl.jar"
         }?.sortedBy { it.name } ?: emptyList()
-        check(jars.any { it.name == "lwjgl.jar" }) {
+        check(jars.any { it.name == ANDROID_CORE_JAR }) {
             "The $COMPONENT component is incomplete, restart the launcher to unpack it again"
         }
         return (listOf(stub) + jars).joinToString(":") { it.absolutePath }
