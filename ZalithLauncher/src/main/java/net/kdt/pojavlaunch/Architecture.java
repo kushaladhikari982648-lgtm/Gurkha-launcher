@@ -1,6 +1,8 @@
 package net.kdt.pojavlaunch;
 
 import android.os.Build;
+import android.os.Process;
+import java.io.File;
 
 /**
  * This class aims at providing a simple and easy way to deal with the device architecture.
@@ -25,8 +27,28 @@ public class Architecture {
 	 * @return the highest byte accessible within the process's address space.
 	 */
 	public static long getAddressSpaceLimit() {
-		return is64BitsDevice() ? ADDRESS_SPACE_LIMIT_64_BIT : ADDRESS_SPACE_LIMIT_32_BIT;
+		return is64BitProcess() ? ADDRESS_SPACE_LIMIT_64_BIT : ADDRESS_SPACE_LIMIT_32_BIT;
 	}
+
+    /** Native libraries and the embedded JVM must match the APK process, not the phone CPU. */
+    public static boolean is64BitProcess() { return Process.is64Bit(); }
+
+    public static int getProcessArchitecture(String nativeLibraryDir) {
+        // Android's installed lib directory is authoritative, including native-bridge installations.
+        int installed = nativeLibraryDir == null ? UNSUPPORTED_ARCH
+                : archAsInt(new File(nativeLibraryDir).getName());
+        if (installed != UNSUPPORTED_ARCH && is64BitArchitecture(installed) == is64BitProcess()) {
+            return installed;
+        }
+        int reported = archAsInt(System.getProperty("os.arch", ""));
+        if (reported != UNSUPPORTED_ARCH && is64BitArchitecture(reported) == is64BitProcess()) return reported;
+        return isx86Device() ? (is64BitProcess() ? ARCH_X86_64 : ARCH_X86)
+                : (is64BitProcess() ? ARCH_ARM64 : ARCH_ARM);
+    }
+
+    public static boolean is64BitArchitecture(int arch) {
+        return arch == ARCH_ARM64 || arch == ARCH_X86_64;
+    }
 
 	/**
 	 * Tell us if the device supports 64 bits architecture
@@ -82,7 +104,8 @@ public class Architecture {
 	 * @return The architecture as an int, can be UNSUPPORTED_ARCH if unknown.
 	 */
 	public static int archAsInt(String arch){
-		arch = arch.toLowerCase().trim().replace(" ", "");
+		if (arch == null) return UNSUPPORTED_ARCH;
+		arch = arch.toLowerCase(java.util.Locale.ROOT).trim().replace(" ", "");
 		if(arch.contains("arm64") || arch.equals("aarch64")) return ARCH_ARM64;
 		if(arch.contains("arm") || arch.equals("aarch32")) return ARCH_ARM;
 		if(arch.contains("x86_64") || arch.contains("amd64")) return ARCH_X86_64;

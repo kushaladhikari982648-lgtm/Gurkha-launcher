@@ -80,6 +80,7 @@ public final class Tools {
     public static final Gson GLOBAL_GSON = new GsonBuilder().setPrettyPrinting().create();
     public static final String LAUNCHERPROFILES_RTPREFIX = "pojav://";
     private final static boolean isClientFirst = false;
+    /** Legacy name: the running APK/process ABI, not the physical CPU capabilities. */
     public static int DEVICE_ARCHITECTURE;
     // New since 3.0.0
     public static String DIRNAME_HOME_JRE = "lib";

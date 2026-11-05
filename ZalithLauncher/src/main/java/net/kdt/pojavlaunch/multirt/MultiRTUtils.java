@@ -75,20 +75,16 @@ public class MultiRTUtils {
     }
 
     public static String getExactJreName(int majorVersion) {
-        List<Runtime> runtimes = getRuntimes();
-        for(Runtime r : runtimes)
-            if(r.javaVersion == majorVersion)return r.name;
-
+        for (Runtime runtime : getRuntimes()) {
+            if (runtime.javaVersion == majorVersion && RuntimeSelection.compatible(runtime, majorVersion, Tools.DEVICE_ARCHITECTURE))
+                return runtime.name;
+        }
         return null;
     }
 
     public static String getNearestJreName(int majorVersion) {
-        List<Runtime> runtimes = getRuntimes();
-        MathUtils.RankedValue<Runtime> nearestRankedRuntime = MathUtils.findNearestPositive(majorVersion, runtimes, (runtime)->runtime.javaVersion);
-        if(nearestRankedRuntime == null) return null;
-        Runtime nearestRuntime = nearestRankedRuntime.value;
-        if(nearestRuntime == null) return null;
-        return nearestRuntime.name;
+        Runtime selected = RuntimeSelection.select(getRuntimes(), majorVersion, Tools.DEVICE_ARCHITECTURE, null);
+        return selected == null ? null : selected.name;
     }
 
     public static void installRuntimeNamed(String nativeLibDir, InputStream runtimeInputStream, String name) throws IOException {
@@ -182,18 +178,12 @@ public class MultiRTUtils {
             String javaVersion = Tools.extractUntilCharacter(content, JAVA_VERSION_STR, '"');
             String osArch = Tools.extractUntilCharacter(content, OS_ARCH_STR, '"');
             if(javaVersion != null && osArch != null) {
-                String[] javaVersionSplit = javaVersion.split("\\.");
-                int javaVersionInt;
-                if (javaVersionSplit[0].equals("1")) {
-                    javaVersionInt = Integer.parseInt(javaVersionSplit[1]);
-                } else {
-                    javaVersionInt = Integer.parseInt(javaVersionSplit[0]);
-                }
+                int javaVersionInt = RuntimeSelection.majorVersion(javaVersion);
                 returnRuntime = new Runtime(name, javaVersion, osArch, javaVersionInt);
             }else{
                 returnRuntime =  new Runtime(name);
             }
-        }catch(IOException e) {
+        }catch(IOException | NumberFormatException e) {
             returnRuntime =  new Runtime(name);
         }
         sCache.put(name, returnRuntime);

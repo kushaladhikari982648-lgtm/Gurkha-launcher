@@ -35,11 +35,15 @@ class UnpackJreTask(val context: Context, val jre: Jre) : AbstractUnpackTask() {
         if (isCheckFailed) return false
 
         runCatching {
+            // A single-ABI APK can replace a universal APK (or vice versa) without changing the
+            // bundled runtime version. Repair its ABI as well, not just the version marker.
+            val installed = MultiRTUtils.forceReread(jre.jreName)
+            if (installed.javaVersion == 0 || Architecture.archAsInt(installed.arch) != Tools.DEVICE_ARCHITECTURE) return true
             val installedRuntimeVersion = MultiRTUtils.readInternalRuntimeVersion(jre.jreName)
             return launcherRuntimeVersion != installedRuntimeVersion
         }.getOrElse { e ->
             Logging.e("CheckInternalRuntime", Tools.printToString(e))
-            return false
+            return true
         }
     }
 

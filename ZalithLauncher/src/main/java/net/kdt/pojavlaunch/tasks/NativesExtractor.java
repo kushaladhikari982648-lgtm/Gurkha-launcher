@@ -43,7 +43,7 @@ public class NativesExtractor {
     }
 
     private static String getAarArchitectureName() {
-        int architecture = Architecture.getDeviceArchitecture();
+        int architecture = net.kdt.pojavlaunch.Tools.DEVICE_ARCHITECTURE;
         switch (architecture) {
             case Architecture.ARCH_ARM:
                 return "armeabi-v7a";

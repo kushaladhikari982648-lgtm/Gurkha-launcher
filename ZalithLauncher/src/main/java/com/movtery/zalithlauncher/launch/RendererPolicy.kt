@@ -55,10 +55,6 @@ object RendererPolicy {
      * @return false if the launch must be aborted (the activity was destroyed while a dialog was shown)
      */
     fun apply(activity: AppCompatActivity, version: Version): Boolean {
-        val releaseDate = originalReleaseDate(version) ?: run {
-            Logging.w(TAG, "Unknown release date of ${version.getVersionName()}, renderer left as selected")
-            return true
-        }
         val gameDir = version.getGameDir()
         val hasSodium = version.modCheckResult?.hasSodiumOrEmbeddium == true ||
                 hasMod(gameDir, "sodium", "embeddium", "rubidium")
@@ -78,8 +74,14 @@ object RendererPolicy {
                     val message = activity.getString(R.string.renderer_policy_ltw_unsupported, versionName)
                     Logger.appendToLog("Warning: $message")
                     showToast(activity, message)
+                    throw IllegalStateException(message)
                 }
             }
+            return true
+        }
+
+        val releaseDate = originalReleaseDate(version) ?: run {
+            Logging.w(TAG, "Unknown release date of ${version.getVersionName()}, renderer left as selected")
             return true
         }
 
@@ -104,6 +106,7 @@ object RendererPolicy {
                         val message = activity.getString(R.string.renderer_policy_ltw_unsupported, versionName)
                         Logger.appendToLog("Warning: $message")
                         showToast(activity, message)
+                        throw IllegalStateException(message)
                     }
                 }
             }

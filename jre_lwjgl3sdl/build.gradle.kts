@@ -15,6 +15,7 @@ plugins {
  */
 val componentDir = rootProject.file("ZalithLauncher/src/main/assets/components/lwjgl3-sdl")
 val patchesJarName = "lwjgl-sdl-patches.jar"
+val nativesAar = rootProject.file("ZalithLauncher/libs/lwjgl-3.4.1-natives-release.aar")
 
 dependencies {
     compileOnly(fileTree(componentDir) {
@@ -30,6 +31,7 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 tasks.jar {
+    inputs.file(nativesAar)
     archiveFileName.set(patchesJarName)
     destinationDirectory.set(componentDir)
     isPreserveFileTimestamps = false
@@ -42,6 +44,15 @@ tasks.jar {
         componentDir.listFiles { file -> file.name.endsWith(".jar") }!!
             .sortedBy { it.name }
             .forEach { digest.update(it.readBytes()) }
+        // Native updates must invalidate the unpacked component too, even when jars are unchanged.
+        nativesAar.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
         versionFile.writeText(digest.digest().joinToString("") { "%02x".format(it) })
     }
 }

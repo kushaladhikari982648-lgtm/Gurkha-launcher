@@ -46,7 +46,7 @@ object Renderers {
     fun getCompatibleRenderers(context: Context): Pair<RenderersList, List<RendererInterface>> = compatibleRenderers ?: run {
         val deviceHasVulkan = Tools.checkVulkanSupport(context.packageManager)
         // Currently, only 32-bit x86 does not have the Zink binary
-        val deviceHasZinkBinary = !(Architecture.is32BitsDevice() && Architecture.isx86Device())
+        val deviceHasZinkBinary = Tools.DEVICE_ARCHITECTURE != Architecture.ARCH_X86
         // LTW needs OpenGL ES 3 (and its library, which is missing from builds without ltw-release.aar)
         val deviceSupportsLtw by lazy {
             JREUtils.getDetectedVersion() >= 3 &&

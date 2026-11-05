@@ -69,9 +69,9 @@ public class PojavApplication extends Application {
 			PathManager.DIR_DATA = getDir("files", MODE_PRIVATE).getParent();
 			PathManager.DIR_CACHE = getCacheDir();
 			PathManager.DIR_ACCOUNT_NEW = PathManager.DIR_DATA + "/accounts";
-			Tools.DEVICE_ARCHITECTURE = Architecture.getDeviceArchitecture();
+			Tools.DEVICE_ARCHITECTURE = Architecture.getProcessArchitecture(getApplicationInfo().nativeLibraryDir);
 			//Force x86 lib directory for Asus x86 based zenfones
-			if(Architecture.isx86Device() && Architecture.is32BitsDevice()){
+			if(Tools.DEVICE_ARCHITECTURE == Architecture.ARCH_X86){
 				String originalJNIDirectory = getApplicationInfo().nativeLibraryDir;
 				getApplicationInfo().nativeLibraryDir = originalJNIDirectory.substring(0,
 												originalJNIDirectory.lastIndexOf("/"))

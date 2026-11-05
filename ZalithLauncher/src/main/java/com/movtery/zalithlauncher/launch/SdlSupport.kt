@@ -5,6 +5,9 @@ import com.movtery.zalithlauncher.renderer.renderers.LTWRenderer
 import com.movtery.zalithlauncher.utils.path.PathManager
 import net.kdt.pojavlaunch.JMinecraftVersionList
 import java.io.File
+import com.movtery.zalithlauncher.feature.update.UpdateUtils
+import net.kdt.pojavlaunch.Tools
+import net.kdt.pojavlaunch.utils.NativeLibraryInfo
 
 /**
  * Minecraft 26.3 and newer use SDL3 (through LWJGL 3.4.1) instead of GLFW for the window, the GL
@@ -58,7 +61,26 @@ object SdlSupport {
     fun getComponentDir(): File = File(PathManager.DIR_GAME_HOME, COMPONENT)
 
     @JvmStatic
-    fun getNativesDir(): File = File(PathManager.DIR_DATA, NATIVES_COMPONENT)
+    fun getNativesDir(): File = File(File(PathManager.DIR_DATA, NATIVES_COMPONENT),
+        checkNotNull(UpdateUtils.getArchModel()) { "Unknown running APK architecture" })
+
+    @JvmStatic
+    fun validateInstallation(nativeLibDir: String, usesSdl: Boolean) {
+        if (usesSdl) getClassPath() else getGlfwClassPath()
+        val libraries = listOf("liblwjgl.so", "liblwjgl_opengl.so", "libfreetype.so", "liblwjgl_stb.so",
+            "liblwjgl_tinyfd.so", "libshaderc.so", "liblwjgl_vma.so", "liblwjgl_spng.so", "liblwjgl_nanovg.so")
+            .map { File(getNativesDir(), it) }.toMutableList()
+        libraries.add(File(nativeLibDir, "libspirv-cross-c-shared.so"))
+        if (usesSdl) {
+            libraries.add(File(nativeLibDir, "libSDL3.so"))
+            libraries.add(File(nativeLibDir, EGL_FRONT_FOR_LTW))
+        }
+        libraries.forEach { library ->
+            check(NativeLibraryInfo.matches(library, Tools.DEVICE_ARCHITECTURE)) {
+                "Missing, damaged or wrong-ABI native library: ${library.name}. Restart the launcher to repair its components."
+            }
+        }
+    }
 
     /** The LWJGL 3.4.1 classpath; the patched classes must come before the official jars. */
     @JvmStatic

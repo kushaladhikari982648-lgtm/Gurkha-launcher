@@ -29,6 +29,7 @@ import net.kdt.pojavlaunch.Logger
 import net.kdt.pojavlaunch.Tools
 import net.kdt.pojavlaunch.authenticator.microsoft.PresentedException
 import net.kdt.pojavlaunch.lifecycle.ContextAwareDoneListener
+import net.kdt.pojavlaunch.multirt.RuntimeSelection
 import net.kdt.pojavlaunch.multirt.MultiRTUtils
 import net.kdt.pojavlaunch.plugins.FFmpegPlugin
 import net.kdt.pojavlaunch.progresskeeper.ProgressKeeper
@@ -171,20 +172,19 @@ class LaunchGame {
                 ?.removePrefix(Tools.LAUNCHERPROFILES_RTPREFIX)
                 ?: ""
 
-            if (versionRuntime.isNotEmpty()) return versionRuntime
-
-            //如果版本未选择Java环境，则自动选择合适的环境
-            var runtime = AllSettings.defaultRuntime.getValue()
-            val pickedRuntime = MultiRTUtils.read(runtime)
-            if (pickedRuntime.javaVersion == 0 || pickedRuntime.javaVersion < targetJavaVersion) {
-                runtime = MultiRTUtils.getNearestJreName(targetJavaVersion) ?: run {
-                    activity.runOnUiThread {
-                        Toast.makeText(activity, activity.getString(R.string.game_autopick_runtime_failed), Toast.LENGTH_SHORT).show()
-                    }
-                    return runtime
-                }
+            val preferred = versionRuntime.ifEmpty { AllSettings.defaultRuntime.getValue() }
+            val selected = RuntimeSelection.select(
+                MultiRTUtils.getRuntimes(), targetJavaVersion.coerceAtLeast(8),
+                Tools.DEVICE_ARCHITECTURE, preferred
+            ) ?: throw IllegalStateException(activity.getString(
+                R.string.game_runtime_unavailable, targetJavaVersion,
+                Architecture.archAsString(Tools.DEVICE_ARCHITECTURE)
+            ))
+            if (selected.name != preferred) {
+                Logger.appendToLog("Info: Runtime '$preferred' is absent, too old or the wrong ABI; using ${selected.name} for this launch")
             }
-            return runtime
+            // Never rewrite a user's runtime/profile setting just to start a different version.
+            return selected.name
         }
 
         private fun printLauncherInfo(
@@ -227,6 +227,13 @@ class LaunchGame {
             val runtime = MultiRTUtils.forceReread(javaRuntime)
 
             val versionInfo = Tools.getVersionInfo(minecraftVersion)
+            check(RuntimeSelection.compatible(runtime, versionInfo.javaVersion?.majorVersion ?: 8, Tools.DEVICE_ARCHITECTURE)) {
+                "The selected runtime changed or is incompatible with this Minecraft version and APK architecture"
+            }
+            if (net.kdt.pojavlaunch.MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw) {
+                SdlSupport.validateInstallation(com.movtery.zalithlauncher.utils.path.PathManager.DIR_NATIVE_LIB,
+                    net.kdt.pojavlaunch.MinecraftGLSurface.sdlVersion)
+            }
             val gameDirPath = minecraftVersion.getGameDir()
 
             //预处理
@@ -258,7 +265,7 @@ class LaunchGame {
             val allocation = AllSettings.ramAllocation.value.getValue()
             Logging.i("MemStat", "Free RAM: $freeDeviceMemory")
 
-            if (Architecture.is32BitsDevice()) {
+            if (!Architecture.is64BitProcess()) {
                 // The 32-bit address space check is bypassed: it held the launch with a "will cause a
                 // crash" warning based on an estimate of the free address space in this process. The
                 // estimate is only written to the game log, to help reading crash reports.

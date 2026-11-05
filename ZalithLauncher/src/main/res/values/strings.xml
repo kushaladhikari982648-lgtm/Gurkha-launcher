@@ -700,4 +700,5 @@
     <string name="renderer_policy_sdl_use_ltw">%1$s uses SDL3, which only the LTW renderer supports in this launcher, so LTW is used for this launch.</string>
     <string name="renderer_policy_ltw_unsupported">%1$s needs the LTW renderer, but your device doesn\'t support it (it needs OpenGL ES 3). The game will probably not start.</string>
     <string name="ltw_render_distance_warning_msg">Your GPU can\'t render this version above 7 chunks of render distance without Sodium or a similar mod. The render distance will be lowered to 7 when you tap \"OK\".</string>
+    <string name="game_runtime_unavailable">Minecraft needs Java %1$d or newer for this %2$s APK. No compatible runtime is installed. Restart to unpack the bundled runtimes or import a matching Android runtime in Settings. Java 25 is not bundled for 32-bit x86.</string>
 </resources>

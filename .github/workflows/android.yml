@@ -20,7 +20,19 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  CompatibilityChecks:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Test runtime selection and bundled 32/64-bit native dependencies
+        run: python3 -m unittest discover -s tests -v
+
   BuildDebug:
+    needs: CompatibilityChecks
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-22.04
     strategy:
@@ -55,6 +67,9 @@ jobs:
             echo "::warning title=No CurseForge API key::The CURSEFORGE_API_KEY secret is not set, so CurseForge downloads are disabled in these APKs (Modrinth still works). See RELEASING.md."
           fi
           ./gradlew ZalithLauncher:assembleDebug -Darch=${{ matrix.arch }} 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - name: Validate modern Minecraft components in APKs
+        run: python3 tools/check_modern_apk.py 'ZalithLauncher/build/outputs/apk/debug/*.apk'
 
       - name: APK size report
         run: |
@@ -244,6 +259,9 @@ jobs:
       - name: Remove keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/gurkha-release.jks"
+
+      - name: Validate modern Minecraft release components
+        run: python3 tools/check_modern_apk.py 'ZalithLauncher/build/outputs/apk/release/*.apk'
 
       - name: Upload Release ${{ matrix.arch }}
         uses: actions/upload-artifact@v7

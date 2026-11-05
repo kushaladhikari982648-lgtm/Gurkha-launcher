@@ -5,7 +5,7 @@ import com.movtery.zalithlauncher.launch.SdlSupport;
 import com.movtery.zalithlauncher.launch.LowMemoryProfile;
 import static com.movtery.zalithlauncher.utils.path.PathManager.DIR_NATIVE_LIB;
 import static net.kdt.pojavlaunch.Architecture.ARCH_X86;
-import static net.kdt.pojavlaunch.Architecture.is64BitsDevice;
+import static net.kdt.pojavlaunch.Architecture.is64BitProcess;
 import static net.kdt.pojavlaunch.Tools.currentDisplayMetrics;
 
 import android.content.Context;
@@ -186,7 +186,7 @@ public final class JREUtils {
             }
         }
 
-        String libName = is64BitsDevice() ? "lib64" : "lib";
+        String libName = is64BitProcess() ? "lib64" : "lib";
         StringBuilder ldLibraryPath = new StringBuilder();
         if (FFmpegPlugin.isAvailable) {
             ldLibraryPath.append(FFmpegPlugin.libraryPath).append(":");

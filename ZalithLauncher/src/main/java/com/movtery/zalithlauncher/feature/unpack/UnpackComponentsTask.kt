@@ -8,6 +8,7 @@ import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.feature.log.Logging.i
 import com.movtery.zalithlauncher.utils.path.PathManager
 import net.kdt.pojavlaunch.Tools
+import net.kdt.pojavlaunch.utils.NativeLibraryInfo
 import org.apache.commons.io.FileUtils
 import org.tukaani.xz.XZInputStream
 import java.io.BufferedInputStream
@@ -26,7 +27,6 @@ class UnpackComponentsTask(val context: Context, val component: Components) : Ab
     private lateinit var am: AssetManager
     private lateinit var rootDir: String
     private lateinit var versionFile: File
-    private lateinit var input: InputStream
     private var isCheckFailed: Boolean = false
 
     init {
@@ -34,7 +34,7 @@ class UnpackComponentsTask(val context: Context, val component: Components) : Ab
             am = context.assets
             rootDir = if (component.privateDirectory) PathManager.DIR_DATA else PathManager.DIR_GAME_HOME
             versionFile = File("$rootDir/${component.component}/version")
-            input = am.open("components/${component.component}/version")
+            am.open("components/${component.component}/version").close()
         }.getOrElse {
             isCheckFailed = true
         }
@@ -44,7 +44,7 @@ class UnpackComponentsTask(val context: Context, val component: Components) : Ab
 
     override fun isNeedUnpack(): Boolean {
         if (isCheckFailed) return false
-        if (component == Components.LWJGL3_SDL && !File(SdlSupport.getNativesDir(), "liblwjgl.so").exists()) {
+        if (component == Components.LWJGL3_SDL && !sdlNativesComplete()) {
             requestEmptyParentDir(versionFile)
             return true
         }
@@ -54,9 +54,8 @@ class UnpackComponentsTask(val context: Context, val component: Components) : Ab
             i("Unpack Components", "${component.component}: Pack was installed manually, or does not exist...")
             return true
         } else {
-            val fis = FileInputStream(versionFile)
-            val release1 = Tools.read(input)
-            val release2 = Tools.read(fis)
+            val release1 = am.open("components/${component.component}/version").use { Tools.read(it) }
+            val release2 = FileInputStream(versionFile).use { Tools.read(it) }
             if (release1 != release2) {
                 requestEmptyParentDir(versionFile)
                 return true
@@ -109,13 +108,24 @@ class UnpackComponentsTask(val context: Context, val component: Components) : Ab
      * directory: they have the same names as the LWJGL 3.3.x natives packaged with the app.
      */
     private fun unpackSdlNatives() {
-        val abi = UpdateUtils.getArchModel() ?: return
+        val abi = checkNotNull(UpdateUtils.getArchModel()) { "Unknown APK architecture" }
         val assetDir = "components/${SdlSupport.NATIVES_COMPONENT}/$abi"
         val target = SdlSupport.getNativesDir()
         if (target.exists()) FileUtils.deleteDirectory(target)
         target.mkdirs()
-        am.list(assetDir)?.forEach { name ->
+        val names = am.list(assetDir) ?: emptyArray()
+        check(names.contains("liblwjgl.so")) { "This APK has no LWJGL natives for $abi" }
+        names.forEach { name ->
             Tools.copyAssetFile(context, "$assetDir/$name", target.absolutePath, true)
+        }
+        check(sdlNativesComplete()) { "Incomplete or wrong-ABI LWJGL native extraction for $abi" }
+    }
+
+    private fun sdlNativesComplete(): Boolean {
+        val abi = UpdateUtils.getArchModel() ?: return false
+        val names = am.list("components/${SdlSupport.NATIVES_COMPONENT}/$abi") ?: return false
+        return names.contains("liblwjgl.so") && names.filter { it.endsWith(".so") }.all {
+            NativeLibraryInfo.matches(File(SdlSupport.getNativesDir(), it), Tools.DEVICE_ARCHITECTURE)
         }
     }
 

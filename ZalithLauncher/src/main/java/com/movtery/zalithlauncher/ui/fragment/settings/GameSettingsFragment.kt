@@ -113,7 +113,7 @@ class GameSettingsFragment : AbstractSettingsFragment(R.layout.settings_fragment
         )
 
         val deviceRam = Tools.getTotalDeviceMemory(context)
-        val maxRAM = if (Architecture.is32BitsDevice() || deviceRam < 2048) min(
+        val maxRAM = if (!Architecture.is64BitProcess() || deviceRam < 2048) min(
             1024.0,
             deviceRam.toDouble()
         ).toInt()
