@@ -173,7 +173,7 @@ object RendererPluginManager {
      * ----------------渲染器库文件.so
      */
     fun parseLocalPlugin(context: Context, directory: File): Boolean {
-        val archModel: String = UpdateUtils.getArchModel(net.kdt.pojavlaunch.Tools.DEVICE_ARCHITECTURE) ?: return false
+        val archModel: String = UpdateUtils.getArchModel(Tools.DEVICE_ARCHITECTURE) ?: return false
         val libsDirectory: File = File(directory, "libs/$archModel").takeIf { it.exists() && it.isDirectory } ?: return false
         val rendererConfigFile: File = File(directory, "config").takeIf { it.exists() && it.isFile } ?: return false
         val rendererConfig: RendererConfig = runCatching {

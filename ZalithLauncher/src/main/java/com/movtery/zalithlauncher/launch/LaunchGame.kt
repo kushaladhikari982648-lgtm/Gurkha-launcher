@@ -24,6 +24,8 @@ import com.movtery.zalithlauncher.utils.ZHTools
 import com.movtery.zalithlauncher.utils.http.NetworkUtils
 import com.movtery.zalithlauncher.utils.stringutils.StringUtils
 import net.kdt.pojavlaunch.Architecture
+import net.kdt.pojavlaunch.MinecraftGLSurface
+import com.movtery.zalithlauncher.utils.path.PathManager
 import net.kdt.pojavlaunch.JMinecraftVersionList
 import net.kdt.pojavlaunch.Logger
 import net.kdt.pojavlaunch.Tools
@@ -230,9 +232,9 @@ class LaunchGame {
             check(RuntimeSelection.compatible(runtime, versionInfo.javaVersion?.majorVersion ?: 8, Tools.DEVICE_ARCHITECTURE)) {
                 "The selected runtime changed or is incompatible with this Minecraft version and APK architecture"
             }
-            if (net.kdt.pojavlaunch.MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw) {
-                SdlSupport.validateInstallation(com.movtery.zalithlauncher.utils.path.PathManager.DIR_NATIVE_LIB,
-                    net.kdt.pojavlaunch.MinecraftGLSurface.sdlVersion)
+            if (MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw) {
+                SdlSupport.validateInstallation(PathManager.DIR_NATIVE_LIB,
+                    MinecraftGLSurface.sdlVersion)
             }
             val gameDirPath = minecraftVersion.getGameDir()
 
