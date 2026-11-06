@@ -6,7 +6,7 @@ core = root / 'launcher-core'
 extra = root / 'release-extra'
 extra.mkdir(exist_ok=True)
 assert (core / 'vendor').is_dir()
-with zipfile.ZipFile(extra / 'Rust-core-corresponding-source.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+with zipfile.ZipFile(extra / 'Rust-core-corresponding-source.zip', 'w', zipfile.ZIP_DEFLATED, strict_timestamps=False) as z:
     for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
         z.write(root / name, 'Gurkha-launcher/' + name)
     for name in ('Cargo.toml', 'Cargo.lock', 'README.md', 'pack_aar.py'):

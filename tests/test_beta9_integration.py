@@ -1,5 +1,10 @@
 from pathlib import Path
 import unittest
+import os
+import subprocess
+import sys
+import tempfile
+import zipfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +42,26 @@ class Beta9Tests(unittest.TestCase):
         self.assertIn('Tools.DEVICE_ARCHITECTURE != Architecture.ARCH_X86', manager)
         self.assertIn('RendererSelection.normalize', manager)
         self.assertNotIn('RustGLRenderer', manager)  # not imported merely to claim Rust GPU acceleration
+
+    def test_corresponding_source_accepts_registry_epoch_timestamps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md', 'launcher-core/Cargo.toml',
+                         'launcher-core/Cargo.lock', 'launcher-core/README.md',
+                         'launcher-core/pack_aar.py', 'launcher-core/src/lib.rs',
+                         'launcher-core/vendor/example/LICENSE'):
+                p = root / name
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text('fixture')
+                os.utime(p, (1, 1))  # Cargo packages may carry pre-1980 mtimes.
+            (root / 'tools').mkdir()
+            script = root / 'tools/package_core_source.py'
+            script.write_text((ROOT / 'tools/package_core_source.py').read_text())
+            subprocess.run([sys.executable, str(script)], check=True)
+            with zipfile.ZipFile(root / 'release-extra/Rust-core-corresponding-source.zip') as z:
+                self.assertIsNone(z.testzip())
+                self.assertIn('Gurkha-launcher/launcher-core/vendor/example/LICENSE', z.namelist())
+                self.assertIn('vendored-sources', z.read('Gurkha-launcher/launcher-core/.cargo/config.toml').decode())
 
     def test_preview_is_draft_only(self):
         source = (ROOT / 'tools/stage_test_release.py').read_text()
