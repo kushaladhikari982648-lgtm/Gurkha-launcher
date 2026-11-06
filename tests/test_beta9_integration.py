@@ -27,6 +27,8 @@ class Beta9Tests(unittest.TestCase):
         self.assertIn('if (!nativeNotifyLauncher(SDL, INIT))', bridge)
         surface = (SRC / 'net/kdt/pojavlaunch/MinecraftGLSurface.java').read_text()
         self.assertIn('if (!isCalled) setupSDL', surface)
+        activity = (SRC / 'org/libsdl/app/SDLActivity.java').read_text()
+        self.assertIn('post(SDLActivity::handleNativeState)', activity)
 
     def test_theme_and_renderer_retirement(self):
         self.assertTrue((ROOT / 'ZalithLauncher/src/main/res/values/minecraft_theme.xml').exists())

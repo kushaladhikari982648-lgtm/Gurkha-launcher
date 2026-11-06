@@ -33,6 +33,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.LocaleList;
+import android.os.Looper;
 import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.util.DisplayMetrics;
@@ -905,6 +906,12 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
     /* Transition to next state */
     public static void handleNativeState() {
+        // SDL bootstrap can arrive through JNI on the JVM game thread. Native surface
+        // notifications are safe there, but handleResume touches Android Views.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            new Handler(Looper.getMainLooper()).post(SDLActivity::handleNativeState);
+            return;
+        }
 
         if (mNextNativeState == mCurrentNativeState) {
             // Already in same state, discard.
