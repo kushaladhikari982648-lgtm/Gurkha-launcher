@@ -5,6 +5,8 @@ import java.util.*;
 public class GLFWWindowProperties {
     public int width = GLFW.mGLFWWindowWidth;
     public int height = GLFW.mGLFWWindowHeight;
+    final WindowState state = new WindowState();
+    boolean notifiedFocused, notifiedIconified;
     public int x, y;
     public CharSequence title;
     public boolean shouldClose, isInitialSizeCalled, isCursorEntered;

@@ -8,16 +8,19 @@ import com.google.gson.reflect.TypeToken
 import com.moandjiezana.toml.Toml
 import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.feature.version.Version
+import com.movtery.zalithlauncher.setting.AllSettings
 import com.movtery.zalithlauncher.task.Task
 import com.movtery.zalithlauncher.utils.file.FileTools
 import com.movtery.zalithlauncher.utils.path.PathManager
+import com.movtery.zalithlauncher.utils.platform.LowEndPolicy
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Semaphore
 import net.kdt.pojavlaunch.Tools
 import org.apache.commons.io.FileUtils
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
+import com.movtery.zalithlauncher.utils.file.RustCore
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.jar.JarInputStream
@@ -51,6 +54,7 @@ class ModParser {
         val infoCacheFile = File(PathManager.DIR_ADDONS_INFO_CACHE, cacheFileName)
         val modInfoQueue = ConcurrentLinkedQueue<ModInfo>()
         val newCacheMap = ConcurrentHashMap<String, ModInfoCache>()
+        val scanCompleted = AtomicBoolean(false)
 
         Task.runTask {
             if (modsFolder.isDirectory) {
@@ -63,14 +67,11 @@ class ModParser {
 
                 runBlocking {
                     val optimalThreads = calculateOptimalThreads(files.size)
-                    val semaphore = Semaphore(optimalThreads)
-
-                    files.chunked(calculateChunkSize(files.size)).forEach { batch ->
+                    // Bound coroutine creation as well as the number of active jar readers.
+                    files.chunked(optimalThreads).forEach { batch ->
                         val deferredList = batch.map { file ->
                             async(Dispatchers.IO) {
-                                semaphore.withPermit {
-                                    parseModFile(file, files.size, existingCache, newCacheMap, modInfoQueue, listener)
-                                }
+                                parseModFile(file, files.size, existingCache, newCacheMap, modInfoQueue, listener)
                             }
                         }
                         //等待所有解析任务完成
@@ -78,10 +79,11 @@ class ModParser {
                     }
                 }
             }
+            scanCompleted.set(true)
         }.onThrowable { e ->
             Logging.e("ModParser", "An exception occurred while parsing all mods!", e)
         }.finallyTask {
-            persistCache(gson, infoCacheFile, newCacheMap.values.toList())
+            if (scanCompleted.get()) persistCache(gson, infoCacheFile, newCacheMap.values.toList())
             listener.onParseEnded(modInfoQueue.toList())
         }.execute()
     }
@@ -256,33 +258,14 @@ class ModParser {
         Task.runTask {
             runCatching {
                 cacheFile.parentFile?.mkdirs()
-                FileUtils.write(cacheFile, gson.toJson(data), Charsets.UTF_8)
+                RustCore.atomicWrite(cacheFile, gson.toJson(data).toByteArray(Charsets.UTF_8))
             }.onFailure { e ->
                 Logging.e("ModParser", "Cache save failed", e)
             }
         }.execute()
     }
 
-    private fun calculateOptimalThreads(fileCount: Int): Int {
-        val coreCount = Runtime.getRuntime().availableProcessors()
-        return (fileCount.coerceAtMost(coreCount * 8))
-            .coerceAtLeast(4)
-    }
-
-    private fun calculateChunkSize(totalFiles: Int): Int {
-        return when {
-            totalFiles < 50 -> 4
-            totalFiles < 200 -> 32
-            else -> 64
-        }
-    }
-
-    private suspend fun <T> Semaphore.withPermit(action: suspend () -> T): T {
-        acquire()
-        try {
-            return action()
-        } finally {
-            release()
-        }
-    }
+    private fun calculateOptimalThreads(fileCount: Int): Int =
+        LowEndPolicy.modScanWorkers(Runtime.getRuntime().availableProcessors(), fileCount,
+            AllSettings.lowEndMode.getValue())
 }

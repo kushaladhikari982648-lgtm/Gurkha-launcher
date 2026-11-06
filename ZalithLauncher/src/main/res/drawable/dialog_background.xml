@@ -1,7 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?>
-<inset xmlns:android="http://schemas.android.com/apk/res/android">
-    <shape android:shape="rectangle">
-        <corners android:radius="@dimen/_8sdp" />
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:drawable="@drawable/mc_stone" />
+  <item>
+    <inset>
+      <shape android:shape="rectangle">
+        <corners android:radius="0dp" />
         <solid android:color="@color/dialog_background" />
-    </shape>
-</inset>
+        <stroke android:width="@dimen/launcher_outline_width" android:color="@color/launcher_outline" />
+      </shape>
+    </inset>
+  </item>
+</layer-list>

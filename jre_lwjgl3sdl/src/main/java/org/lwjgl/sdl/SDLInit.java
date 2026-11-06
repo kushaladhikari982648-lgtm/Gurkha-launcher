@@ -72,7 +72,7 @@ public class SDLInit {
     /** {@code bool SDL_Init(SDL_InitFlags flags)} */
     @NativeType("bool")
     public static boolean SDL_Init(@NativeType("SDL_InitFlags") int flags) {
-        CallbackBridge.nativeNotifyLauncher(CallbackBridge.SDL, CallbackBridge.INIT);
+        CallbackBridge.initializeSdl();
         long __functionAddress = Functions.Init;
         return invokeZ(flags, __functionAddress);
     }
@@ -82,6 +82,7 @@ public class SDLInit {
     /** {@code bool SDL_InitSubSystem(SDL_InitFlags flags)} */
     @NativeType("bool")
     public static boolean SDL_InitSubSystem(@NativeType("SDL_InitFlags") int flags) {
+        CallbackBridge.initializeSdl();
         long __functionAddress = Functions.InitSubSystem;
         return invokeZ(flags, __functionAddress);
     }

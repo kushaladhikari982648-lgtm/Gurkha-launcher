@@ -4,6 +4,7 @@ import androidx.annotation.Nullable;
 
 import com.movtery.zalithlauncher.feature.log.Logging;
 import com.movtery.zalithlauncher.setting.AllSettings;
+import com.movtery.zalithlauncher.utils.platform.LowEndPolicy;
 
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.utils.DownloadUtils;
@@ -29,6 +30,7 @@ public class ModDownloader {
     private final Object mExceptionSyncPoint = new Object();
     private final File mDestinationDirectory;
     private final boolean mUseFileCount;
+    private final int mProgressIntervalMs;
     private IOException mFirstIOException;
     private long mTotalSize;
 
@@ -37,7 +39,10 @@ public class ModDownloader {
     }
 
     public ModDownloader(File destinationDirectory, boolean useFileCount) {
-        int maxThreads = AllSettings.getMaxDownloadThreads().getValue();
+        boolean lowEndMode = AllSettings.getLowEndMode().getValue();
+        int maxThreads = LowEndPolicy.downloadWorkers(AllSettings.getMaxDownloadThreads().getValue(),
+                Integer.MAX_VALUE, lowEndMode);
+        mProgressIntervalMs = LowEndPolicy.progressIntervalMs(20, lowEndMode);
         this.mDownloadPool = new ThreadPoolExecutor(
                 Math.max(1, (int) (maxThreads / 2)),
                 maxThreads,
@@ -84,7 +89,7 @@ public class ModDownloader {
     private void awaitFinish(OnFileDownloadedListener listener) throws IOException {
         try {
             mDownloadPool.shutdown();
-            while(!mDownloadPool.awaitTermination(20, TimeUnit.MILLISECONDS) && !mTerminator.get()) {
+            while(!mDownloadPool.awaitTermination(mProgressIntervalMs, TimeUnit.MILLISECONDS) && !mTerminator.get()) {
                 listener.downloaded();
             }
             if(mTerminator.get()) {
@@ -95,7 +100,10 @@ public class ModDownloader {
                 }
             }
         }catch (InterruptedException e) {
-            Logging.e("ModDownloader", Tools.printToString(e));
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("Modpack download interrupted");
+        } finally {
+            mDownloadPool.shutdownNow();
         }
     }
 

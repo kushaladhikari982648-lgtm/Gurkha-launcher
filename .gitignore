@@ -21,3 +21,10 @@ __pycache__/
 /lwjgl-api-report.json
 
 /ZalithLauncher/src/main/assets/components/lwjgl3-sdl/lwjgl-android-jni.jar
+
+# Native build/release staging
+/release-extra/
+/preview-output/
+/downloaded-apks/
+
+/launcher-core/target/

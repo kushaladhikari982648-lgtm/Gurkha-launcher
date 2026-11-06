@@ -3,6 +3,7 @@ package org.lwjgl.glfw;
 import org.libsdl.app.SDLActivity;
 import net.kdt.pojavlaunch.MinecraftGLSurface;
 import net.kdt.pojavlaunch.Logger;
+import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.EfficientAndroidLWJGLKeycode;
 import android.view.MotionEvent;
 import android.view.KeyEvent;
@@ -22,6 +23,10 @@ import java.util.ArrayList;
 import dalvik.annotation.optimization.CriticalNative;
 
 public class CallbackBridge {
+    public static final int WINDOW_STATE_FOCUSED = 1;
+    public static final int WINDOW_STATE_VISIBLE = 2;
+    @Keep public static native void nativeSetWindowState(int flag, boolean enabled);
+
     public static final Choreographer sChoreographer = Choreographer.getInstance();
     private static boolean isGrabbing = false;
     private static final ArrayList<GrabListener> grabListeners = new ArrayList<>();
@@ -162,10 +167,14 @@ public class CallbackBridge {
      */
     @Keep
     @SuppressWarnings("unused")
-    public static boolean notifyLauncher(int type, int... action) {
+    public static synchronized boolean notifyLauncher(int type, int... action) {
         if (type != NOTIF_TYPE_SDL || action.length == 0 || action[0] != ACTION_INIT_LAUNCHER_INTEGRATION) return false;
         if (MinecraftGLSurface.sdlEnabled) return true;
         try {
+            if (SDLActivity.getSDLSurface() == null || org.libsdl.app.SDLSurface.getNativeSurface() == null
+                    || !org.libsdl.app.SDLSurface.getNativeSurface().isValid()) {
+                throw new IllegalStateException("SDL game surface is not ready");
+            }
             // Loaded here as well: SDL's JNI_OnLoad must run in the launcher's VM to register its Java glue
             System.loadLibrary("SDL3");
             System.loadLibrary("SDL2");
@@ -173,12 +182,15 @@ public class CallbackBridge {
             MinecraftGLSurface.sdlEnabled = true;
             if (SDLActivity.getSDLSurface() != null) {
                 // SDL needs the size of the native surface to map input coordinates
-                SDLActivity.getSDLSurface().nativeResize(windowWidth, windowHeight);
+                SDLActivity.getSDLSurface().surfaceCreated(null);
+                SDLActivity.getSDLSurface().nativeResize(Tools.currentDisplayMetrics.widthPixels, Tools.currentDisplayMetrics.heightPixels);
+                SDLActivity.getSDLSurface().surfaceChanged();
             }
             Logger.appendToLog("Info: SDL launcher integration enabled");
             return true;
         } catch (Throwable e) {
-            Logger.appendToLog("Error: failed to initialize the SDL launcher integration, the game will likely crash: " + e);
+            MinecraftGLSurface.sdlEnabled = false;
+            Logger.appendToLog("Error: SDL Android initialization failed: " + e);
             return false;
         }
     }

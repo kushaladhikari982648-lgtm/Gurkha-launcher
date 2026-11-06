@@ -6,6 +6,8 @@ import android.os.FileObserver
 import com.movtery.zalithlauncher.event.single.MCOptionChangeEvent
 import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.feature.version.Version
+import com.movtery.zalithlauncher.setting.AllSettings
+import com.movtery.zalithlauncher.utils.platform.LowEndPolicy
 import net.kdt.pojavlaunch.Tools
 import org.greenrobot.eventbus.EventBus
 import org.lwjgl.glfw.CallbackBridge.windowHeight
@@ -37,6 +39,10 @@ object MCOptions {
                         versionGetter.getVersion().getGameDir().absolutePath,
                         false
                     )
+                    // Only the newly copied asset: never rewrite an existing game's preferences.
+                    if (AllSettings.lowEndMode.getValue()) {
+                        writeText(LowEndPolicy.newGameDefaults(readText(), true))
+                    }
                 } catch (e: Exception) {
                     Logging.e("MCOptions", "Failed to copy the default options.txt file.", e)
                 }

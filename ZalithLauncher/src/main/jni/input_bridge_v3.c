@@ -32,6 +32,25 @@
 #define EVENT_TYPE_SCROLL 1007
 #define EVENT_TYPE_WINDOW_SIZE 1008
 
+/* Persistent lifecycle state survives events that arrive before the game window/JVM.
+ * Android only writes atomics; GLFW reads them on its own event thread. No callbacks
+ * or game HashMap writes from the Android UI thread. */
+#define WINDOW_STATE_FOCUSED 1
+#define WINDOW_STATE_VISIBLE 2
+static atomic_int android_window_state = 0;
+
+JNIEXPORT void JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeSetWindowState(
+        JNIEnv* env, jclass clazz, jint flag, jboolean enabled) {
+    if (flag != WINDOW_STATE_FOCUSED && flag != WINDOW_STATE_VISIBLE) return;
+    if (enabled) atomic_fetch_or(&android_window_state, flag);
+    else atomic_fetch_and(&android_window_state, ~flag);
+}
+
+JNIEXPORT jint JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeGetWindowState(
+        JNIEnv* env, jclass clazz) {
+    return atomic_load(&android_window_state);
+}
+
 static void registerFunctions(JNIEnv *env);
 
 jint JNI_OnLoad(JavaVM* vm, __attribute__((unused)) void* reserved) {
@@ -301,29 +320,38 @@ JNIEXPORT jstring JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeClipboard(JNI
  * before SDL_Init) to notify the launcher: calls the launcher's CallbackBridge.notifyLauncher(int, int[]).
  */
 JNIEXPORT jboolean JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeNotifyLauncher(JNIEnv* env, __attribute__((unused)) jclass clazz, jint type, jintArray action) {
+    if (pojav_environ == NULL) return JNI_FALSE;
     JavaVM* dalvikVM = pojav_environ->dalvikJavaVMPtr;
     if (dalvikVM == NULL || pojav_environ->bridgeClazz == NULL) return JNI_FALSE;
 
     JNIEnv* dalvikEnv = NULL;
     bool attachedHere = false;
-    if ((*dalvikVM)->GetEnv(dalvikVM, (void**) &dalvikEnv, JNI_VERSION_1_4) == JNI_EDETACHED) {
+    jint status = (*dalvikVM)->GetEnv(dalvikVM, (void**) &dalvikEnv, JNI_VERSION_1_4);
+    if (status == JNI_EDETACHED) {
         if ((*dalvikVM)->AttachCurrentThread(dalvikVM, &dalvikEnv, NULL) != JNI_OK) return JNI_FALSE;
         attachedHere = true;
-    }
-
-    jsize count = action != NULL ? (*env)->GetArrayLength(env, action) : 0;
-    jintArray dalvikAction = (*dalvikEnv)->NewIntArray(dalvikEnv, count);
-    if (count > 0) {
-        jint* values = (*env)->GetIntArrayElements(env, action, NULL);
-        (*dalvikEnv)->SetIntArrayRegion(dalvikEnv, dalvikAction, 0, count, values);
-        (*env)->ReleaseIntArrayElements(env, action, values, JNI_ABORT);
-    }
+    } else if (status != JNI_OK) return JNI_FALSE;
 
     jboolean result = JNI_FALSE;
+    jintArray dalvikAction = NULL;
+    jsize count = action != NULL ? (*env)->GetArrayLength(env, action) : 0;
+    // Small control messages only. Avoid unchecked allocation/pinned arrays across two VMs.
+    if (count > 64 || (*env)->ExceptionCheck(env)) goto cleanup_notification;
+    jint values[64];
+    if (count > 0) {
+        (*env)->GetIntArrayRegion(env, action, 0, count, values);
+        if ((*env)->ExceptionCheck(env)) goto cleanup_notification;
+    }
+    dalvikAction = (*dalvikEnv)->NewIntArray(dalvikEnv, count);
+    if (dalvikAction == NULL) goto cleanup_notification;
+    if (count > 0) (*dalvikEnv)->SetIntArrayRegion(dalvikEnv, dalvikAction, 0, count, values);
+    if ((*dalvikEnv)->ExceptionCheck(dalvikEnv)) goto cleanup_notification;
+
     jmethodID notifyLauncher = (*dalvikEnv)->GetStaticMethodID(dalvikEnv, pojav_environ->bridgeClazz, "notifyLauncher", "(I[I)Z");
     if (notifyLauncher != NULL) {
         result = (*dalvikEnv)->CallStaticBooleanMethod(dalvikEnv, pojav_environ->bridgeClazz, notifyLauncher, type, dalvikAction);
     }
+cleanup_notification:
     if ((*dalvikEnv)->ExceptionCheck(dalvikEnv)) {
         (*dalvikEnv)->ExceptionDescribe(dalvikEnv);
         (*dalvikEnv)->ExceptionClear(dalvikEnv);

@@ -23,3 +23,6 @@
  }
 
 
+
+# JNI symbols are resolved by class and method name.
+-keep class com.movtery.zalithlauncher.utils.file.RustCore { *; }

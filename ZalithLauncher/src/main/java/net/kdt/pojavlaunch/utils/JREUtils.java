@@ -3,6 +3,7 @@ package net.kdt.pojavlaunch.utils;
 import net.kdt.pojavlaunch.MinecraftGLSurface;
 import com.movtery.zalithlauncher.launch.SdlSupport;
 import com.movtery.zalithlauncher.launch.LowMemoryProfile;
+import com.movtery.zalithlauncher.utils.platform.LowEndPolicy;
 import static com.movtery.zalithlauncher.utils.path.PathManager.DIR_NATIVE_LIB;
 import static net.kdt.pojavlaunch.Architecture.ARCH_X86;
 import static net.kdt.pojavlaunch.Architecture.is64BitProcess;
@@ -366,7 +367,7 @@ public final class JREUtils {
         }
 
         if (!dlopen(rendererLib) && !dlopen(findInLdLibPath(rendererLib))) {
-            Logging.e("RENDER_LIBRARY", "Failed to load renderer " + rendererLib);
+            throw new IllegalStateException("Failed to load renderer " + rendererLib + "; check the renderer/ABI and native loader log");
         }
     }
 
@@ -397,7 +398,7 @@ public final class JREUtils {
         userArgs.add("-javaagent:" + LibPath.MIO_LIB_PATCHER.getAbsolutePath());
 
         //Add automatically generated args
-        userArgs.add("-Xms" + AllSettings.getRamAllocation().getValue().getValue() + "M");
+        userArgs.add("-Xms" + LowEndPolicy.initialHeapMb(AllSettings.getRamAllocation().getValue().getValue(), AllSettings.getLowEndMode().getValue()) + "M");
         userArgs.add("-Xmx" + AllSettings.getRamAllocation().getValue().getValue() + "M");
         if (Renderers.INSTANCE.isCurrentRendererValid()) userArgs.add("-Dorg.lwjgl.opengl.libname=" + loadGraphicsLibrary());
 

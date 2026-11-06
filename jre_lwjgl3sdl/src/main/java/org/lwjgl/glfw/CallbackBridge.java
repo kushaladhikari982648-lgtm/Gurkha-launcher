@@ -11,10 +11,12 @@ public class CallbackBridge {
     public static final int INIT = 0;
 
     static {
-        try {
-            System.loadLibrary("pojavexec");
-        } catch (UnsatisfiedLinkError e) {
-            System.out.println("CallbackBridge: failed to load libpojavexec: " + e);
+        System.loadLibrary("pojavexec");
+    }
+
+    public static void initializeSdl() {
+        if (!nativeNotifyLauncher(SDL, INIT)) {
+            throw new IllegalStateException("SDL Android bridge initialization failed; inspect the launcher log before retrying");
         }
     }
 

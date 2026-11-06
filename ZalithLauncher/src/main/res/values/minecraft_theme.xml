@@ -1,0 +1,53 @@
+<resources>
+  <style name="MinecraftNav" parent="Widget.AppCompat.Button">
+    <item name="android:background">@drawable/mc_button</item>
+    <item name="backgroundTint">@null</item>
+    <item name="android:backgroundTint">@null</item>
+    <item name="android:textColor">#F3F2E8</item>
+    <item name="android:textSize">14sp</item>
+    <item name="android:textAllCaps">false</item>
+    <item name="android:minHeight">48dp</item>
+    <item name="android:minWidth">0dp</item>
+    <item name="android:padding">8dp</item>
+    <item name="android:fontFamily">sans-serif-medium</item>
+  </style>
+  <style name="MinecraftLabel">
+    <item name="android:textColor">#F3F2E8</item>
+    <item name="android:textSize">14sp</item>
+  </style>
+  <string name="mc_home">Home</string>
+  <string name="mc_versions">Versions</string>
+  <string name="mc_mods">Mods</string>
+  <string name="mc_settings">Settings</string>
+  <string name="mc_adventure">Your next adventure.</string>
+  <string name="mc_tagline">Build. Explore. Repeat.</string>
+  <string name="mc_profile">Your profile</string>
+  <string name="mc_renderer">Renderer: %1$s</string>
+  <string name="mc_memory">RAM limit: %1$d MB</string>
+  <string name="mc_edit_profile">Edit profile</string>
+  <string name="mc_low_end_on">Low-end mode: on</string>
+  <string name="mc_low_end_off">Low-end mode: off</string>
+  <string name="mc_tools">Tools</string>
+  <string name="mc_java_edition">JAVA EDITION</string>
+  <style name="MinecraftGlobalButton" parent="Widget.AppCompat.Button">
+    <item name="android:background">@drawable/button_background</item>
+    <item name="backgroundTint">@null</item>
+    <item name="android:backgroundTint">@null</item>
+    <item name="android:textColor">@color/primary_text</item>
+    <item name="android:textAllCaps">false</item>
+    <item name="android:minHeight">48dp</item>
+  </style>
+  <style name="MinecraftSeekBar" parent="Widget.AppCompat.SeekBar">
+    <item name="android:thumb">@drawable/mc_slider_thumb</item>
+    <item name="android:progressDrawable">@drawable/mc_slider_track</item>
+    <item name="android:minHeight">48dp</item>
+  </style>
+  <style name="MinecraftSwitch" parent="@android:style/Widget.Material.CompoundButton.Switch">
+    <item name="android:thumb">@drawable/mc_toggle_thumb</item>
+    <item name="android:track">@drawable/mc_toggle_track</item>
+    <item name="android:switchMinWidth">52dp</item>
+    <item name="android:thumbTint">@null</item>
+    <item name="android:trackTint">@null</item>
+  </style>
+  <string name="mc_auto_saved">Changes are saved automatically</string>
+</resources>

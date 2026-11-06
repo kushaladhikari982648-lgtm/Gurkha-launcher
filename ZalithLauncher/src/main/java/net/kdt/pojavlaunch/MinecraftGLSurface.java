@@ -148,8 +148,9 @@ public class MinecraftGLSurface extends View implements GrabListener {
                 private boolean isCalled = isAlreadyRunning;
                 @Override
                 public void surfaceCreated(@NonNull SurfaceHolder holder) {
+                    mNativeSurface = holder.getSurface();
                     if(isCalled) {
-                        JREUtils.setupBridgeWindow(surfaceView.getHolder().getSurface());
+                        JREUtils.setupBridgeWindow(mNativeSurface);
                         if (sdlEnabled) SDLSurface.setNativeSurface(mNativeSurface);
                         return;
                     }
@@ -185,7 +186,8 @@ public class MinecraftGLSurface extends View implements GrabListener {
                 public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
                     Surface tSurface = new Surface(surface);
                     mNativeSurface = tSurface;
-                    setupSDL(getContext(), mNativeSurface, (ViewGroup) getParent());
+                    // Do not reset SDL's Java/JNI state while the existing game is resuming.
+                    if (!isCalled) setupSDL(getContext(), mNativeSurface, (ViewGroup) getParent());
                     if(isCalled) {
                         JREUtils.setupBridgeWindow(tSurface);
                         if (sdlEnabled) SDLSurface.setNativeSurface(mNativeSurface);

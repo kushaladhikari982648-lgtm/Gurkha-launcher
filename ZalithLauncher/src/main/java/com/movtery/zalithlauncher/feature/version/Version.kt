@@ -75,7 +75,8 @@ class Version(
 
     private fun String.getValueOrDefault(default: String): String = this.takeIf { it.isNotEmpty() } ?: default
 
-    fun getRenderer(): String = versionConfig.getRenderer().getValueOrDefault(AllSettings.renderer.getValue())
+    fun getRenderer(): String = com.movtery.zalithlauncher.renderer.RendererSelection.normalize(
+        versionConfig.getRenderer().getValueOrDefault(AllSettings.renderer.getValue()))
 
     fun getDriver(): String = versionConfig.getDriver().getValueOrDefault(AllSettings.driver.getValue())
 

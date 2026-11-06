@@ -615,8 +615,8 @@ public class LauncherActivity extends BaseActivity {
                 return;
             }
         }
-        binding.topLayout.setBackgroundColor(backgroundMenuTop);
-        binding.appTitleText.setTextColor(ContextCompat.getColor(this, R.color.menu_bar_text));
+        binding.topLayout.setBackgroundResource(R.drawable.mc_header);
+        binding.appTitleText.setTextColor(0xFFF3F2E8);
         ColorStateList colorStateList = ColorStateList.valueOf(0xFFFFFFFF);
         binding.downloadButton.setImageTintList(colorStateList);
         binding.settingButton.setImageTintList(colorStateList);

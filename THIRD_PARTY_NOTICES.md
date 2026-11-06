@@ -22,3 +22,12 @@ to Gurkha Launcher and is distributed under the GPL-3.0 like the rest of the lau
 the Java-25 multi-release FFM classes so Android (including ARM32) keeps the existing JNI backend.
 The upstream jar is retained unchanged in source; licenses and Java 11/17 layers are preserved.
 This is a launcher packaging adaptation, not an upstream LWJGL 3.4.3 build.
+
+## beta.9 branch integration
+
+Minecraft-inspired native UI, resource budgets and `launcher-core` are ported from Gurkha Launcher
+commit `253b64d33bceec543b871f0dc6cca418049226e2`. The independent launcher Rust core is
+GPL-3.0-or-later; its jni and sha2 dependencies retain their MIT/Apache-2.0 licensing. See
+`launcher-core/README.md` and Cargo.lock. It contains no unlicensed RustGL renderer code.
+LTW is rebuilt from the pin in `tools/renderer-lock.json`, with complete corresponding source
+attached to the preview release. Its LGPL-3.0 attribution remains unchanged.

@@ -22,7 +22,7 @@ def elf_matches(header, abi):
 class ModernCompatibilityTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which('javac'), 'JDK required; executed by CompatibilityChecks CI')
     def test_actual_java_selection_and_native_guards(self):
-        sources = list((ROOT / 'tests/java').rglob('*.java')) + [SRC / name for name in (
+        sources = list((ROOT / 'tests/java/android').rglob('*.java')) + [ROOT / 'tests/java/CompatibilityTest.java'] + [SRC / name for name in (
             'net/kdt/pojavlaunch/Architecture.java', 'net/kdt/pojavlaunch/multirt/Runtime.java',
             'net/kdt/pojavlaunch/utils/EglCapabilities.java', 'net/kdt/pojavlaunch/multirt/RuntimeSelection.java', 'net/kdt/pojavlaunch/utils/NativeLibraryInfo.java')]
         with tempfile.TemporaryDirectory() as output:

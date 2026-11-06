@@ -2,7 +2,6 @@ package com.movtery.zalithlauncher.renderer
 
 import android.content.Context
 import com.movtery.zalithlauncher.feature.log.Logging
-import com.movtery.zalithlauncher.renderer.renderers.FreedrenoRenderer
 import com.movtery.zalithlauncher.renderer.renderers.GL4ESRenderer
 import com.movtery.zalithlauncher.renderer.renderers.KryptonRenderer
 import com.movtery.zalithlauncher.renderer.renderers.LTWRenderer
@@ -35,8 +34,7 @@ object Renderers {
             GL4ESRenderer(),
             KryptonRenderer(),
             LTWRenderer(),
-            VulkanZinkRenderer(),
-            FreedrenoRenderer()
+            VulkanZinkRenderer()
         )
     }
 
@@ -60,9 +58,7 @@ object Renderers {
             if (renderer.getRendererId().contains("vulkan") && !deviceHasVulkan) return@forEach
             if (renderer.getRendererId().contains("zink") && !deviceHasZinkBinary) return@forEach
             if (renderer.getRendererId() == LTWRenderer.ID && !deviceSupportsLtw) return@forEach
-            // Freedreno drives Qualcomm Adreno GPUs, which x86 devices never have
-            if (renderer is FreedrenoRenderer && Architecture.isx86Device()) return@forEach
-            // Krypton Wrapper needs OpenGL ES 3, like LTW
+            // Krypton Wrapper and RustGL need OpenGL ES 3, like LTW
             if (renderer is KryptonRenderer && JREUtils.getDetectedVersion() < 3) return@forEach
             // A built-in renderer whose library is not in this APK would only fail when the game starts
             // (renderer plugins bring their own libraries, so they are not checked here)
@@ -100,6 +96,7 @@ object Renderers {
      */
     @JvmStatic
     fun addRenderer(renderer: RendererInterface): Boolean {
+        if (RendererSelection.isRemoved(renderer.getRendererId()) || RendererSelection.isRemoved(renderer.getUniqueIdentifier())) return false
         return if (this.renderers.any { it.getUniqueIdentifier() == renderer.getUniqueIdentifier() }) {
             Logging.w("Renderers", "The unique identifier of this renderer (${renderer.getRendererName()} - ${renderer.getUniqueIdentifier()}) conflicts with an already loaded renderer. " +
                     "Normally, this shouldn't happen. You deliberately caused this conflict, didn't you, user?")
@@ -120,7 +117,7 @@ object Renderers {
     fun setCurrentRenderer(context: Context, uniqueIdentifier: String, retryToFirstOnFailure: Boolean = true) {
         if (!isInitialized) throw IllegalStateException("Uninitialized renderer!")
         val compatibleRenderers = getCompatibleRenderers(context).second
-        currentRenderer = compatibleRenderers.find { it.getUniqueIdentifier() == uniqueIdentifier } ?: run {
+        currentRenderer = compatibleRenderers.find { it.getUniqueIdentifier() == RendererSelection.normalize(uniqueIdentifier) } ?: run {
             if (retryToFirstOnFailure) {
                 val renderer = compatibleRenderers[0]
                 Logging.w("Renderers", "Incompatible renderer $uniqueIdentifier will be replaced with ${renderer.getUniqueIdentifier()} (${renderer.getRendererName()})")
@@ -142,8 +139,16 @@ object Renderers {
      */
     fun isCurrentRendererValid(): Boolean = isInitialized && this.currentRenderer != null
 
+    /** Label a saved preference without changing the active renderer or probing the GPU. */
+    fun getDisplayName(identifier: String): String {
+        init()
+        val normalized = RendererSelection.normalize(identifier)
+        return renderers.find { it.getUniqueIdentifier() == normalized || it.getRendererId() == normalized }
+            ?.getRendererName() ?: normalized
+    }
+
     /** The renderers that come with the launcher: their libraries are part of its APK. */
     private fun RendererInterface.isBuiltIn(): Boolean =
         this is GL4ESRenderer || this is KryptonRenderer || this is LTWRenderer ||
-                this is VulkanZinkRenderer || this is FreedrenoRenderer
+                this is VulkanZinkRenderer
 }

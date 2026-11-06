@@ -1,0 +1,3 @@
+Rust launcher core: streaming SHA-256 and atomic settings/cache writes
+Source-tree: e615b19fed4eaf087c802589bc8dbc1610213578
+CI run: https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/runs/41237587502

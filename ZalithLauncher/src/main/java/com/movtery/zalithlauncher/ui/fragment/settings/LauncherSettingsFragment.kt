@@ -44,6 +44,13 @@ class LauncherSettingsFragment() : AbstractSettingsFragment(R.layout.settings_fr
 
         SwitchSettingsWrapper(
             context,
+            AllSettings.lowEndMode,
+            binding.lowEndModeLayout,
+            binding.lowEndMode
+        )
+
+        SwitchSettingsWrapper(
+            context,
             AllSettings.checkLibraries,
             binding.checkLibrariesLayout,
             binding.checkLibraries

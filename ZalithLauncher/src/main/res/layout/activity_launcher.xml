@@ -14,11 +14,12 @@
         android:id="@+id/top_layout"
         android:layout_width="match_parent"
         android:layout_height="@dimen/_40sdp"
-        android:background="@color/background_menu_top"
+        android:background="@drawable/mc_header"
         app:layout_constraintTop_toTopOf="parent">
 
         <com.movtery.zalithlauncher.ui.view.AnimTextView
             android:id="@+id/app_title_text"
+            android:fontFamily="monospace"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/_12sdp"

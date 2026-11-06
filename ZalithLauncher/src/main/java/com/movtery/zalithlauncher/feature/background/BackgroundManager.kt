@@ -60,9 +60,11 @@ object BackgroundManager {
         callback: CallbackDrawableImageViewTarget.Callback? = null
     ) {
         backgroundView.setImageDrawable(
-            ContextCompat.getDrawable(context, R.color.background_app)
+            ContextCompat.getDrawable(context, if (backgroundType == BackgroundType.MAIN_MENU)
+                R.drawable.mc_overworld else R.color.background_app)
         )
 
+        if (backgroundType == BackgroundType.MAIN_MENU) backgroundView.scaleType = ImageView.ScaleType.CENTER_CROP
         val backgroundImage = getBackgroundImage(backgroundType) ?: run {
             callback?.callback(false)
             return
