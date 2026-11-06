@@ -1,3 +1,10 @@
-Rust launcher core: streaming SHA-256 and atomic settings/cache writes
-Source-tree: e615b19fed4eaf087c802589bc8dbc1610213578
-CI run: https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/runs/41237587502
+{
+  "sha256": "1317d2b410d235679b04920e6040fb5c7fd47e03406e54aa6e4fd6908d3335f4",
+  "abis": [
+    "armeabi-v7a",
+    "arm64-v8a",
+    "x86",
+    "x86_64"
+  ],
+  "source_tree": "f9559df3ae4eeeec1bc68a90bf0beaf33c462542"
+}
