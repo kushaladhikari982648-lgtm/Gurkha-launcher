@@ -65,11 +65,13 @@ jobs:
         run: |
           set -o pipefail
           {
-            cargo install cargo-ndk --locked
+            cargo install cargo-ndk --version 4.1.2 --locked
             "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
             export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
-            (cd launcher-core && cargo ndk -p 26 -t armeabi-v7a -t arm64-v8a -t x86 -t x86_64 build --release --locked)
+            (cd launcher-core && cargo ndk --platform 26 -t armeabi-v7a -t arm64-v8a -t x86 -t x86_64 build --release --locked)
+            (cd launcher-core && cargo vendor --locked vendor)
             python3 launcher-core/pack_aar.py
+            python3 tools/package_core_source.py
             python3 tools/record_native_build.py
           } 2>&1 | tee -a "$RUNNER_TEMP/native-build.log"
       - uses: actions/upload-artifact@v7
@@ -90,8 +92,10 @@ jobs:
         if: failure()
         run: |
           python3 - "$RUNNER_TEMP/native-build.log" <<'PY'
-          import pathlib,sys
-          p=pathlib.Path(sys.argv[1]); text=p.read_text(errors='replace')[-4000:] if p.exists() else 'See setup step'
+          import pathlib,sys,re
+          p=pathlib.Path(sys.argv[1]); lines=p.read_text(errors='replace').splitlines() if p.exists() else ['See setup step']
+          hits={j for i,l in enumerate(lines) if re.search(r'error|panicked|unknown package|FAILED|test result',l,re.I) for j in range(max(0,i-2),min(len(lines),i+5))}
+          text='\n'.join(lines[i] for i in sorted(hits))[-4000:] or '\n'.join(lines[-20:])
           print('::error title=Native build failed::'+text.replace('%','%25').replace('\n','%0A').replace('\r',''))
           PY
 

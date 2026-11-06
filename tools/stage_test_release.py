@@ -40,6 +40,7 @@ def main():
     require(info['launcher_commit'] == os.environ['GITHUB_SHA'], 'Native/source mismatch')
     require(info['workflow_run'] == os.environ['GITHUB_RUN_ID'], 'Native artifacts from a different run')
     require(digest('release-extra/ltw-release.aar') == info['ltw']['sha256'], 'Renderer AAR checksum mismatch')
+    require(digest('release-extra/launcher-core-release.aar') == info['launcher-core']['sha256'], 'Core AAR checksum mismatch')
     with zipfile.ZipFile('release-extra/LTW-corresponding-source.zip') as archive:
         require(any(n.endswith('/CMakeLists.txt') for n in archive.namelist()), 'Incomplete renderer source archive')
     tools = sorted(Path(os.environ['ANDROID_HOME']).glob('build-tools/*/apksigner'),
@@ -75,7 +76,7 @@ def main():
         shutil.copyfile(apk, dest)
         records.append(dict(file=dest.name, sha256=digest(dest), bytes=dest.stat().st_size, signer_sha256=next(iter(certificates))))
     require(len({r['signer_sha256'] for r in records}) == 1, 'Inconsistent signing certificates')
-    for name in ('NATIVE_BUILD_INFO.json', 'LTW-corresponding-source.zip', 'ltw-release.aar'):
+    for name in ('NATIVE_BUILD_INFO.json', 'LTW-corresponding-source.zip', 'ltw-release.aar', 'launcher-core-release.aar', 'Rust-core-corresponding-source.zip'):
         shutil.copyfile(Path('release-extra') / name, out / name)
     build = dict(version=version, version_code=int(props['launcher_version_code']), commit=os.environ['GITHUB_SHA'],
                  run=os.environ['GITHUB_RUN_ID'], package='com.gurkha.launcher.debug', build_type='debug', apks=records)
@@ -83,7 +84,8 @@ def main():
     (out / 'SHA256SUMS.txt').write_text('\n'.join(f'{digest(p)}  {p.name}' for p in sorted(out.iterdir()))+'\n')
     run('gh', 'release', 'upload', tag, *[str(p) for p in out.iterdir()])
     run('gh', 'release', 'edit', tag, '--notes-file', f'.github/release-notes/{tag}.md')
-    print(f'Verified and attached 10 assets to {tag}; release remains a draft')
+    print('::notice title=Verified APK signatures and checksums::' + json.dumps(build))
+    print(f'Verified and attached {len(list(out.iterdir()))} assets to {tag}; release remains a draft')
 
 
 if __name__ == '__main__': main()

@@ -39,12 +39,13 @@ Each APK is checked for the correct ELF library in every ABI it contains.
 cd launcher-core
 cargo test --locked
 cargo build --locked
-cargo ndk -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release --locked
+cargo ndk --platform 26 -t arm64-v8a -t armeabi-v7a -t x86 -t x86_64 build --release --locked
+cargo vendor --locked vendor
 python3 pack_aar.py
 ```
 
-The first bootstrap CI build generates Cargo.lock and commits it alongside the built AAR. Subsequent
-builds use that lock. Direct dependencies are exact-pinned; the lock pins their transitive graph.
+Cargo.lock is committed; builds use it without silently refreshing dependency versions.
+The AAR carries dependency license notices; release assets include vendored corresponding source. Direct dependencies are exact-pinned; the lock pins their transitive graph.
 `ZalithLauncher/libs/launcher-core-release.txt` records the source-tree fingerprint and CI run.
 Code is under the launcher's GPLv3-or-later terms; jni and sha2 use their upstream dual MIT/Apache-2.0
 licenses. This crate does not inherit the unlicensed upstream renderer's code.

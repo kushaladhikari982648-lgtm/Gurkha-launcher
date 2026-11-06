@@ -30,5 +30,6 @@ extra.mkdir(exist_ok=True)
 (extra / 'NATIVE_BUILD_INFO.json').write_text(json.dumps(records, indent=2)+'\n')
 for stem in ('ltw', 'launcher-core'):
     (root / f'ZalithLauncher/libs/{stem}-release.txt').write_text(json.dumps(records[stem], indent=2)+'\n')
-shutil.copyfile(root / 'ZalithLauncher/libs/ltw-release.aar', extra / 'ltw-release.aar')
+for stem in ('ltw', 'launcher-core'):
+    shutil.copyfile(root / f'ZalithLauncher/libs/{stem}-release.aar', extra / f'{stem}-release.aar')
 print('Verified LTW and Rust launcher core for all four ABIs')

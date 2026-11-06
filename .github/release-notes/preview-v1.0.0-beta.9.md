@@ -32,6 +32,8 @@ Bundled Java 25 is unavailable on **32-bit x86**. Future 26.x releases, mods, JN
 and in-world rendering are not proven by API/package checks. No WebGPU layer was added: it is not a
 replacement for Minecraft's OpenGL/SDL backend and would add unverified driver requirements.
 
-The release includes SHA256SUMS, build provenance, the renderer AAR and corresponding LTW source.
-The source archives automatically provided by GitHub contain the Rust core and launcher changes.
+The release includes SHA256SUMS, build provenance, both rebuilt native AARs, corresponding LTW source
+and Rust-core source with vendored dependencies. The APKs include the Rust dependency license notices.
+GitHub source archives contain the launcher changes. CI rebuilds the pinned native dependencies before
+building APKs; for a local checkout of the release tag, use the attached AARs or reproduce that workflow.
 No production updater feed is changed by this preview.

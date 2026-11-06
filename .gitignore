@@ -28,3 +28,5 @@ __pycache__/
 /downloaded-apks/
 
 /launcher-core/target/
+
+/launcher-core/vendor/

@@ -142,7 +142,7 @@ public class MinecraftGLSurface extends View implements GrabListener {
             SurfaceView surfaceView = new SurfaceView(getContext());
             mSurface = surfaceView;
             mNativeSurface = surfaceView.getHolder().getSurface();
-            setupSDL(getContext(), mNativeSurface, (ViewGroup) getParent());
+            if (!isAlreadyRunning) setupSDL(getContext(), mNativeSurface, (ViewGroup) getParent());
 
             surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
                 private boolean isCalled = isAlreadyRunning;
@@ -151,7 +151,10 @@ public class MinecraftGLSurface extends View implements GrabListener {
                     mNativeSurface = holder.getSurface();
                     if(isCalled) {
                         JREUtils.setupBridgeWindow(mNativeSurface);
-                        if (sdlEnabled) SDLSurface.setNativeSurface(mNativeSurface);
+                        if (sdlEnabled) {
+                            SDLSurface.setNativeSurface(mNativeSurface);
+                            SDLActivity.getSDLSurface().surfaceChanged();
+                        }
                         return;
                     }
                     isCalled = true;
@@ -190,7 +193,10 @@ public class MinecraftGLSurface extends View implements GrabListener {
                     if (!isCalled) setupSDL(getContext(), mNativeSurface, (ViewGroup) getParent());
                     if(isCalled) {
                         JREUtils.setupBridgeWindow(tSurface);
-                        if (sdlEnabled) SDLSurface.setNativeSurface(mNativeSurface);
+                        if (sdlEnabled) {
+                            SDLSurface.setNativeSurface(mNativeSurface);
+                            SDLActivity.getSDLSurface().surfaceChanged();
+                        }
                         return;
                     }
                     isCalled = true;

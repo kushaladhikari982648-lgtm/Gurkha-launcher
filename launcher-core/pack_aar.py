@@ -11,7 +11,14 @@ ABIS = {'arm64-v8a': ('aarch64-linux-android', 183), 'armeabi-v7a': ('armv7-linu
 
 
 def main():
-    entries = {}
+    entries = {'assets/licenses/gurkha-core/GPL-3.0.txt': (ROOT.parent / 'LICENSE').read_bytes()}
+    vendor = ROOT / 'vendor'
+    if not vendor.is_dir():
+        raise SystemExit('Run cargo vendor --locked vendor inside launcher-core before packaging')
+    for crate in vendor.iterdir():
+        for path in crate.rglob('*'):
+            if path.is_file() and path.name.upper().startswith(('LICENSE', 'COPYING', 'NOTICE', 'COPYRIGHT')):
+                entries['assets/licenses/gurkha-core/' + str(path.relative_to(vendor))] = path.read_bytes()
     for abi, (triple, machine) in ABIS.items():
         data = (ROOT / 'target' / triple / 'release/libgurkha_core.so').read_bytes()
         assert data[:4] == b'\x7fELF' and struct.unpack_from('<H', data, 18)[0] == machine, abi
