@@ -47,6 +47,10 @@ try:
     root,_=wait('home_button',180)
     assert find(root,'play_button') is not None,'Primary action missing from portrait home'
     screenshot('portrait-home')
+    tap(find(root,'versions_button'));root,_=wait('install_new')
+    assert find(root,'create_path_button') is not None,'Profile-path actions missing'
+    screenshot('portrait-versions')
+    root,node=wait('setting_button');tap(node);root,_=wait('home_button')
     tap(find(root,'settings_button'));root,_=wait('tab_launcher')
     tap(find(root,'tab_launcher'));wait('low_end_mode');screenshot('portrait-settings')
     root,_=wait('tab_game');tap(find(root,'tab_game'))
