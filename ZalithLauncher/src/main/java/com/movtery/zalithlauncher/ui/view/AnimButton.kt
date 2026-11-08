@@ -19,16 +19,14 @@ open class AnimButton @JvmOverloads constructor(
     init {
         isAllCaps = false
         setRipple()
-        stateListAnimator = AnimatorInflater.loadStateListAnimator(context, R.xml.anim_scale)
-        translationZ = Tools.dpToPx(4f)
+        stateListAnimator = null
+        translationZ = 0f
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        post {
-            pivotX = width / 2f
-            pivotY = height / 2f
-        }
+        pivotX = width / 2f
+        pivotY = height / 2f
     }
 
     private fun setRipple() {

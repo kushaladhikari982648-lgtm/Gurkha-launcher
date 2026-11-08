@@ -17,18 +17,19 @@ class AnimTextView @JvmOverloads constructor(
     defStyleAttr: Int = android.R.attr.textStyle
 ) : AppCompatTextView(context, attrs, defStyleAttr) {
     init {
-        stateListAnimator = AnimatorInflater.loadStateListAnimator(context, R.xml.anim_scale)
-        if (context.obtainStyledAttributes(attrs, R.styleable.AnimTextView).getBoolean(R.styleable.AnimTextView_ripple_for_text, false)) {
-            setRipple()
+        stateListAnimator = null
+        val attributes = context.obtainStyledAttributes(attrs, R.styleable.AnimTextView)
+        try {
+            if (attributes.getBoolean(R.styleable.AnimTextView_ripple_for_text, false)) setRipple()
+        } finally {
+            attributes.recycle()
         }
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        post {
-            pivotX = width / 2f
-            pivotY = height / 2f
-        }
+        pivotX = width / 2f
+        pivotY = height / 2f
     }
 
     private fun setRipple() {

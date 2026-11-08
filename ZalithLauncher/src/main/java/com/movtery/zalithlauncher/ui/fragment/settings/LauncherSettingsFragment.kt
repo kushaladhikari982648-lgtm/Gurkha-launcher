@@ -24,10 +24,10 @@ import org.greenrobot.eventbus.EventBus
 
 class LauncherSettingsFragment() : AbstractSettingsFragment(R.layout.settings_fragment_launcher, SettingCategory.LAUNCHER) {
     private lateinit var binding: SettingsFragmentLauncherBinding
-    private var parentFragment: FragmentWithAnim? = null
+    private var hostFragment: FragmentWithAnim? = null
 
     constructor(parentFragment: FragmentWithAnim?) : this() {
-        this.parentFragment = parentFragment
+        this.hostFragment = parentFragment
     }
 
     override fun onCreateView(
@@ -110,7 +110,7 @@ class LauncherSettingsFragment() : AbstractSettingsFragment(R.layout.settings_fr
             context,
             binding.customBackgroundLayout
         ) {
-            parentFragment?.apply {
+            (hostFragment ?: (parentFragment as? FragmentWithAnim))?.apply {
                 ZHTools.swapFragmentWithAnim(
                     this,
                     CustomBackgroundFragment::class.java,

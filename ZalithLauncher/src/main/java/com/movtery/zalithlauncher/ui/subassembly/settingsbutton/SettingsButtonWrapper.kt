@@ -9,6 +9,8 @@ class SettingsButtonWrapper(val button: ImageButton) {
     private var buttonType: ButtonType? = ButtonType.SETTINGS
 
     fun setButtonType(type: ButtonType) {
+        button.contentDescription = button.context.getString(
+            if (type == ButtonType.SETTINGS) R.string.mc_settings else R.string.mc_home)
         if (buttonType != type) {
             buttonType = type
             button.setImageDrawable(

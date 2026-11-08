@@ -184,7 +184,7 @@ public final class ZHTools {
 
     private static FragmentTransaction getFragmentTransaction(Fragment fragment) {
         FragmentTransaction transaction = fragment.requireActivity().getSupportFragmentManager().beginTransaction();
-        if (AllSettings.getAnimation().getValue()) {
+        if (com.movtery.zalithlauncher.utils.anim.MotionPolicy.isEnabled()) {
             transaction.setCustomAnimations(R.anim.cut_into, R.anim.cut_out, R.anim.cut_into, R.anim.cut_out);
         }
         return transaction.setReorderingAllowed(true);

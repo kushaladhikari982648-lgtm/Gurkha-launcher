@@ -24,10 +24,10 @@ import net.kdt.pojavlaunch.fragments.GamepadMapperFragment
 
 class ControlSettingsFragment() : AbstractSettingsFragment(R.layout.settings_fragment_control, SettingCategory.CONTROL) {
     private lateinit var binding: SettingsFragmentControlBinding
-    private var parentFragment: FragmentWithAnim? = null
+    private var hostFragment: FragmentWithAnim? = null
 
     constructor(parentFragment: FragmentWithAnim?) : this() {
-        this.parentFragment = parentFragment
+        this.hostFragment = parentFragment
     }
 
     override fun onCreateView(
@@ -117,7 +117,7 @@ class ControlSettingsFragment() : AbstractSettingsFragment(R.layout.settings_fra
             context,
             binding.customMouseLayout
         ) {
-            parentFragment?.apply {
+            (hostFragment ?: (parentFragment as? FragmentWithAnim))?.apply {
                 ZHTools.swapFragmentWithAnim(
                     this,
                     CustomMouseFragment::class.java,
@@ -181,7 +181,7 @@ class ControlSettingsFragment() : AbstractSettingsFragment(R.layout.settings_fra
             context,
             binding.changeControllerBindingsLayout
         ) {
-            parentFragment?.apply {
+            (hostFragment ?: (parentFragment as? FragmentWithAnim))?.apply {
                 ZHTools.swapFragmentWithAnim(
                     this,
                     GamepadMapperFragment::class.java,

@@ -1,4 +1,1 @@
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@drawable/mc_panel" />
-    <item android:gravity="top" android:height="6dp" android:drawable="@drawable/mc_grass" />
-</layer-list>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle"><corners android:radius="0dp"/><solid android:color="@color/background_app"/></shape>

@@ -487,9 +487,40 @@ jobs:
             gh release create "$TAG" out/* $PRERELEASE --verify-tag --title "Gurkha Launcher $VERSION" --notes-file "$NOTES"
           fi
 
+  NativeUiSmoke:
+    needs: BuildDebug
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: GurkhaLauncher(Debug) x86_64
+          path: ui-apk
+      - name: Enable emulator hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Test native launcher UI
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          script: python3 tools/ui_smoke.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-ui-smoke
+          path: ui-smoke/
+          if-no-files-found: warn
+
   StageRequestedPreview:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/arena/9d5eaad1-gurkha-launcher' }}
-    needs: [BuildDebug, LwjglApiChecks, NativeDependencies, CompatibilityChecks]
+    needs: [BuildDebug, LwjglApiChecks, NativeDependencies, CompatibilityChecks, NativeUiSmoke]
     runs-on: ubuntu-22.04
     permissions:
       contents: write

@@ -1,6 +1,1 @@
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_enabled="false" android:drawable="@drawable/mc_button_disabled" />
-    <item android:state_pressed="true" android:drawable="@drawable/mc_button_pressed" />
-    <item android:state_focused="true" android:drawable="@drawable/mc_button_pressed" />
-    <item android:drawable="@drawable/mc_button_play" />
-</selector>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#446040"><item><selector><item android:state_enabled="false" android:drawable="@drawable/mc_button_disabled"/><item android:drawable="@drawable/modern_primary_fill"/></selector></item></ripple>

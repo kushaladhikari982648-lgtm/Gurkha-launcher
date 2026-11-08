@@ -30,3 +30,6 @@ __pycache__/
 /launcher-core/target/
 
 /launcher-core/vendor/
+
+/ui-apk/
+/ui-smoke/

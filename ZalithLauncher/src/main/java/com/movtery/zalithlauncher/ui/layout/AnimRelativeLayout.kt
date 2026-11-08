@@ -18,18 +18,19 @@ class AnimRelativeLayout @JvmOverloads constructor(
     defStyleRes: Int = 0
 ) : RelativeLayout(context, attrs, defStyleAttr, defStyleRes) {
     init {
-        stateListAnimator = AnimatorInflater.loadStateListAnimator(context, R.xml.anim_scale)
-        if (context.obtainStyledAttributes(attrs, R.styleable.AnimRelativeLayout).getBoolean(R.styleable.AnimRelativeLayout_ripple_for_relative, false)) {
-            setRipple()
+        stateListAnimator = null
+        val attributes = context.obtainStyledAttributes(attrs, R.styleable.AnimRelativeLayout)
+        try {
+            if (attributes.getBoolean(R.styleable.AnimRelativeLayout_ripple_for_relative, false)) setRipple()
+        } finally {
+            attributes.recycle()
         }
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        post {
-            pivotX = width / 2f
-            pivotY = height / 2f
-        }
+        pivotX = width / 2f
+        pivotY = height / 2f
     }
 
     private fun setRipple() {

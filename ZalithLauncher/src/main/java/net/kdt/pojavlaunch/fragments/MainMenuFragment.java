@@ -61,11 +61,11 @@ public class MainMenuFragment extends FragmentWithAnim {
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        binding = FragmentLauncherBinding.inflate(getLayoutInflater());
+        binding = FragmentLauncherBinding.inflate(inflater, container, false);
         // Keep the shared account widget unchanged on the account-management screen.
         compactHomeAccount();
         // The activity now owns the shared scenery/custom backdrop on every launcher page.
-        binding.overworldArt.setVisibility(View.GONE);
+
         accountViewWrapper = new AccountViewWrapper(this, binding.viewAccount);
         accountViewWrapper.refreshAccountInfo();
         return binding.getRoot();
@@ -120,7 +120,33 @@ public class MainMenuFragment extends FragmentWithAnim {
             ZHTools.swapFragmentWithAnim(this, ModsFragment.class, ModsFragment.TAG, bundle);
         });
 
-        binding.playButton.setOnClickListener(v -> EventBus.getDefault().post(new LaunchGameEvent()));
+        binding.playButton.setOnClickListener(v -> {
+            if (VersionsManager.INSTANCE.getCurrentVersion() == null) binding.version.performClick();
+            else EventBus.getDefault().post(new LaunchGameEvent());
+        });
+        binding.homeButton.setSelected(true);
+        binding.homeButton.setOnClickListener(v -> {
+            binding.toolsPanel.setVisibility(View.GONE);
+            binding.toolsButton.setSelected(false);
+            binding.homeButton.setSelected(true);
+            binding.homeScroll.smoothScrollTo(0, 0);
+        });
+        binding.toolsButton.setOnClickListener(v -> {
+            boolean show = binding.toolsPanel.getVisibility() != View.VISIBLE;
+            binding.toolsPanel.setVisibility(show ? View.VISIBLE : View.GONE);
+            binding.toolsButton.setSelected(show);
+            binding.homeButton.setSelected(!show);
+            if (show) {
+                final FragmentLauncherBinding current = binding;
+                current.homeScroll.post(() -> {
+                    if (binding == current) current.homeScroll.smoothScrollTo(0, current.toolsPanel.getTop());
+                });
+            }
+        });
+        binding.quickVersions.setOnClickListener(v -> binding.versionsButton.performClick());
+        binding.quickMods.setOnClickListener(v -> binding.modsButton.performClick());
+        binding.quickTools.setOnClickListener(v -> binding.toolsButton.performClick());
+        binding.performanceButton.setOnClickListener(v -> binding.settingsButton.performClick());
 
         // No always-running text marquee on the low-end home screen.
     }
@@ -152,9 +178,9 @@ public class MainMenuFragment extends FragmentWithAnim {
         set.connect(name, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, gap);
         set.connect(type, ConstraintSet.TOP, name, ConstraintSet.BOTTOM, gap / 2);
         set.applyTo(binding.viewAccount.getRoot());
-        binding.viewAccount.getRoot().setBackgroundResource(R.drawable.mc_panel);
-        binding.viewAccount.userName.setTextColor(Color.rgb(243, 242, 232));
-        binding.viewAccount.accountType.setTextColor(Color.rgb(196, 203, 185));
+        binding.viewAccount.getRoot().setBackgroundResource(R.drawable.mc_button);
+        binding.viewAccount.userName.setTextColor(Color.rgb(240, 243, 238));
+        binding.viewAccount.accountType.setTextColor(Color.rgb(164, 177, 167));
         binding.viewAccount.userName.setTextSize(16);
         binding.viewAccount.accountType.setTextSize(12);
         binding.viewAccount.userName.setSingleLine(true);
@@ -171,6 +197,8 @@ public class MainMenuFragment extends FragmentWithAnim {
         binding.memorySummary.setText(getString(R.string.mc_memory, AllSettings.getRamAllocation().getValue().getValue()));
         binding.lowEndStatus.setText(AllSettings.getLowEndMode().getValue() ? R.string.mc_low_end_on : R.string.mc_low_end_off);
         binding.modsButton.setEnabled(version != null);
+        binding.quickMods.setEnabled(version != null);
+        binding.playButton.setText(version == null ? R.string.modern_add_version : R.string.modern_launch);
 
         int versionInfoVisibility;
         if (version != null) {
@@ -184,6 +212,7 @@ public class MainMenuFragment extends FragmentWithAnim {
             new VersionIconUtils(version).start(binding.versionIcon);
             binding.managerProfileButton.setVisibility(View.VISIBLE);
         } else {
+            binding.versionIcon.setImageResource(R.drawable.modern_cube);
             binding.versionName.setText(R.string.version_no_versions);
             binding.managerProfileButton.setVisibility(View.GONE);
             versionInfoVisibility = View.GONE;

@@ -18,18 +18,19 @@ class AnimConstraintLayout @JvmOverloads constructor(
     defStyleRes: Int = 0
 ) : ConstraintLayout(context, attrs, defStyleAttr, defStyleRes) {
     init {
-        stateListAnimator = AnimatorInflater.loadStateListAnimator(context, R.xml.anim_scale)
-        if (context.obtainStyledAttributes(attrs, R.styleable.AnimConstraintLayout).getBoolean(R.styleable.AnimConstraintLayout_ripple_for_constraint, false)) {
-            setRipple()
+        stateListAnimator = null
+        val attributes = context.obtainStyledAttributes(attrs, R.styleable.AnimConstraintLayout)
+        try {
+            if (attributes.getBoolean(R.styleable.AnimConstraintLayout_ripple_for_constraint, false)) setRipple()
+        } finally {
+            attributes.recycle()
         }
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        post {
-            pivotX = width / 2f
-            pivotY = height / 2f
-        }
+        pivotX = width / 2f
+        pivotY = height / 2f
     }
 
     private fun setRipple() {

@@ -7,90 +7,76 @@ import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
-import androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback
 import com.movtery.anim.AnimPlayer
-import com.movtery.anim.animations.Animations
 import com.movtery.zalithlauncher.R
 import com.movtery.zalithlauncher.databinding.FragmentSettingsBinding
 import com.movtery.zalithlauncher.event.value.SettingsPageSwapEvent
 import com.movtery.zalithlauncher.setting.Settings
-import com.movtery.zalithlauncher.ui.fragment.settings.ControlSettingsFragment
-import com.movtery.zalithlauncher.ui.fragment.settings.ExperimentalSettingsFragment
-import com.movtery.zalithlauncher.ui.fragment.settings.GameSettingsFragment
-import com.movtery.zalithlauncher.ui.fragment.settings.LauncherSettingsFragment
-import com.movtery.zalithlauncher.ui.fragment.settings.VideoSettingsFragment
+import com.movtery.zalithlauncher.ui.fragment.settings.*
 import org.greenrobot.eventbus.EventBus
 
 class SettingsFragment : FragmentWithAnim(R.layout.fragment_settings) {
-    companion object {
-        const val TAG: String = "SettingsFragment"
-    }
+    companion object { const val TAG = "SettingsFragment" }
+    private var currentBinding: FragmentSettingsBinding? = null
+    private val binding get() = checkNotNull(currentBinding)
+    private var callback: ViewPager2.OnPageChangeCallback? = null
 
-    private lateinit var binding: FragmentSettingsBinding
-
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        binding = FragmentSettingsBinding.inflate(layoutInflater)
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, state: Bundle?): View {
+        currentBinding = FragmentSettingsBinding.inflate(inflater, container, false)
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        initViewPager()
-
-        binding.settingsTab.observeIndexChange { _, toIndex, reselect, fromUser ->
-            if (reselect) return@observeIndexChange
-            if (fromUser) binding.settingsViewpager.setCurrentItem(toIndex, false)
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        Settings.refreshSettings()
-    }
-
-    private fun initViewPager() {
+        val tabs = listOf(binding.tabVideo, binding.tabControl, binding.tabGame,
+            binding.tabLauncher, binding.tabExperimental)
         binding.settingsViewpager.apply {
             adapter = ViewPagerAdapter(this@SettingsFragment)
-            orientation = ViewPager2.ORIENTATION_HORIZONTAL
             offscreenPageLimit = 1
             isUserInputEnabled = false
-            registerOnPageChangeCallback(object: OnPageChangeCallback() {
+            callback = object : ViewPager2.OnPageChangeCallback() {
                 override fun onPageSelected(position: Int) {
-                    super.onPageSelected(position)
-                    onFragmentSelect(position)
+                    val current = currentBinding ?: return
+                    tabs.forEachIndexed { index, tab -> tab.isSelected = index == position }
+                    tabs[position].post {
+                        if (currentBinding === current) tabs[position].requestRectangleOnScreen(
+                            android.graphics.Rect(0, 0, tabs[position].width, tabs[position].height), true)
+                    }
                     EventBus.getDefault().post(SettingsPageSwapEvent(position))
                 }
-            })
+            }
+            registerOnPageChangeCallback(callback!!)
+            tabs.forEachIndexed { index, tab -> tab.setOnClickListener { setCurrentItem(index, false) } }
+            setCurrentItem(savedInstanceState?.getInt("settings_page", 3) ?: 3, false)
         }
     }
 
-    private fun onFragmentSelect(position: Int) {
-        binding.settingsTab.onPageSelected(position)
+    override fun onSaveInstanceState(outState: Bundle) {
+        currentBinding?.let { outState.putInt("settings_page", it.settingsViewpager.currentItem) }
+        super.onSaveInstanceState(outState)
     }
 
-    override fun slideIn(animPlayer: AnimPlayer) {
-        animPlayer.apply(AnimPlayer.Entry(binding.settingsLayout, Animations.BounceInRight))
-            .apply(AnimPlayer.Entry(binding.settingsViewpager, Animations.BounceInDown))
+    override fun onResume() { super.onResume(); Settings.refreshSettings() }
+
+    override fun onDestroyView() {
+        callback?.let { binding.settingsViewpager.unregisterOnPageChangeCallback(it) }
+        binding.settingsViewpager.adapter = null
+        callback = null
+        currentBinding = null
+        super.onDestroyView()
     }
 
-    override fun slideOut(animPlayer: AnimPlayer) {
-        animPlayer.apply(AnimPlayer.Entry(binding.settingsLayout, Animations.FadeOutLeft))
-            .apply(AnimPlayer.Entry(binding.settingsViewpager, Animations.FadeOutUp))
-    }
+    override fun slideIn(animPlayer: AnimPlayer) = Unit
+    override fun slideOut(animPlayer: AnimPlayer) = Unit
 
-    private class ViewPagerAdapter(val fragment: FragmentWithAnim): FragmentStateAdapter(fragment.requireActivity()) {
-        override fun getItemCount(): Int = 5
-        override fun createFragment(position: Int): Fragment {
-            return when(position) {
-                1 -> ControlSettingsFragment(fragment)
-                2 -> GameSettingsFragment()
-                3 -> LauncherSettingsFragment(fragment)
-                4 -> ExperimentalSettingsFragment()
-                else -> VideoSettingsFragment()
-            }
+    // Scope pages to this fragment, not its activity; avoids retaining detached settings pages.
+    private class ViewPagerAdapter(val fragment: FragmentWithAnim) : FragmentStateAdapter(fragment) {
+        override fun getItemCount() = 5
+        override fun createFragment(position: Int): Fragment = when (position) {
+            1 -> ControlSettingsFragment(fragment)
+            2 -> GameSettingsFragment()
+            3 -> LauncherSettingsFragment(fragment)
+            4 -> ExperimentalSettingsFragment()
+            else -> VideoSettingsFragment()
         }
     }
 }
