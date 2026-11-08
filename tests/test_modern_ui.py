@@ -48,3 +48,12 @@ class ModernUiTests(unittest.TestCase):
         launcher=next(e for e in root.iter('activity') if e.get(A+'name')=='net.kdt.pojavlaunch.LauncherActivity')
         self.assertEqual('fullSensor',launcher.get(A+'screenOrientation'))
         self.assertNotIn('orientation',launcher.get(A+'configChanges'))
+
+    def test_portrait_versions_have_no_conflicting_constraints(self):
+        root=ET.parse(RES/'layout-port/fragment_versions_list.xml').getroot()
+        app='{http://schemas.android.com/apk/res-auto}'
+        for e in root.iter():
+            self.assertFalse(e.get(app+'layout_constraintTop_toTopOf') and e.get(app+'layout_constraintTop_toBottomOf'))
+            if e.get(A+'id')=='@+id/shadowView':
+                self.assertEqual('gone',e.get(A+'visibility'))
+                self.assertNotEqual('0dp',e.get(A+'layout_width'))
