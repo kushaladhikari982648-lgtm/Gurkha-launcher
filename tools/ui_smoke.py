@@ -36,6 +36,10 @@ def wait(name,seconds=90):
     end=time.monotonic()+seconds
     while time.monotonic()<end:
         root=dump()
+        # First fullscreen use on a real phone profile shows Android's own tutorial.
+        if any(n.get('resource-id')=='android:id/immersive_cling_title' for n in root.iter('node')):
+            button=next((n for n in root.iter('node') if n.get('resource-id')=='android:id/ok'),None)
+            if button is not None: tap(button); continue
         dismiss=find(root,'notice_got_button')
         if dismiss is not None: tap(dismiss); continue
         node=find(root,name)
@@ -55,6 +59,8 @@ try:
     adb('shell','wm','set-user-rotation','lock','0')
     adb('shell','input','keyevent','82')
     adb('shell','monkey','-p',PACKAGE,'-c','android.intent.category.LAUNCHER','1')
+    # Monkey thaws display rotation on exit; restore the test's portrait lock.
+    adb('shell','wm','set-user-rotation','lock','0')
     root,_=wait('home_button',180)
     assert find(root,'play_button') is not None,'Primary action missing from portrait home'
     screenshot('portrait-home')
