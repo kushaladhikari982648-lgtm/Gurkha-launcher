@@ -52,7 +52,7 @@ try:
     adb('install','-g',apks[0])
     adb('shell','wm','size','720x1280');adb('shell','wm','density','240')
     adb('shell','settings','put','system','accelerometer_rotation','0')
-    adb('shell','settings','put','system','user_rotation','0')
+    adb('shell','wm','set-user-rotation','lock','0')
     adb('shell','input','keyevent','82')
     adb('shell','monkey','-p',PACKAGE,'-c','android.intent.category.LAUNCHER','1')
     root,_=wait('home_button',180)
@@ -67,7 +67,7 @@ try:
     root,_=wait('tab_game');tap(find(root,'tab_game'))
     # Recreate while settings are open; the selected tab and child fragments must survive.
     adb('shell','settings','put','system','font_scale','1.3')
-    adb('shell','settings','put','system','user_rotation','1')
+    adb('shell','wm','set-user-rotation','lock','1')
     deadline=time.monotonic()+45
     while True:
         root,node=wait('tab_game')
@@ -91,6 +91,9 @@ try:
     print('::notice title=Native UI smoke test::'+(OUT/'RESULT.txt').read_text().strip())
 except Exception as error:
     message=str(error)+' '+str(getattr(error,'output',''))
+    displays=adb('shell','dumpsys','window','displays')
+    details='\n'.join(l for l in displays.splitlines() if any(k in l for k in ('rotation','Rotation','DisplayInfo','mBaseDisplay','mInitialDisplay')))
+    print('::error title=Emulator display state::'+details[-3500:].replace('%','%25').replace('\n','%0A'))
     print('::error title=Native UI test failure::'+message[-4000:].replace('%','%25').replace('\n','%0A'))
     raise
 finally:
