@@ -46,7 +46,7 @@ class ModernUiTests(unittest.TestCase):
     def test_launcher_rotates_without_changing_game_activity(self):
         root=ET.parse(ROOT/'ZalithLauncher/src/main/AndroidManifest.xml').getroot()
         launcher=next(e for e in root.iter('activity') if e.get(A+'name')=='net.kdt.pojavlaunch.LauncherActivity')
-        self.assertEqual('fullSensor',launcher.get(A+'screenOrientation'))
+        self.assertEqual('fullUser',launcher.get(A+'screenOrientation'))
         self.assertNotIn('orientation',launcher.get(A+'configChanges'))
 
     def test_portrait_versions_have_no_conflicting_constraints(self):

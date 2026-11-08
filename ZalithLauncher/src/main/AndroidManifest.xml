@@ -65,7 +65,7 @@
             android:name="net.kdt.pojavlaunch.LauncherActivity"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="keyboardHidden|keyboard|navigation"
-            android:screenOrientation="fullSensor" />
+            android:screenOrientation="fullUser" />
         <activity
             android:name="com.movtery.zalithlauncher.ui.activity.ErrorActivity"
             android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|keyboard|navigation"

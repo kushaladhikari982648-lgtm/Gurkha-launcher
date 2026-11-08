@@ -67,16 +67,24 @@ try:
     root,_=wait('tab_game');tap(find(root,'tab_game'))
     # Recreate while settings are open; the selected tab and child fragments must survive.
     adb('shell','settings','put','system','font_scale','1.3')
-    adb('shell','wm','size','1280x720')
-    root,node=wait('tab_game')
+    adb('shell','settings','put','system','user_rotation','1')
+    deadline=time.monotonic()+45
+    while True:
+        root,node=wait('tab_game')
+        bounds=find(root,'container_fragment').get('bounds')
+        x1,y1,x2,y2=map(int,re.findall(r'\d+',bounds))
+        if x2-x1>y2-y1: break
+        if time.monotonic()>deadline: raise AssertionError('Emulator did not rotate to landscape: '+bounds)
+        time.sleep(2)
     assert node.get('selected')=='true','Selected settings page lost on recreation'
     screenshot('landscape-settings-large-text')
     # Header's home button remains available on all secondary screens.
     root,node=wait('setting_button');tap(node);root,_=wait('home_button')
     screenshot('landscape-home-large-text')
     tap(find(root,'tools_button'));wait('share_logs_button');screenshot('tools')
-    assert adb('shell','pidof',PACKAGE).strip(),'Launcher process died'
-    pid=adb('shell','pidof',PACKAGE).strip()
+    # Application manifest isolates the UI in its named :launcher process.
+    pid=adb('shell','pidof',PACKAGE+':launcher').strip()
+    assert pid,'Launcher process died'
     logs=adb('logcat','-d','--pid='+pid,'-s','AndroidRuntime:E')
     assert 'FATAL EXCEPTION' not in logs,logs[-3000:]
     (OUT/'RESULT.txt').write_text('PASS: first-run setup, portrait home, settings, tab preservation across size/font recreation, home navigation and tools. Android API 29 x86_64 emulator; not a Helio A22 benchmark or game test.\n')
