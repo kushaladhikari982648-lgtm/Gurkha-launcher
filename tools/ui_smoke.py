@@ -9,12 +9,22 @@ import xml.etree.ElementTree as ET
 PACKAGE='com.gurkha.launcher.debug'
 OUT=Path('ui-smoke'); OUT.mkdir(exist_ok=True)
 def adb(*args, binary=False):
-    return subprocess.check_output(['adb',*args],text=not binary,timeout=120)
+    return subprocess.check_output(['adb',*args],text=not binary,stderr=subprocess.STDOUT,timeout=120)
 def dump():
-    adb('shell','uiautomator','dump','/sdcard/gurkha-ui.xml')
-    text=adb('shell','cat','/sdcard/gurkha-ui.xml')
-    (OUT/'last-hierarchy.xml').write_text(text)
-    return ET.fromstring(text)
+    # UiAutomation may have no root while Splash/rotation is replacing the window.
+    error = None
+    for attempt in range(8):
+        try:
+            adb('shell','uiautomator','dump','/sdcard/gurkha-ui.xml')
+            text=adb('shell','cat','/sdcard/gurkha-ui.xml')
+            root=ET.fromstring(text)
+            (OUT/'last-hierarchy.xml').write_text(text)
+            return root
+        except (subprocess.CalledProcessError, ET.ParseError) as exc:
+            error=exc
+            time.sleep(2)
+    raise RuntimeError('Cannot capture UI hierarchy: '+str(error)+' '+str(getattr(error,'output','')))
+
 def find(root,name):
     return next((n for n in root.iter('node') if n.get('resource-id')==f'{PACKAGE}:id/{name}'),None)
 def tap(node):
@@ -43,6 +53,7 @@ try:
     adb('shell','wm','size','720x1280');adb('shell','wm','density','240')
     adb('shell','settings','put','system','accelerometer_rotation','0')
     adb('shell','settings','put','system','user_rotation','0')
+    adb('shell','input','keyevent','82')
     adb('shell','monkey','-p',PACKAGE,'-c','android.intent.category.LAUNCHER','1')
     root,_=wait('home_button',180)
     assert find(root,'play_button') is not None,'Primary action missing from portrait home'
@@ -65,9 +76,14 @@ try:
     screenshot('landscape-home-large-text')
     tap(find(root,'tools_button'));wait('share_logs_button');screenshot('tools')
     assert adb('shell','pidof',PACKAGE).strip(),'Launcher process died'
-    logs=adb('logcat','-d','-s','AndroidRuntime:E')
+    pid=adb('shell','pidof',PACKAGE).strip()
+    logs=adb('logcat','-d','--pid='+pid,'-s','AndroidRuntime:E')
     assert 'FATAL EXCEPTION' not in logs,logs[-3000:]
     (OUT/'RESULT.txt').write_text('PASS: first-run setup, portrait home, settings, tab preservation across size/font recreation, home navigation and tools. Android API 29 x86_64 emulator; not a Helio A22 benchmark or game test.\n')
     print('::notice title=Native UI smoke test::'+(OUT/'RESULT.txt').read_text().strip())
+except Exception as error:
+    message=str(error)+' '+str(getattr(error,'output',''))
+    print('::error title=Native UI test failure::'+message[-4000:].replace('%','%25').replace('\n','%0A'))
+    raise
 finally:
     (OUT/'logcat.txt').write_text(adb('logcat','-d','-t','2500'))

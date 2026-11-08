@@ -524,7 +524,7 @@ jobs:
           p=pathlib.Path('ui-smoke/logcat.txt')
           if p.exists():
               lines=p.read_text(errors='replace').splitlines()
-              text='\n'.join(l for l in lines if 'AndroidRuntime' in l)[-5000:]
+              text='\n'.join(l for l in lines if any(s in l for s in ('AndroidRuntime','FATAL','Fatal signal','crash_dump','Abort message','am_crash')))[-5000:]
               if text: print('::error title=Android runtime log::'+text.replace('%','%25').replace('\n','%0A'))
           PYUI
       - uses: actions/upload-artifact@v7
