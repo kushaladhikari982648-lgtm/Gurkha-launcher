@@ -13,7 +13,7 @@ or downloads are used. Interactive settings live in memory and reset on reload.
 - Short opacity/translation transitions; reduced-motion support; no blur or animated wallpaper.
 
 ## Implementation gate
-User approval is required before applying this design to the launcher.
+User approved implementation. Native integration is in beta.10; this folder retains the original concept.
 Native follow-up should audit insets, keyboard overlap, font scaling, portrait/landscape rotation,
 long/localized labels, click listeners, disabled/downloading states, and lifecycle cleanup.
 Profile native frame timings on Helio A22 before claiming that Android scrolling is smooth.

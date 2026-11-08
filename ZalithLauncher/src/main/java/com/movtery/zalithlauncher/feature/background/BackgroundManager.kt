@@ -71,7 +71,6 @@ object BackgroundManager {
         }
 
         Glide.with(context).load(backgroundImage)
-            .override(backgroundView.width, backgroundView.height)
             .centerCrop()
             .into(CallbackDrawableImageViewTarget(backgroundView, callback))
     }

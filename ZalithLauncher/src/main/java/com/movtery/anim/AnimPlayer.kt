@@ -5,6 +5,7 @@ import android.animation.AnimatorSet
 import android.view.View
 import com.movtery.anim.animations.Animations
 import com.movtery.zalithlauncher.setting.AllSettings
+import com.movtery.zalithlauncher.utils.anim.MotionPolicy
 
 class AnimPlayer {
     private var mAnimatorSet: AnimatorSet = AnimatorSet()
@@ -49,8 +50,8 @@ class AnimPlayer {
         }
 
         mAnimatorSet.apply {
-            duration = mDuration ?: AllSettings.animationSpeed.getValue().toLong()
-            startDelay = mDelay ?: 0
+            duration = if (MotionPolicy.isEnabled()) mDuration ?: AllSettings.animationSpeed.getValue().toLong() else 0L
+            startDelay = if (MotionPolicy.isEnabled()) mDelay ?: 0L else 0L
 
             removeAllListeners()
             addListener(object : Animator.AnimatorListener {

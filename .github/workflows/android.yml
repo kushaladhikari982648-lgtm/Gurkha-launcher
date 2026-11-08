@@ -511,6 +511,22 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
           script: python3 tools/ui_smoke.py
+      - name: Report native UI failure
+        if: failure()
+        run: |
+          python3 - <<'PYUI'
+          import pathlib,xml.etree.ElementTree as ET
+          p=pathlib.Path('ui-smoke/last-hierarchy.xml')
+          if p.exists():
+              nodes=ET.parse(p).getroot().iter('node')
+              text='\n'.join(str({k:n.get(k) for k in ('resource-id','text','bounds','selected')}) for n in nodes if n.get('resource-id'))
+              print('::error title=Last emulator screen::'+text[-5000:].replace('%','%25').replace('\n','%0A'))
+          p=pathlib.Path('ui-smoke/logcat.txt')
+          if p.exists():
+              lines=p.read_text(errors='replace').splitlines()
+              text='\n'.join(l for l in lines if 'AndroidRuntime' in l)[-5000:]
+              if text: print('::error title=Android runtime log::'+text.replace('%','%25').replace('\n','%0A'))
+          PYUI
       - uses: actions/upload-artifact@v7
         if: always()
         with:
