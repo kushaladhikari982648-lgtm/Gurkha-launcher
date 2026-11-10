@@ -87,6 +87,12 @@ try:
     tap(find(root,'settings_button'));root,_=wait('tab_launcher')
     tap(find(root,'tab_launcher'));wait('low_end_mode');screenshot('portrait-settings')
     root,_=wait('tab_game');tap(find(root,'tab_game'))
+    deadline=time.monotonic()+30
+    while True:
+        root,node=wait('tab_game')
+        if node.get('selected')=='true':break
+        if time.monotonic()>deadline:raise AssertionError('Game settings tab did not become selected')
+        time.sleep(0.5)
     # Recreate while settings are open; the selected tab and child fragments must survive.
     adb('shell','settings','put','system','font_scale','1.3')
     lock_rotation(adb,1)
