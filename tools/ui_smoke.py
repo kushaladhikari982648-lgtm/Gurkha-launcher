@@ -5,6 +5,7 @@ import subprocess
 import time
 from pathlib import Path
 import xml.etree.ElementTree as ET
+from ui_rotation import lock_rotation
 
 PACKAGE='com.gurkha.launcher.debug'
 OUT=Path('ui-smoke'); OUT.mkdir(exist_ok=True)
@@ -52,7 +53,7 @@ def wait_portrait_home():
     # Splash forces landscape. Freeze again AFTER it has finished, otherwise its
     # pending rotation can invalidate coordinates captured on the first home frame.
     wait('home_button',180)
-    adb('shell','wm','set-user-rotation','lock','0')
+    lock_rotation(adb,0)
     deadline=time.monotonic()+60
     consecutive=0
     while time.monotonic()<deadline:
@@ -88,7 +89,7 @@ try:
     root,_=wait('tab_game');tap(find(root,'tab_game'))
     # Recreate while settings are open; the selected tab and child fragments must survive.
     adb('shell','settings','put','system','font_scale','1.3')
-    adb('shell','wm','set-user-rotation','lock','1')
+    lock_rotation(adb,1)
     deadline=time.monotonic()+45
     while True:
         root,node=wait('tab_game')
