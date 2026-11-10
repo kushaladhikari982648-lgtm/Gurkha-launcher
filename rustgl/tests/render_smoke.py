@@ -12,6 +12,9 @@ from pathlib import Path
 import re
 import sys
 
+limited_es30 = '--gles30-limits' in sys.argv
+if limited_es30:
+    assert os.environ.get('MESA_GLES_VERSION_OVERRIDE') == '3.0', 'Negative capability test requires actual ES 3.0 profile'
 os.environ.setdefault('EGL_PLATFORM', 'surfaceless')
 os.environ.setdefault('LIBGL_ALWAYS_SOFTWARE', '1')
 root = Path(__file__).resolve().parents[1]
@@ -103,9 +106,12 @@ for match in re.finditer(r'const (\w+): &str = r(#?)"(.*?)"\2;', fixtures, re.S)
     # A fixture whose name carries _VSH is a vertex shader; everything else is a fragment
     # shader. (The suffix is part of the contract with the fixture file.)
     stage = 0x8B31 if '_VSH' in name else 0x8B30
-    shader = compile_src(text, stage, name)
+    # ES 3.0 lacks texture buffers. A deliberate, logged compile failure is the
+    # contract, not an empty shader that makes Minecraft silently render black.
+    expected = not (limited_es30 and name == 'MC_MODERN_VSH_BUFFER')
+    shader = compile_src(text, stage, name, expected)
     delete_shader(shader)
-    print(f'PASS: GLES compile {name}', flush=True)
+    print(f'PASS: GLES {"compile" if expected else "explicit capability rejection"} {name}', flush=True)
 assert fixture_count == 20, f'Expected all twenty shader fixtures, found {fixture_count}'
 shader = compile_src('#version 330\nvoid main(){ EmitVertex(); }', 0x8B31,
                      'unsupported stage must fail instead of becoming a blank shader', False)
@@ -261,6 +267,12 @@ for allocation in ("mutable", "immutable", "named immutable"):
         gl('glBufferData',None,U,Z,P,U)(0x8A11,C.sizeof(values),values,0x88E8)
         assert get_error() == 0x0502, 'immutable storage must reject reallocation'
     gl('glDeleteBuffers',None,I,P)(1,C.byref(ubo))
+
+if limited_es30:
+    extensions = {C.string_at(get_si(0x1F03, i)) for i in range(n.value)}
+    assert b'GL_ARB_texture_buffer_object' not in extensions, 'ES 3.0 must not advertise unavailable texture buffers'
+    print('PASS: ES 3.0 supported rendering probes and explicit texture-buffer rejection; NOT modern-game compatibility', flush=True)
+    sys.exit(0)
 
 # Modern cloud/texture-buffer path: translate, DSA attach, sample, update, ranged attach.
 vs_buffer = compile_src('''#version 330

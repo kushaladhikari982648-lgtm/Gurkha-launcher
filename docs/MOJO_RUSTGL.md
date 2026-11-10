@@ -55,9 +55,11 @@ are not game-launch proof.
   forced CPU affinity, or unlimited caches for Helio A22.
 
 CI builds all four renderer ABIs, tests the host JNI bridge, runs Rust unit tests
-and real Mesa GLES rendering probes, checks APK native contents and runs existing
+and real Mesa GLES rendering probes (full suite on 3.1/3.2; supported
+paths plus explicit texture-buffer rejection on 3.0), checks APK native contents and runs existing
 Minecraft API and Android UI checks. None substitutes for 26.x gameplay on a
-PowerVR GE8300. Java 25 is still unavailable on 32-bit x86. RustGL is incomplete
+PowerVR GE8300. Modern texture-buffer shaders require GLES 3.2 or GLES 3.1
+with EXT/OES_texture_buffer; GLES 3.0 is not full modern-Minecraft support. Java 25 is still unavailable on 32-bit x86. RustGL is incomplete
 and should be compared with LTW using a real device log; no FPS increase claimed.
 
 This is beta.11 development work. No beta.11 release is requested or published by

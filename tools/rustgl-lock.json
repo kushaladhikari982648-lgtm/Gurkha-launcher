@@ -4,6 +4,7 @@
   "commit": "70141c9602101ebdfb65296f7642bc69ac508ebb",
   "original": "whaltermc/rust-renderer@eb22559581cf400af29470205a9ebbff31e0db33",
   "local_changes": [
-    "Per-thread driver entry-point cache with context generation invalidation; pointer-size validation on cache hits."
+    "Per-thread driver entry-point cache with context generation invalidation; pointer-size validation on cache hits.",
+    "GLES 3.0 negative-capability smoke mode asserts texture-buffer rejection; full modern probes remain required on 3.1/3.2."
   ]
 }

@@ -75,7 +75,8 @@ jobs:
             cargo build --locked -p gl-compat
             python3 tests/render_smoke.py
             MESA_EXTENSION_OVERRIDE=-GL_EXT_buffer_storage python3 tests/render_smoke.py
-            MESA_GLES_VERSION_OVERRIDE=3.0 python3 tests/render_smoke.py
+            MESA_GLES_VERSION_OVERRIDE=3.1 python3 tests/render_smoke.py
+            MESA_GLES_VERSION_OVERRIDE=3.0 python3 tests/render_smoke.py --gles30-limits
           } 2>&1 | tee -a "$RUNNER_TEMP/native-build.log"
       - name: Build Rust launcher core for all Android ABIs
         run: |
