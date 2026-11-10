@@ -12,7 +12,7 @@ root = Path(__file__).resolve().parents[1]
 lock = json.loads((root / 'tools/renderer-lock.json').read_text())
 abis = {'armeabi-v7a': (1, 40), 'arm64-v8a': (2, 183), 'x86': (1, 3), 'x86_64': (2, 62)}
 records = {}
-for stem, library in [('ltw', 'libltw.so'), ('launcher-core', 'libgurkha_core.so')]:
+for stem, library in [('ltw', 'libltw.so'), ('launcher-core', 'libgurkha_core.so'), ('rustgl', 'librust_gl.so')]:
     path = root / f'ZalithLauncher/libs/{stem}-release.aar'
     with zipfile.ZipFile(path) as archive:
         for abi, (bits, machine) in abis.items():
@@ -23,13 +23,14 @@ for stem, library in [('ltw', 'libltw.so'), ('launcher-core', 'libgurkha_core.so
 records['ltw']['source_commit'] = lock['commit']
 records['ltw']['repository'] = lock['repository']
 records['launcher-core']['source_tree'] = subprocess.check_output(['git', 'rev-parse', 'HEAD:launcher-core'], text=True).strip()
+records['rustgl'] |= dict(json.loads((root / 'tools/rustgl-lock.json').read_text()), source_tree=subprocess.check_output(['git', 'rev-parse', 'HEAD:rustgl'], text=True).strip())
 records['workflow_run'] = os.environ['GITHUB_RUN_ID']
 records['launcher_commit'] = os.environ['GITHUB_SHA']
 extra = root / 'release-extra'
 extra.mkdir(exist_ok=True)
 (extra / 'NATIVE_BUILD_INFO.json').write_text(json.dumps(records, indent=2)+'\n')
-for stem in ('ltw', 'launcher-core'):
+for stem in ('ltw', 'launcher-core', 'rustgl'):
     (root / f'ZalithLauncher/libs/{stem}-release.txt').write_text(json.dumps(records[stem], indent=2)+'\n')
-for stem in ('ltw', 'launcher-core'):
+for stem in ('ltw', 'launcher-core', 'rustgl'):
     shutil.copyfile(root / f'ZalithLauncher/libs/{stem}-release.aar', extra / f'{stem}-release.aar')
 print('Verified LTW and Rust launcher core for all four ABIs')

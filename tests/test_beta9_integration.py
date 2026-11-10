@@ -41,7 +41,7 @@ class Beta9Tests(unittest.TestCase):
         manager = (SRC / 'com/movtery/zalithlauncher/renderer/Renderers.kt').read_text()
         self.assertIn('Tools.DEVICE_ARCHITECTURE != Architecture.ARCH_X86', manager)
         self.assertIn('RendererSelection.normalize', manager)
-        self.assertNotIn('RustGLRenderer', manager)  # not imported merely to claim Rust GPU acceleration
+        self.assertIn('RustGLRenderer()', manager)  # now built from the vendored renderer, not a label-only entry
 
     def test_corresponding_source_accepts_registry_epoch_timestamps(self):
         with tempfile.TemporaryDirectory() as directory:

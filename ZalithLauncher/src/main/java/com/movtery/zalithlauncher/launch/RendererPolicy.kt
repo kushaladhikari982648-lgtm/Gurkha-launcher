@@ -10,6 +10,7 @@ import com.movtery.zalithlauncher.feature.version.Version
 import com.movtery.zalithlauncher.renderer.RendererInterface
 import com.movtery.zalithlauncher.renderer.Renderers
 import com.movtery.zalithlauncher.renderer.renderers.KryptonRenderer
+import com.movtery.zalithlauncher.renderer.renderers.RustGLRenderer
 import com.movtery.zalithlauncher.renderer.renderers.LTWRenderer
 import com.movtery.zalithlauncher.ui.dialog.LifecycleAwareTipDialog
 import com.movtery.zalithlauncher.ui.dialog.TipDialog
@@ -65,9 +66,9 @@ object RendererPolicy {
         val versionName = version.getVersionName()
 
         // Minecraft 26.3+ (SDL3): SDL creates the EGL context itself, which among the launcher's renderers
-        // only LTW supports (through libltw_sdl_egl.so, see SdlSupport)
+        // LTW uses libltw_sdl_egl.so; RustGL supplies its own EGL normalization.
         if (MinecraftGLSurface.sdlVersion) {
-            if (current.getRendererId() != LTWRenderer.ID) {
+            if (current.getRendererId() != LTWRenderer.ID && current !is RustGLRenderer) {
                 if (ltw != null) {
                     switchTo(activity, ltw, activity.getString(R.string.renderer_policy_sdl_use_ltw, versionName))
                 } else {

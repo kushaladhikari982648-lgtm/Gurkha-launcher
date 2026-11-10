@@ -31,3 +31,23 @@ GPL-3.0-or-later; its jni and sha2 dependencies retain their MIT/Apache-2.0 lice
 `launcher-core/README.md` and Cargo.lock. It contains no unlicensed RustGL renderer code.
 LTW is rebuilt from the pin in `tools/renderer-lock.json`, with complete corresponding source
 attached to the preview release. Its LGPL-3.0 attribution remains unchanged.
+
+## RustGL built-in renderer (restored from renderer repository)
+
+Vendored `rustgl/` from
+`kushaladhikari982648-lgtm/RustGL-for-Gurkha-launcher` at
+`70141c9602101ebdfb65296f7642bc69ac508ebb` (branch
+`arena/37ea4942-rustgl-for-gurkha-launcher`). Original renderer:
+`whaltermc/rust-renderer`, revision `eb22559581cf400af29470205a9ebbff31e0db33`.
+The upstream notice is preserved in `rustgl/UPSTREAM_NOTICE`; upstream does not
+supply a renderer license file. This project's license does not relicense it.
+The notice's permission statement is upstream's, not independently verified here.
+Local driver-cache changes and the exact source are recorded in `tools/rustgl-lock.json`.
+
+## MojoLauncher compatibility reference
+
+Backend separation was reviewed against MojoLauncher `v3_openjdk` revision
+`1b8d90424c1cb791321d45f60ac62c54f4b013fa`, particularly `SDLBackend.java`,
+`utils/jre/GameRunner.java` and `assets/substitutions.json`. Gurkha's new JNI
+backend guard is an independent implementation; its SDL library/glue remains
+from the existing Amethyst integration, not MojoSDL. See `docs/MOJO_RUSTGL.md`.

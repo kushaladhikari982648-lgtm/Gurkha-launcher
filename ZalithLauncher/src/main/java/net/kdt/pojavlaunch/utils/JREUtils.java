@@ -262,6 +262,8 @@ public final class JREUtils {
         if (eglName != null) envMap.put("POJAVEXEC_EGL", eglName);
 
         envMap.put("POJAV_RENDERER", rendererId);
+        // A library loaded by SDL must never initialize the launcher's GLFW-only fields.
+        envMap.put("POJAV_WINDOW_BACKEND", MinecraftGLSurface.sdlVersion ? "sdl" : "glfw");
         // Minecraft 26.3+: SDL creates the GL context itself and needs the renderer's libraries
         if (MinecraftGLSurface.sdlVersion) envMap.putAll(SdlSupport.getRendererEnv(currentRenderer, DIR_NATIVE_LIB));
 

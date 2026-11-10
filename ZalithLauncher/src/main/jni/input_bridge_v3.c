@@ -21,6 +21,7 @@
 
 #include "log.h"
 #include "utils.h"
+#include "runtime_bridge.h"
 #include "environ/environ.h"
 
 #define EVENT_TYPE_CHAR 1000
@@ -67,15 +68,23 @@ jint JNI_OnLoad(JavaVM* vm, __attribute__((unused)) void* reserved) {
         __android_log_print(ANDROID_LOG_INFO, "Native", "Saving JVM environ...");
         pojav_environ->runtimeJavaVMPtr = vm;
         (*vm)->GetEnv(vm, (void**) &pojav_environ->runtimeJNIEnvPtr_JRE, JNI_VERSION_1_4);
-        pojav_environ->vmGlfwClass = (*pojav_environ->runtimeJNIEnvPtr_JRE)->NewGlobalRef(pojav_environ->runtimeJNIEnvPtr_JRE, (*pojav_environ->runtimeJNIEnvPtr_JRE)->FindClass(pojav_environ->runtimeJNIEnvPtr_JRE, "org/lwjgl/glfw/GLFW"));
-        pojav_environ->method_glftSetWindowAttrib = (*pojav_environ->runtimeJNIEnvPtr_JRE)->GetStaticMethodID(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, "glfwSetWindowAttrib", "(JII)V");
-        pojav_environ->method_internalWindowSizeChanged = (*pojav_environ->runtimeJNIEnvPtr_JRE)->GetStaticMethodID(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, "internalWindowSizeChanged", "(JII)V");
-        jfieldID field_keyDownBuffer = (*pojav_environ->runtimeJNIEnvPtr_JRE)->GetStaticFieldID(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, "keyDownBuffer", "Ljava/nio/ByteBuffer;");
-        jobject keyDownBufferJ = (*pojav_environ->runtimeJNIEnvPtr_JRE)->GetStaticObjectField(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, field_keyDownBuffer);
-        pojav_environ->keyDownBuffer = (*pojav_environ->runtimeJNIEnvPtr_JRE)->GetDirectBufferAddress(pojav_environ->runtimeJNIEnvPtr_JRE, keyDownBufferJ);
-        jfieldID field_mouseDownBuffer = (*pojav_environ->runtimeJNIEnvPtr_JRE)->GetStaticFieldID(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, "mouseDownBuffer", "Ljava/nio/ByteBuffer;");
-        jobject mouseDownBufferJ = (*pojav_environ->runtimeJNIEnvPtr_JRE)->GetStaticObjectField(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, field_mouseDownBuffer);
-        pojav_environ->mouseDownBuffer = (*pojav_environ->runtimeJNIEnvPtr_JRE)->GetDirectBufferAddress(pojav_environ->runtimeJNIEnvPtr_JRE, mouseDownBufferJ);
+        JNIEnv *env = pojav_environ->runtimeJNIEnvPtr_JRE;
+        struct gurkha_runtime_bridge bridge;
+        const char *backend = getenv("POJAV_WINDOW_BACKEND");
+        if (!gurkha_init_runtime_bridge(env, backend, &bridge)) {
+            if ((*env)->ExceptionCheck(env)) {
+                (*env)->ExceptionDescribe(env);
+                (*env)->ExceptionClear(env);
+            }
+            __android_log_print(ANDROID_LOG_ERROR, "Native", "GLFW runtime bridge is incomplete; refusing unsafe JNI initialization");
+            return JNI_ERR;
+        }
+        pojav_environ->vmGlfwClass = bridge.glfw;
+        pojav_environ->method_glftSetWindowAttrib = bridge.set_attrib;
+        pojav_environ->method_internalWindowSizeChanged = bridge.resize;
+        pojav_environ->keyDownBuffer = bridge.keys;
+        pojav_environ->mouseDownBuffer = bridge.buttons;
+        __android_log_print(ANDROID_LOG_INFO, "Native", "Runtime window backend: %s", backend ? backend : "glfw");
         hookExec();
         installLwjglDlopenHook();
         installEMUIIteratorMititgation();
@@ -537,7 +546,7 @@ JNIEXPORT void JNICALL Java_org_lwjgl_glfw_GLFW_nglfwSetShowingWindow(__attribut
 
 JNIEXPORT void JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeSetWindowAttrib(__attribute__((unused)) JNIEnv* env, __attribute__((unused)) jclass clazz, jint attrib, jint value) {
     // Check for stack queue no longer necessary here as the JVM crash's origin is resolved
-    if (!pojav_environ->showingWindow) {
+    if (!pojav_environ->showingWindow || !pojav_environ->vmGlfwClass || !pojav_environ->runtimeJavaVMPtr) {
         // If the window is not shown, there is nothing to do yet.
         return;
     }

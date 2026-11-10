@@ -4,6 +4,7 @@ import android.content.Context
 import com.movtery.zalithlauncher.feature.log.Logging
 import com.movtery.zalithlauncher.renderer.renderers.GL4ESRenderer
 import com.movtery.zalithlauncher.renderer.renderers.KryptonRenderer
+import com.movtery.zalithlauncher.renderer.renderers.RustGLRenderer
 import com.movtery.zalithlauncher.renderer.renderers.LTWRenderer
 import com.movtery.zalithlauncher.renderer.renderers.VulkanZinkRenderer
 import net.kdt.pojavlaunch.Architecture
@@ -34,6 +35,7 @@ object Renderers {
             GL4ESRenderer(),
             KryptonRenderer(),
             LTWRenderer(),
+            RustGLRenderer(),
             VulkanZinkRenderer()
         )
     }
@@ -59,7 +61,7 @@ object Renderers {
             if (renderer.getRendererId().contains("zink") && !deviceHasZinkBinary) return@forEach
             if (renderer.getRendererId() == LTWRenderer.ID && !deviceSupportsLtw) return@forEach
             // Krypton Wrapper and RustGL need OpenGL ES 3, like LTW
-            if (renderer is KryptonRenderer && JREUtils.getDetectedVersion() < 3) return@forEach
+            if ((renderer is KryptonRenderer || renderer is RustGLRenderer) && JREUtils.getDetectedVersion() < 3) return@forEach
             // A built-in renderer whose library is not in this APK would only fail when the game starts
             // (renderer plugins bring their own libraries, so they are not checked here)
             if (renderer.isBuiltIn() && !File(nativeLibraryDir, renderer.getRendererLibrary()).exists()) {
@@ -150,5 +152,5 @@ object Renderers {
     /** The renderers that come with the launcher: their libraries are part of its APK. */
     private fun RendererInterface.isBuiltIn(): Boolean =
         this is GL4ESRenderer || this is KryptonRenderer || this is LTWRenderer ||
-                this is VulkanZinkRenderer
+                this is VulkanZinkRenderer || this is RustGLRenderer
 }

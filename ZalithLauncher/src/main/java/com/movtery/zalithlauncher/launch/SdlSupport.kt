@@ -86,7 +86,7 @@ object SdlSupport {
     /** The LWJGL 3.4.1 classpath; the patched classes must come before the official jars. */
     @JvmStatic
     fun getClassPath(): String {
-        val jars = getComponentDir().listFiles { file -> file.name.endsWith(".jar") && file.name != "lwjgl.jar" }
+        val jars = getComponentDir().listFiles { file -> file.name.endsWith(".jar") && file.name != "lwjgl.jar" && file.name != "lwjgl-glfw.jar" }
             ?.sortedWith(compareBy({ it.name != PATCHES_JAR }, { it.name }))
             ?: emptyList()
         check(jars.any { it.name == PATCHES_JAR } && jars.any { it.name == "lwjgl-sdl.jar" } && jars.any { it.name == ANDROID_CORE_JAR }) {

@@ -61,6 +61,22 @@ jobs:
             mkdir -p "$RUNNER_TEMP/no-native-libs"
             java -Djava.library.path="$RUNNER_TEMP/no-native-libs" -cp "$RUNNER_TEMP/core-tests" RustCoreTest fallback
           } 2>&1 | tee -a "$RUNNER_TEMP/native-build.log"
+      - name: Test RustGL on host GLES (not a phone benchmark)
+        env:
+          EGL_PLATFORM: surfaceless
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set -o pipefail
+          {
+            sudo apt-get update -q
+            sudo apt-get install -y --no-install-recommends libegl1 libgles2 libgles1 libegl-dev libgles-dev libgl1-mesa-dri
+            cd rustgl
+            cargo test --locked -p renderer-core -p gl-compat -p shader-translate -- --test-threads=1
+            cargo build --locked -p gl-compat
+            python3 tests/render_smoke.py
+            MESA_EXTENSION_OVERRIDE=-GL_EXT_buffer_storage python3 tests/render_smoke.py
+            MESA_GLES_VERSION_OVERRIDE=3.0 python3 tests/render_smoke.py
+          } 2>&1 | tee -a "$RUNNER_TEMP/native-build.log"
       - name: Build Rust launcher core for all Android ABIs
         run: |
           set -o pipefail
@@ -72,6 +88,9 @@ jobs:
             (cd launcher-core && cargo vendor --locked vendor)
             python3 launcher-core/pack_aar.py
             python3 tools/package_core_source.py
+            (cd rustgl && RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-soname,librust_gl.so" cargo ndk --platform 26 -t armeabi-v7a -t arm64-v8a -t x86 -t x86_64 build --release --locked -p gl-compat)
+            python3 rustgl/pack_aar.py
+            git archive --format=zip --prefix=Gurkha-launcher/ HEAD rustgl tools/rustgl-lock.json THIRD_PARTY_NOTICES.md > release-extra/RustGL-corresponding-source.zip
             python3 tools/record_native_build.py
           } 2>&1 | tee -a "$RUNNER_TEMP/native-build.log"
       - uses: actions/upload-artifact@v7
@@ -82,6 +101,8 @@ jobs:
             ZalithLauncher/libs/ltw-release.txt
             ZalithLauncher/libs/launcher-core-release.aar
             ZalithLauncher/libs/launcher-core-release.txt
+            ZalithLauncher/libs/rustgl-release.aar
+            ZalithLauncher/libs/rustgl-release.txt
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
         with:
@@ -571,9 +592,9 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add ZalithLauncher/libs/ltw-release.aar ZalithLauncher/libs/ltw-release.txt ZalithLauncher/libs/launcher-core-release.aar ZalithLauncher/libs/launcher-core-release.txt
+          git add ZalithLauncher/libs/rustgl-release.aar ZalithLauncher/libs/rustgl-release.txt ZalithLauncher/libs/ltw-release.aar ZalithLauncher/libs/ltw-release.txt ZalithLauncher/libs/launcher-core-release.aar ZalithLauncher/libs/launcher-core-release.txt
           if ! git diff --cached --quiet; then
-            git commit -m 'Update tested LTW and Rust launcher core libraries [skip ci]'
+            git commit -m 'Update tested LTW, RustGL and Rust launcher core libraries [skip ci]'
             git push origin HEAD:arena/9d5eaad1-gurkha-launcher
           fi
       - name: Report staging failure

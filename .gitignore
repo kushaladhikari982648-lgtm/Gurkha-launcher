@@ -33,3 +33,6 @@ __pycache__/
 
 /ui-apk/
 /ui-smoke/
+
+/rustgl/target/
+/rustgl/vendor/

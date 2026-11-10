@@ -21,7 +21,7 @@ def check_apk(path):
             raise ValueError(f'Invalid APK ABI set: {shipped}')
         for abi in shipped:
             arch, bits, machine = ABIS[abi]
-            for lib in ('libSDL3.so', 'libltw.so', 'libltw_sdl_egl.so', 'libspirv-cross-c-shared.so'):
+            for lib in ('libSDL3.so', 'libltw.so', 'libltw_sdl_egl.so', 'libspirv-cross-c-shared.so', 'librust_gl.so'):
                 header = archive.read(f'lib/{abi}/{lib}')[:20]
                 if (header[:4] != b'\x7fELF' or header[4] != bits or header[5] != 1 or
                         struct.unpack_from('<H', header, 18)[0] != machine):

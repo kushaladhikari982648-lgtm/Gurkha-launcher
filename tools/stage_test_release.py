@@ -31,6 +31,13 @@ def main():
     version = props['launcher_version_name']
     require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+', version), 'Expected beta version')
     tag = 'preview-v' + version
+    # Ordinary development pushes must not fail or replace an already published release.
+    # Only an explicitly prepared draft is eligible. API/auth failures still fail the job.
+    releases = json.loads(run('gh', 'api', 'repos/' + os.environ['GH_REPO'] + '/releases?per_page=100'))
+    requested = next((r for r in releases if r['tag_name'] == tag and r['draft']), None)
+    if requested is None:
+        print('No requested draft for ' + tag + '; keeping APKs as workflow artifacts only')
+        return
     draft = json.loads(run('gh', 'release', 'view', tag, '--json', 'isDraft,targetCommitish,assets'))
     require(draft['isDraft'] and draft['targetCommitish'] == os.environ['GITHUB_SHA'], 'Wrong/non-draft release target')
     require(not draft['assets'], 'Refusing to replace draft assets')
@@ -41,6 +48,7 @@ def main():
     require(info['workflow_run'] == os.environ['GITHUB_RUN_ID'], 'Native artifacts from a different run')
     require(digest('release-extra/ltw-release.aar') == info['ltw']['sha256'], 'Renderer AAR checksum mismatch')
     require(digest('release-extra/launcher-core-release.aar') == info['launcher-core']['sha256'], 'Core AAR checksum mismatch')
+    require(digest('release-extra/rustgl-release.aar') == info['rustgl']['sha256'], 'RustGL AAR checksum mismatch')
     with zipfile.ZipFile('release-extra/LTW-corresponding-source.zip') as archive:
         require(any(n.endswith('/CMakeLists.txt') for n in archive.namelist()), 'Incomplete renderer source archive')
     tools = sorted(Path(os.environ['ANDROID_HOME']).glob('build-tools/*/apksigner'),
@@ -69,14 +77,14 @@ def main():
             actual = {n.split('/')[1] for n in archive.namelist() if n.startswith('lib/') and n.endswith('.so')}
             require(actual == wanted, f'Wrong ABI set for {arch}')
             for abi in wanted:
-                for library in ('libltw.so', 'libltw_sdl_egl.so', 'libgurkha_core.so'):
+                for library in ('libltw.so', 'libltw_sdl_egl.so', 'libgurkha_core.so', 'librust_gl.so'):
                     require(f'lib/{abi}/{library}' in archive.namelist(), f'Missing {abi}/{library}')
         suffix = {'arm': 'armeabi-v7a', 'arm64': 'arm64-v8a', 'all': 'universal'}.get(arch, arch)
         dest = out / f'GurkhaLauncher-{version}-debug-{suffix}.apk'
         shutil.copyfile(apk, dest)
         records.append(dict(file=dest.name, sha256=digest(dest), bytes=dest.stat().st_size, signer_sha256=next(iter(certificates))))
     require(len({r['signer_sha256'] for r in records}) == 1, 'Inconsistent signing certificates')
-    for name in ('NATIVE_BUILD_INFO.json', 'LTW-corresponding-source.zip', 'ltw-release.aar', 'launcher-core-release.aar', 'Rust-core-corresponding-source.zip'):
+    for name in ('NATIVE_BUILD_INFO.json', 'LTW-corresponding-source.zip', 'ltw-release.aar', 'launcher-core-release.aar', 'Rust-core-corresponding-source.zip', 'rustgl-release.aar', 'RustGL-corresponding-source.zip'):
         shutil.copyfile(Path('release-extra') / name, out / name)
     build = dict(version=version, version_code=int(props['launcher_version_code']), commit=os.environ['GITHUB_SHA'],
                  run=os.environ['GITHUB_RUN_ID'], package='com.gurkha.launcher.debug', build_type='debug', apks=records)
