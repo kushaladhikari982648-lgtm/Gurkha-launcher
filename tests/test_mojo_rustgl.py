@@ -42,6 +42,11 @@ class MojoRustGLTests(unittest.TestCase):
         native = (ROOT / 'ZalithLauncher/src/main/jni/input_bridge_v3.c').read_text()
         self.assertIn('if (!gurkha_init_runtime_bridge', native)
         self.assertIn('return JNI_ERR;', native)
+        sdl = (SRC / 'com/movtery/zalithlauncher/launch/SdlSupport.kt').read_text()
+        sdl_classpath = sdl.split('fun getClassPath(): String {')[1].split('fun getGlfwClassPath()')[0]
+        self.assertNotIn('file.name != "lwjgl-glfw.jar"', sdl_classpath)
+        # Official GLFW types may still be referenced by mods; avoiding their
+        # initialization is different from deleting them from the classpath.
 
     def test_rustgl_is_real_opt_in_gles_and_sdl_capable(self):
         renderer = (SRC / 'com/movtery/zalithlauncher/renderer/renderers/RustGLRenderer.kt').read_text()
