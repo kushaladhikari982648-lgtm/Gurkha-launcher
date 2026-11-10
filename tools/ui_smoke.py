@@ -48,6 +48,21 @@ def wait(name,seconds=90):
         if start is not None and start.get('clickable')=='true':tap(start)
         time.sleep(2)
     raise AssertionError('Control did not appear: '+name)
+def wait_portrait_home():
+    # Splash forces landscape. Freeze again AFTER it has finished, otherwise its
+    # pending rotation can invalidate coordinates captured on the first home frame.
+    wait('home_button',180)
+    adb('shell','wm','set-user-rotation','lock','0')
+    deadline=time.monotonic()+60
+    consecutive=0
+    while time.monotonic()<deadline:
+        root,_=wait('home_button')
+        x1,y1,x2,y2=map(int,re.findall(r'\d+',find(root,'container_fragment').get('bounds')))
+        consecutive=consecutive+1 if y2-y1>x2-x1 else 0
+        if consecutive>=2:return root
+        time.sleep(1)
+    raise AssertionError('Launcher did not settle in portrait after Splash')
+
 def screenshot(name):
     (OUT/(name+'.png')).write_bytes(adb('exec-out','screencap','-p',binary=True))
     (OUT/(name+'.xml')).write_text(ET.tostring(dump(),encoding='unicode'))
@@ -61,10 +76,10 @@ try:
     adb('shell','monkey','-p',PACKAGE,'-c','android.intent.category.LAUNCHER','1')
     # Monkey thaws display rotation on exit; restore the test's portrait lock.
     adb('shell','wm','set-user-rotation','lock','0')
-    root,_=wait('home_button',180)
+    root=wait_portrait_home()
     assert find(root,'play_button') is not None,'Primary action missing from portrait home'
     screenshot('portrait-home')
-    tap(find(root,'versions_button'));root,_=wait('install_new')
+    root,node=wait('versions_button');tap(node);root,_=wait('install_new')
     assert find(root,'create_path_button') is not None,'Profile-path actions missing'
     screenshot('portrait-versions')
     root,node=wait('setting_button');tap(node);root,_=wait('home_button')
@@ -87,7 +102,7 @@ try:
     # Header's home button remains available on all secondary screens.
     root,node=wait('setting_button');tap(node);root,_=wait('home_button')
     screenshot('landscape-home-large-text')
-    tap(find(root,'tools_button'));wait('share_logs_button');screenshot('tools')
+    root,node=wait('tools_button');tap(node);wait('share_logs_button');screenshot('tools')
     # Application manifest isolates the UI in its named :launcher process.
     pid=adb('shell','pidof',PACKAGE+':launcher').strip()
     assert pid,'Launcher process died'
