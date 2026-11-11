@@ -91,6 +91,10 @@ public class MinecraftGLSurface extends View implements GrabListener {
     public static volatile boolean sdlEnabled = false;
     private Surface mNativeSurface;
 
+    /** Borrowed game buffer queue only; callers must never release it or capture the Window. */
+    public Surface getGameplayCaptureSurface() { return mNativeSurface; }
+
+
     private final InGameEventProcessor mIngameProcessor = new InGameEventProcessor(mSensitivityFactor);
     private final InGUIEventProcessor mInGUIProcessor = new InGUIEventProcessor();
     private TouchEventProcessor mCurrentTouchProcessor = mInGUIProcessor;

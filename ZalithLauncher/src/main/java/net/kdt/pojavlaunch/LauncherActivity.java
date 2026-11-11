@@ -492,6 +492,13 @@ public class LauncherActivity extends BaseActivity {
         super.onResume();
         setPageOpacity(AllSettings.getPageOpacity().getValue());
         VersionsManager.INSTANCE.refresh("LauncherActivity:onResume", false);
+        if (videoWallpaper != null) videoWallpaper.resume();
+    }
+
+    @Override
+    protected void onPause() {
+        if (videoWallpaper != null) videoWallpaper.pause();
+        super.onPause();
     }
 
     @Override
@@ -508,6 +515,7 @@ public class LauncherActivity extends BaseActivity {
 
     @Override
     protected void onDestroy() {
+        if (videoWallpaper != null) videoWallpaper.close();
         if (checkNotice != null) checkNotice.cancel(true);
         ProgressKeeper.removeTaskCountListener(mDoubleLaunchPreventionListener);
         super.onDestroy();
@@ -592,7 +600,11 @@ public class LauncherActivity extends BaseActivity {
         }
     }
 
+    private com.movtery.zalithlauncher.feature.background.VideoWallpaper videoWallpaper;
+
     private void refreshBackground() {
+        if (videoWallpaper == null) videoWallpaper = new com.movtery.zalithlauncher.feature.background.VideoWallpaper(binding.videoBackground);
+        videoWallpaper.setFile(BackgroundManager.getBackgroundVideo());
         BackgroundManager.setBackgroundImage(this, BackgroundType.MAIN_MENU, binding.backgroundView, this::refreshTopBarColor);
     }
 

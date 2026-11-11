@@ -99,6 +99,16 @@ object BackgroundManager {
         return backgroundImage
     }
 
+    @JvmStatic
+    fun getBackgroundVideo(): File? {
+        val name = properties.getProperty(BackgroundType.MAIN_MENU.name) ?: return null
+        val file = File(PathManager.DIR_BACKGROUND, name)
+        return runCatching {
+            file.takeIf { it.isFile && com.movtery.zalithlauncher.feature.media.MediaPolicy.isVideo(it.name) &&
+                it.canonicalFile.parentFile == PathManager.DIR_BACKGROUND.canonicalFile }
+        }.getOrNull()
+    }
+
     private fun saveProperties(properties: Properties) {
         PathManager.DIR_BACKGROUND.apply {
             if (!exists()) mkdirs(this)

@@ -36,6 +36,7 @@
         <Button android:id="@+id/open_main_dir_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/main_open_main_dir" android:layout_marginBottom="6dp" />
         <Button android:id="@+id/install_jar_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/main_install_jar_file" android:layout_marginBottom="6dp" />
         <Button android:id="@+id/share_logs_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/main_share_logs" android:layout_marginBottom="6dp" />
+        <Button android:id="@+id/wardrobe_button" style="@style/MinecraftNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/wardrobe_title" android:layout_marginBottom="6dp" />
         <FrameLayout android:id="@+id/about_button" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:background="@drawable/mc_button" android:clickable="true" android:focusable="true">
           <TextView android:id="@+id/about_text" style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:padding="12dp" />
         </FrameLayout>

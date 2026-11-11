@@ -93,7 +93,7 @@ class CustomBackgroundFragment : FragmentWithAnim(R.layout.fragment_custom_backg
                     override fun onFileSelected(file: File?, path: String?) {
                         val fileName = file!!.name
 
-                        val image = isImage(file)
+                        val image = isImage(file) || (backgroundType == BackgroundType.MAIN_MENU && com.movtery.zalithlauncher.feature.media.MediaPolicy.isVideo(file.name))
                         val filesButton = FilesButton()
                         filesButton.setButtonVisibility(false, false, true, true, true, image)
                         //默认虚拟鼠标不支持分享、重命名、删除操作
@@ -155,7 +155,14 @@ class CustomBackgroundFragment : FragmentWithAnim(R.layout.fragment_custom_backg
                 }
 
                 returnButton.setOnClickListener { ZHTools.onBackPressed(requireActivity()) }
-                addFileButton.setOnClickListener { openDocumentLauncher?.launch(arrayOf("image/*")) }
+                addFileButton.setOnClickListener {
+                    if (backgroundType == BackgroundType.MAIN_MENU) {
+                        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                            .setMessage(R.string.video_wallpaper_help)
+                            .setPositiveButton(android.R.string.ok) { _, _ -> openDocumentLauncher?.launch(arrayOf("image/*", "video/*")) }
+                            .setNegativeButton(android.R.string.cancel, null).show()
+                    } else openDocumentLauncher?.launch(arrayOf("image/*"))
+                }
                 refreshButton.setOnClickListener {
                     fileRecyclerView.listFileAt(backgroundPath())
                 }
@@ -223,7 +230,7 @@ class CustomBackgroundFragment : FragmentWithAnim(R.layout.fragment_custom_backg
 
     private fun refreshBackgroundPreview() {
         binding.preview.let {
-            BackgroundManager.getBackgroundImage(backgroundType)?.apply {
+            (BackgroundManager.getBackgroundImage(backgroundType) ?: if (backgroundType == BackgroundType.MAIN_MENU) BackgroundManager.getBackgroundVideo() else null)?.apply {
                 Glide.with(requireActivity())
                     .load(this)
                     .fitCenter()

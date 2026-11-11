@@ -1,0 +1,14 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true" android:background="@color/background_app">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+        <Button android:id="@+id/wardrobe_back" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/generic_return" />
+        <TextView android:id="@+id/wardrobe_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/wardrobe_title" android:textSize="24sp" android:textStyle="bold" android:layout_marginVertical="16dp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/wardrobe_help" />
+        <Button android:id="@+id/import_skin" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/import_skin" android:layout_marginTop="16dp" />
+        <Button android:id="@+id/import_cape" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/import_cape" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:labelFor="@id/wardrobe_player" android:text="@string/wardrobe_player" android:layout_marginTop="16dp" />
+        <EditText android:id="@+id/wardrobe_player" android:layout_width="match_parent" android:layout_height="48dp" android:singleLine="true" android:maxLength="16" android:inputType="textVisiblePassword" android:autofillHints="username" />
+        <Button android:id="@+id/export_wardrobe" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/export_wardrobe" />
+        <ProgressBar android:id="@+id/wardrobe_busy" android:layout_width="48dp" android:layout_height="48dp" android:visibility="gone" />
+        <LinearLayout android:id="@+id/wardrobe_items" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+    </LinearLayout>
+</ScrollView>

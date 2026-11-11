@@ -106,6 +106,71 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     private GameMenuViewWrapper mGameMenuWrapper;
     private GyroControl mGyroControl;
     private KeyboardDialog keyboardDialog;
+    private com.movtery.zalithlauncher.feature.media.GameplayRecorder gameplayRecorder;
+    private android.widget.Button recordButton;
+    private boolean recorderStopping;
+
+    private void stopGameplayRecording() {
+        if (gameplayRecorder != null) {
+            recorderStopping = true;
+            if (recordButton != null) { recordButton.setEnabled(false); recordButton.setText(R.string.recorder_finishing); }
+            gameplayRecorder.stop();
+        }
+    }
+
+    private void toggleGameplayRecording() {
+        if (recorderStopping) return;
+        if (gameplayRecorder != null) { stopGameplayRecording(); return; }
+        new androidx.appcompat.app.AlertDialog.Builder(this).setTitle(R.string.recorder_start)
+            .setMessage(R.string.recorder_help).setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                if (gameplayRecorder != null || isFinishing() || isDestroyed()) return;
+                try {
+                    gameplayRecorder = new com.movtery.zalithlauncher.feature.media.GameplayRecorder(
+                        this, binding.mainGameRenderView.getGameplayCaptureSurface(),
+                        CallbackBridge.windowWidth, CallbackBridge.windowHeight, (video, error) -> {
+                            gameplayRecorder = null; recorderStopping = false;
+                            if (isFinishing() || isDestroyed()) return;
+                            recordButton.setEnabled(true); recordButton.setText(R.string.recorder_start);
+                            String message = video == null ? "" : getString(R.string.recorder_saved);
+                            if (error != null) message += "\n" + error;
+                            Toast.makeText(this, message.trim(), Toast.LENGTH_LONG).show();
+                        });
+                    recordButton.setText(R.string.recorder_stop);
+                    Toast.makeText(this, R.string.recorder_started, Toast.LENGTH_LONG).show();
+                } catch (Exception e) { Tools.showError(this, e); }
+            }).show();
+    }
+
+    private void showRecordings() {
+        try {
+            File[] files = com.movtery.zalithlauncher.feature.media.GameplayRecorder.directory(this)
+                .listFiles((dir, name) -> name.endsWith(".mp4"));
+            if (files == null || files.length == 0) {
+                Toast.makeText(this, R.string.recorder_empty, Toast.LENGTH_LONG).show(); return;
+            }
+            java.util.Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+            String[] names = new String[files.length];
+            for (int i = 0; i < files.length; i++) names[i] = files[i].getName();
+            new androidx.appcompat.app.AlertDialog.Builder(this).setTitle(R.string.recorder_library)
+                .setItems(names, (dialog, index) -> new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle(names[index]).setItems(new String[]{getString(R.string.recorder_share), getString(R.string.generic_delete)}, (actions, action) -> {
+                        if (action == 0) {
+                            try {
+                                android.net.Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".provider", files[index]);
+                                Intent share = new Intent(Intent.ACTION_SEND).setType("video/mp4")
+                                    .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                share.setClipData(ClipData.newRawUri("Gameplay", uri));
+                                startActivity(Intent.createChooser(share, getString(R.string.recorder_share)));
+                            } catch (Exception e) { Tools.showError(this, e); }
+                        } else new androidx.appcompat.app.AlertDialog.Builder(this).setMessage(R.string.recorder_delete)
+                            .setNegativeButton(android.R.string.cancel, null).setPositiveButton(android.R.string.ok, (confirm, yes) -> {
+                                if (!files[index].delete()) Toast.makeText(this, R.string.generic_error, Toast.LENGTH_LONG).show();
+                            }).show();
+                    }).show()).setNegativeButton(android.R.string.cancel, null).show();
+        } catch (Exception e) { Tools.showError(this, e); }
+    }
+
 
     private Version minecraftVersion;
 
@@ -302,6 +367,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
 
     @Override
     protected void onPause() {
+        stopGameplayRecording();
         mGyroControl.disable();
         if (CallbackBridge.isGrabbing()){
             sendKeyPress(LwjglGlfwKeycode.GLFW_KEY_ESCAPE);
@@ -324,6 +390,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
 
     @Override
     protected void onDestroy() {
+        stopGameplayRecording();
         super.onDestroy();
         mMenuSettingsInitListener.closeSpinner();
         CallbackBridge.removeGrabListener(binding.mainTouchpad);
@@ -552,6 +619,9 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
 
         public MenuSettingsInitListener(ViewGameMenuBinding binding) {
             this.binding = binding;
+            recordButton = binding.recordGameplay;
+            recordButton.setOnClickListener(v -> toggleGameplayRecording());
+            binding.recordings.setOnClickListener(v -> showRecordings());
             //初始化状态
             this.binding.hotbarWidth.setMax(currentDisplayMetrics.widthPixels / 2);
             this.binding.hotbarHeight.setMax(currentDisplayMetrics.heightPixels / 2);

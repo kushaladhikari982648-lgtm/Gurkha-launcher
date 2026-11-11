@@ -26,6 +26,9 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
+            <Button android:id="@+id/record_gameplay" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/recorder_start" />
+            <Button android:id="@+id/recordings" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/recorder_library" />
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

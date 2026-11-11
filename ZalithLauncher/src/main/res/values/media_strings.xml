@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="video_wallpaper_error">Cannot play this wallpaper. Use a device-supported video codec, at most 1080p and 256 MB. H.264 MP4 is recommended.</string>
+    <string name="video_wallpaper_help">Home wallpaper supports images and muted looping video (MP4, M4V, WebM, MKV, 3GP, MOV). Codec support depends on your device. Use 720p H.264 MP4 for lower memory use; maximum 1080p / 256 MB. Video stops while the launcher is in the background. Controls and in-game backgrounds remain image-only.</string>
+    <string name="wardrobe_title">Skins &amp; capes</string>
+    <string name="wardrobe_help">Import PNG textures, select a skin and/or cape, then export a CustomSkinLoader pack. This is local customization, not an official account upload. Install a compatible CustomSkinLoader mod for your Minecraft version and extract the pack into that instance’s game folder before starting the game. Other players will not automatically see these textures. Arbitrary official capes cannot be granted. Up to 32 textures; 4 MB each.</string>
+    <string name="import_skin">Import skin PNG</string>
+    <string name="import_cape">Import cape PNG</string>
+    <string name="wardrobe_player">In-game player name</string>
+    <string name="export_wardrobe">Export selected skin/cape pack</string>
+    <string name="wardrobe_invalid_name">Use 1–16 letters, numbers or underscores matching your in-game name.</string>
+    <string name="wardrobe_select_first">Import and select a skin or cape first.</string>
+    <string name="wardrobe_full">The wardrobe is full. Delete a texture before importing another.</string>
+    <string name="wardrobe_invalid_png">Use a valid PNG under 4 MB. Width must be a power of two from 64 to 1024; skins must be square or 2:1, capes 2:1.</string>
+    <string name="wardrobe_selected">Selected — tap to deselect</string>
+    <string name="wardrobe_select">Select this texture</string>
+    <string name="wardrobe_delete">Delete this local texture? Previously exported packs are not changed.</string>
+    <string name="wardrobe_exported">Pack saved. Extract it into the correct game folder and restart Minecraft with a compatible CustomSkinLoader mod.</string>
+    <string name="wardrobe_export_help">Gurkha local wardrobe pack\n\n1. Install a CustomSkinLoader version compatible with your Minecraft version and mod loader. This pack does not contain the mod.\n2. Close Minecraft and extract the CustomSkinLoader directory beside that instance’s options.txt (not inside mods). Preserve the directory structure.\n3. Start the game. CustomSkinLoader consumes ExtraList/GurkhaLocal.json and adds the local provider. Use the exact player name entered during export.\n4. If you already have a GurkhaLocal provider, inspect CustomSkinLoader/CustomSkinLoader.json and enable its skin/cape paths as needed. Existing configuration is not overwritten by this export.\n\nTextures are local to this client. This does not upload to an official account, grant capes, or make other players see your customization. Model is auto-detected by CustomSkinLoader. Remove the GurkhaLocal provider and folder to undo.\n</string>
+    <string name="recorder_start">Record gameplay</string>
+    <string name="recorder_stop">Stop recording</string>
+    <string name="recorder_finishing">Saving recording…</string>
+    <string name="recorder_help">Record only the Minecraft game surface, excluding launcher touch controls and menus. Minecraft HUD, chat and in-game menus remain visible. Silent MP4, up to 480p / 15 fps, maximum 10 minutes. May reduce FPS on low-end phones. Stops when leaving the game. Requires a working surface capture and AVC encoder; unsupported devices report an error instead of recording the full screen.</string>
+    <string name="recorder_started">Gameplay recording requested. Use Stop recording in the game menu to finish.</string>
+    <string name="recorder_saved">Video saved to Recordings. Open Recordings to share or delete it.</string>
+    <string name="recorder_library">Recordings</string>
+    <string name="recorder_share">Share / export video</string>
+    <string name="recorder_empty">No saved recordings yet.</string>
+    <string name="recorder_delete">Permanently delete this recording?</string>
+</resources>
