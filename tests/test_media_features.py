@@ -44,6 +44,20 @@ class MediaFeaturesTests(unittest.TestCase):
         self.assertIn('videoWallpaper.pause()', launcher)
         self.assertIn('videoWallpaper.close()', launcher)
 
+    def test_debug_capture_test_is_not_exported_in_release(self):
+        manifest = ROOT / 'ZalithLauncher/src/debug/AndroidManifest.xml'
+        text = manifest.read_text()
+        self.assertIn('android.permission.DUMP', text)
+        self.assertNotIn('MediaSmokeActivity', (MAIN/'AndroidManifest.xml').read_text())
+        fixture = (ROOT/'ZalithLauncher/src/debug/java/com/movtery/zalithlauncher/feature/media/MediaSmokeActivity.java').read_text()
+        self.assertIn('Color.MAGENTA', fixture)
+        self.assertIn('getFrameAtTime', fixture)
+        self.assertIn('new GameplayRecorder', fixture)
+        importer = (APP/'feature/background/BackgroundImport.kt').read_text()
+        self.assertIn('256L * 1024 * 1024', importer)
+        self.assertIn('temp.renameTo(target)', importer)
+        self.assertIn('temp.delete()', importer)
+
     def test_ui_resources_and_entries(self):
         for name in ['layout/fragment_launcher.xml', 'layout-port/fragment_launcher.xml']:
             self.assertIn('@+id/wardrobe_button', (MAIN/'res'/name).read_text())

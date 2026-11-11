@@ -64,6 +64,21 @@ def wait_portrait_home():
         time.sleep(1)
     raise AssertionError('Launcher did not settle in portrait after Splash')
 
+def scroll_to(name, scroll_id, attempts=8):
+    for attempt in range(attempts):
+        root=dump()
+        node=find(root,name)
+        if node is not None:
+            x1,y1,x2,y2=map(int,re.findall(r'\d+',node.get('bounds')))
+            if x2>x1 and y2-y1>=30:return node
+        scroll=find(root,scroll_id)
+        assert scroll is not None,'Missing scroll view: '+scroll_id
+        x1,y1,x2,y2=map(int,re.findall(r'\d+',scroll.get('bounds')))
+        x=(x1+x2)//2
+        adb('shell','input','swipe',str(x),str(y1+(y2-y1)*4//5),str(x),str(y1+(y2-y1)//5),'350')
+        time.sleep(0.5)
+    raise AssertionError('Cannot scroll to '+name)
+
 def screenshot(name):
     (OUT/(name+'.png')).write_bytes(adb('exec-out','screencap','-p',binary=True))
     (OUT/(name+'.xml')).write_text(ET.tostring(dump(),encoding='unicode'))
@@ -110,12 +125,37 @@ try:
     root,node=wait('setting_button');tap(node);root,_=wait('home_button')
     screenshot('landscape-home-large-text')
     root,node=wait('tools_button');tap(node);wait('share_logs_button');screenshot('tools')
+    tap(scroll_to('wardrobe_button','home_scroll'))
+    wait('wardrobe_title');screenshot('wardrobe')
+    scroll_to('import_skin','wardrobe_scroll')
+    scroll_to('import_cape','wardrobe_scroll')
+    screenshot('wardrobe-import-actions')
+    adb('shell','input','keyevent','4');wait('home_button')
+    # Exercise production capture/encoder/muxer on both actual Android surface types.
+    # The shell-only Activity exists in debug builds only and draws its own synthetic game.
+    for mode in ('surface','texture'):
+        result_path='files/media-smoke-'+mode+'.txt'
+        adb('shell','run-as',PACKAGE,'rm','-f',result_path)
+        adb('shell','am','start','-W','-n',PACKAGE+'/com.movtery.zalithlauncher.feature.media.MediaSmokeActivity','--es','surface',mode)
+        deadline=time.monotonic()+45
+        result=''
+        while time.monotonic()<deadline:
+            try:
+                result=adb('shell','run-as',PACKAGE,'cat',result_path).strip()
+                if result:break
+            except subprocess.CalledProcessError:
+                pass
+            time.sleep(1)
+        (OUT/('recording-'+mode+'.txt')).write_text(result)
+        assert result.startswith('PASS '),mode+' recorder: '+(result or 'no result before deadline')
+        screenshot('recording-'+mode+'-opaque-overlay')
+        adb('shell','input','keyevent','4');wait('home_button')
     # Application manifest isolates the UI in its named :launcher process.
     pid=adb('shell','pidof',PACKAGE+':launcher').strip()
     assert pid,'Launcher process died'
     logs=adb('logcat','-d','--pid='+pid,'-s','AndroidRuntime:E')
     assert 'FATAL EXCEPTION' not in logs,logs[-3000:]
-    (OUT/'RESULT.txt').write_text('PASS: first-run setup, portrait home, settings, tab preservation across size/font recreation, home navigation and tools. Android API 29 x86_64 emulator; not a Helio A22 benchmark or game test.\n')
+    (OUT/'RESULT.txt').write_text('PASS: first-run setup, portrait home, settings, tab preservation across size/font recreation, home navigation, tools, wardrobe entry and actual surface-only MP4 capture/decode on SurfaceView and TextureView. Android API 29 x86_64 emulator; not a Helio A22 benchmark or game test.\n')
     print('::notice title=Native UI smoke test::'+(OUT/'RESULT.txt').read_text().strip())
 except Exception as error:
     message=str(error)+' '+str(getattr(error,'output',''))

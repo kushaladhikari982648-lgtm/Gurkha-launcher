@@ -32,7 +32,6 @@ import com.movtery.zalithlauncher.utils.NewbieGuideUtils
 import com.movtery.zalithlauncher.utils.path.PathManager
 import com.movtery.zalithlauncher.utils.ZHTools
 import com.movtery.zalithlauncher.utils.anim.AnimUtils.Companion.setVisibilityAnim
-import com.movtery.zalithlauncher.utils.file.FileTools
 import com.movtery.zalithlauncher.utils.file.FileTools.Companion.mkdirs
 import com.movtery.zalithlauncher.utils.image.ImageUtils.Companion.isImage
 import com.movtery.zalithlauncher.utils.stringutils.StringUtils
@@ -55,12 +54,16 @@ class CustomBackgroundFragment : FragmentWithAnim(R.layout.fragment_custom_backg
         super.onCreate(savedInstanceState)
         openDocumentLauncher = registerForActivityResult<Array<String>, Uri>(ActivityResultContracts.OpenDocument()) { result: Uri? ->
             result?.let { uri ->
+                val context = requireContext().applicationContext
+                val folder = binding.fileRecyclerView.fullPath
                 val dialog = ZHTools.showTaskRunningDialog(requireContext())
                 Task.runTask {
-                    FileTools.copyFileInBackground(requireActivity(), uri, binding.fileRecyclerView.fullPath.absolutePath)
+                    com.movtery.zalithlauncher.feature.background.BackgroundImport.copy(context, uri, folder)
                 }.ended(TaskExecutors.getAndroidUI()) {
-                    Toast.makeText(requireActivity(), getString(R.string.file_added), Toast.LENGTH_SHORT).show()
-                    binding.fileRecyclerView.listFileAt(backgroundPath())
+                    if (isAdded && view != null) {
+                        Toast.makeText(context, R.string.file_added, Toast.LENGTH_SHORT).show()
+                        binding.fileRecyclerView.listFileAt(backgroundPath())
+                    }
                 }.onThrowable { e ->
                     Tools.showErrorRemote(e)
                 }.finallyTask(TaskExecutors.getAndroidUI()) {

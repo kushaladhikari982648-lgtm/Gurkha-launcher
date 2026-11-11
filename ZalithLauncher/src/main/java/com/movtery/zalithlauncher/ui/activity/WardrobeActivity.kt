@@ -31,6 +31,9 @@ class WardrobeActivity : AppCompatActivity() {
     private val exporter = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         uri?.let { work { export(it, pendingPlayer); getString(R.string.wardrobe_exported) } }
     }
+    override fun attachBaseContext(base: android.content.Context) {
+        super.attachBaseContext(com.movtery.zalithlauncher.context.LocaleHelper.setLocale(base))
+    }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         binding = ActivityWardrobeBinding.inflate(layoutInflater)

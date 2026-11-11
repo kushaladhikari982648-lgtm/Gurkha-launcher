@@ -54,7 +54,13 @@ read permission through FileProvider. Export wanted recordings before uninstalli
 
 Python integration checks and an executable Java policy test cover file recognition,
 texture/name validation, output sizing, resource wiring and the surface-only boundary.
-These are **not** a playback, skin-in-game, recording or Minecraft 26.x device test.
+The native UI CI additionally opens the wardrobe and runs a debug-only, shell-permission
+protected recording harness on SurfaceView and TextureView. It renders a synthetic
+red/green game surface beneath an opaque magenta Android overlay, invokes the production
+recorder, decodes three frames from the saved MP4 and rejects leaked overlay colors,
+invalid dimensions/duration and encoder/capture failures. Results are saved in the UI
+smoke artifact. This is **not** a real Minecraft, wallpaper playback, CSL integration or
+phone performance test. Verify the CI result before treating that test as passed.
 Required device checks on ARM32 and ARM64 (including GE8300):
 
 1. MP4 and WebM playback, malformed/unsupported videos, image reset, rotation, home →
