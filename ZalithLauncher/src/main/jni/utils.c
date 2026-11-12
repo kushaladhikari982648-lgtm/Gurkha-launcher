@@ -105,13 +105,13 @@ JNIEXPORT void JNICALL Java_net_kdt_pojavlaunch_utils_JREUtils_setLdLibraryPath(
 }
 
 JNIEXPORT jboolean JNICALL Java_net_kdt_pojavlaunch_utils_JREUtils_dlopen(JNIEnv *env, jclass clazz, jstring name) {
+	if (!name) return JNI_FALSE;
 	const char *nameUtf = (*env)->GetStringUTFChars(env, name, 0);
+	if (!nameUtf) return JNI_FALSE;
 	void* handle = dlopen(nameUtf, RTLD_GLOBAL | RTLD_LAZY);
-	if (!handle) {
-		LOGE("dlopen %s failed: %s", nameUtf, dlerror());
-	} else {
-		LOGD("dlopen %s success", nameUtf);
-	}
+	/* stderr is captured directly, even when an OEM logcat reader dies. */
+	if (!handle) fprintf(stderr, "RuntimeLoader: dlopen %s failed: %s\n", nameUtf, dlerror());
+	else fprintf(stderr, "RuntimeLoader: dlopen %s success\n", nameUtf);
 	(*env)->ReleaseStringUTFChars(env, name, nameUtf);
 	return handle != NULL;
 }

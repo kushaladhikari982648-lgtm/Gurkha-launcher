@@ -110,13 +110,19 @@ public final class JREUtils {
     }
 
     public static void initJavaRuntime(String jreHome) {
-        dlopen(findInLdLibPath("libjli.so"));
-        if (!dlopen("libjvm.so")) {
-            Logging.w("DynamicLoader","Failed to load with no path, trying with full path");
-            dlopen(jvmLibraryPath+"/libjvm.so");
+        File libDir = new File(jreHome, Tools.DIRNAME_HOME_JRE);
+        File jli = RuntimeLibraryPaths.jli(libDir);
+        File jvm = RuntimeLibraryPaths.jvm(libDir);
+        Logger.appendToLog("Runtime loader: JLI=" + jli + "; JVM=" + jvm);
+        requireRuntimeLibrary(jli);
+        requireRuntimeLibrary(jvm);
+        try {
+            Os.setenv("POJAV_JLI_PATH", jli.getAbsolutePath(), true);
+        } catch (android.system.ErrnoException e) {
+            throw new IllegalStateException("Cannot publish selected JLI path", e);
         }
         dlopen(findInLdLibPath("libverify.so"));
-        dlopen(findInLdLibPath("libjava.so"));
+        requireRuntimeLibrary(new File(libDir, "libjava.so"));
         // dlopen(findInLdLibPath("libjsig.so"));
         dlopen(findInLdLibPath("libnet.so"));
         dlopen(findInLdLibPath("libnio.so"));
@@ -129,52 +135,43 @@ public final class JREUtils {
         }
     }
 
+    private static void requireRuntimeLibrary(File library) {
+        if (!NativeLibraryInfo.matches(library, Tools.DEVICE_ARCHITECTURE) || !dlopen(library.getAbsolutePath())) {
+            String message = "Required runtime library failed: " + library +
+                    "; see RuntimeLoader diagnostics. Reinstall the selected Java runtime if incomplete.";
+            Logger.appendToLog(message);
+            throw new IllegalStateException(message);
+        }
+    }
+
     public static void redirectAndPrintJRELog() {
-
-        Logging.v("jrelog","Log starts here");
-        new Thread(new Runnable(){
-            int failTime = 0;
-            ProcessBuilder logcatPb;
-            @Override
-            public void run() {
-                try {
-                    if (logcatPb == null) {
-                        logcatPb = new ProcessBuilder().command("logcat", /* "-G", "1mb", */ "-v", "brief", "-s", "jrelog:I", "LIBGL:I", "NativeInput").redirectErrorStream(true);
-                    }
-
-                    Logging.i("jrelog-logcat","Clearing logcat");
-                    new ProcessBuilder().command("logcat", "-c").redirectErrorStream(true).start();
-                    Logging.i("jrelog-logcat","Starting logcat");
-                    Process p = logcatPb.start();
-
-                    byte[] buf = new byte[1024];
-                    int len;
-                    while ((len = p.getInputStream().read(buf)) != -1) {
-                        String currStr = new String(buf, 0, len);
-                        Logger.appendToLog(currStr);
-                    }
-
-                    if (p.waitFor() != 0) {
-                        Logging.e("jrelog-logcat", "Logcat exited with code " + p.exitValue());
-                        failTime++;
-                        Logging.i("jrelog-logcat", (failTime <= 10 ? "Restarting logcat" : "Too many restart fails") + " (attempt " + failTime + "/10");
-                        if (failTime <= 10) {
-                            run();
-                        } else {
-                            Logger.appendToLog("ERROR: Unable to get more Logging.");
-                        }
-                    }
-                } catch (Throwable e) {
-                    Logging.e("jrelog-logcat", "Exception on logging thread", e);
-                    Logger.appendToLog("Exception on logging thread:\n" + Log.getStackTraceString(e));
+        // Supplemental driver diagnostics only. stdout/stderr are already captured by Logger.begin.
+        // Never clear the ring buffer or recursively relaunch a collector rejected by an OEM logd.
+        new Thread(() -> {
+            Process process = null;
+            try {
+                process = new ProcessBuilder("logcat", "--pid=" + android.os.Process.myPid(),
+                        "-T", "1", "-v", "brief", "-s", "jrelog:I", "LIBGL:I", "NativeInput",
+                        "GLBridge:I", "LtwSdlEgl:I").redirectErrorStream(true).start();
+                try (java.io.Reader reader = new java.io.InputStreamReader(process.getInputStream(),
+                        java.nio.charset.StandardCharsets.UTF_8)) {
+                    char[] buffer = new char[2048];
+                    int count;
+                    while ((count = reader.read(buffer)) != -1) Logger.appendToLog(new String(buffer, 0, count));
                 }
+                Logger.appendToLog("Supplemental logcat stopped (exit " + process.waitFor() +
+                        "). Native stdout/stderr capture remains active; logcat EOF is not a game exit code.");
+            } catch (Exception e) {
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                Logger.appendToLog("Supplemental logcat unavailable: " + e + "; native stdout/stderr capture remains active.");
+            } finally {
+                if (process != null) process.destroy();
             }
-        }).start();
-        Logging.i("jrelog-logcat","Logcat thread started");
-
+        }, "SupplementalLogcat").start();
     }
 
     public static void relocateLibPath(Runtime runtime, String jreHome) {
+        Tools.DIRNAME_HOME_JRE = "lib"; // Do not retain an earlier Java 8 arch-specific directory.
         String JRE_ARCHITECTURE = runtime.arch;
         if (Architecture.archAsInt(JRE_ARCHITECTURE) == ARCH_X86){
             JRE_ARCHITECTURE = "i386/i486/i586";
@@ -212,11 +209,11 @@ public final class JREUtils {
     }
 
     private static void initLdLibraryPath(String jreHome) {
-        File serverFile = new File(jreHome + "/" + Tools.DIRNAME_HOME_JRE + "/server/libjvm.so");
-        jvmLibraryPath = jreHome + "/" + Tools.DIRNAME_HOME_JRE + "/" + (serverFile.exists() ? "server" : "client");
-        Logging.d("DynamicLoader","Base LD_LIBRARY_PATH: " + LD_LIBRARY_PATH);
-        Logging.d("DynamicLoader","Internal LD_LIBRARY_PATH: "+jvmLibraryPath + ":" + LD_LIBRARY_PATH);
-        setLdLibraryPath(jvmLibraryPath + ":" + LD_LIBRARY_PATH);
+        jvmLibraryPath = RuntimeLibraryPaths.jvm(new File(jreHome, Tools.DIRNAME_HOME_JRE)).getParent();
+        // JLI and libraries loaded later must see the same VM directory as our explicit preload.
+        LD_LIBRARY_PATH = jvmLibraryPath + ":" + LD_LIBRARY_PATH;
+        Logger.appendToLog("Runtime loader: library search path=" + LD_LIBRARY_PATH);
+        setLdLibraryPath(LD_LIBRARY_PATH);
     }
 
     private static void setJavaEnv(Map<String, String> envMap, String jreHome) {
@@ -425,6 +422,23 @@ public final class JREUtils {
             }
         }
 
+        if (gameVersion != null) {
+            // Metadata targets desktop layouts (e.g. ${natives_directory}/java). Android APK
+            // libraries are flat; extraction must use writable private cache, not /data/app.
+            File extracted = new File(PathManager.DIR_CACHE, "natives/" + gameVersion.getVersionName());
+            String libraryPath = DIR_NATIVE_LIB;
+            if (MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw)
+                libraryPath = SdlSupport.getNativesDir().getAbsolutePath() + ":" + libraryPath;
+            if (extracted.isDirectory()) libraryPath += ":" + extracted.getAbsolutePath();
+            lockedNativeProperties.put("java.library.path", libraryPath);
+            lockedNativeProperties.put("jna.boot.library.path", DIR_NATIVE_LIB);
+            File nativeWork = new File(PathManager.DIR_CACHE, "native-work");
+            if (!nativeWork.isDirectory() && !nativeWork.mkdirs())
+                throw new IllegalStateException("Cannot create writable native extraction directory: " + nativeWork);
+            lockedNativeProperties.put("jna.tmpdir", nativeWork.getAbsolutePath());
+            lockedNativeProperties.put("io.netty.native.workdir", nativeWork.getAbsolutePath());
+        }
+
         // Some phones are not using the right number of cores, fix that
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());
 
@@ -471,6 +485,7 @@ public final class JREUtils {
         chdir(gameVersion == null ? ProfilePathHome.getGameHome() : gameVersion.getGameDir().getAbsolutePath());
         userArgs.add(0,"java"); //argv[0] is the program name according to C standard.
 
+        Logger.appendToLog("JVM startup: invoking selected Java " + runtime.javaVersion + " (native JLI)");
         final int exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
         Logger.appendToLog("Java Exit code: " + exitCode);
         if (exitCode != 0) {

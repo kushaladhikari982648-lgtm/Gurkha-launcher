@@ -30,8 +30,49 @@ class NativeLaunchHardeningTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as out:
             subprocess.run(['javac','--release','8','-d',out,str(ROOT/'tests/java/NativeLaunchPolicyTest.java'),
                 str(SRC/'net/kdt/pojavlaunch/utils/NativeLaunchPolicy.java'),
+                str(SRC/'net/kdt/pojavlaunch/utils/RuntimeLibraryPaths.java'),
                 str(SRC/'com/movtery/zalithlauncher/utils/file/CompactLogs.java')],check=True)
             subprocess.run(['java','-ea','-cp',out,'NativeLaunchPolicyTest'],check=True)
+
+    @unittest.skipUnless(shutil.which('cc'), 'C compiler required')
+    def test_log_buffer_never_reads_beyond_read_result(self):
+        with tempfile.TemporaryDirectory() as out:
+            exe = str(Path(out)/'log-buffer-probe')
+            subprocess.run(['cc','-std=gnu11','-Wall','-Wextra','-Werror','-I'+str(JNI),
+                            str(ROOT/'tests/native/log_buffer_probe.c'),'-o',exe],check=True)
+            subprocess.run([exe],check=True,timeout=10)
+
+    @unittest.skipUnless(shutil.which('javac') and shutil.which('cc'), 'JDK and C compiler required; executed in CI')
+    def test_actual_native_logger_without_logcat(self):
+        java_home = Path(shutil.which('javac')).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as out:
+            folder = Path(out)
+            annotation = folder/'Keep.java'
+            annotation.write_text('package androidx.annotation; public @interface Keep {}')
+            subprocess.run(['javac','--release','8','-d',out,str(annotation),str(SRC/'net/kdt/pojavlaunch/Logger.java'),
+                            str(ROOT/'tests/java/NativeLoggerTest.java')],check=True)
+            library = folder/'libloggerprobe.so'
+            subprocess.run(['cc','-std=gnu11','-fPIC','-shared','-pthread',
+                            '-I'+str(java_home/'include'),'-I'+str(java_home/'include/linux'),'-I'+str(JNI),
+                            str(JNI/'stdio_is.c'),str(ROOT/'tests/native/logger_jni_probe.c'),'-o',str(library)],check=True)
+            result = subprocess.run(['java','-Xcheck:jni','-cp',out,'NativeLoggerTest',str(library),out],timeout=20)
+            if result.returncode:
+                self.fail('Native logger probe failed: '+str([(f.name,f.read_text(errors='replace')[-3000:]) for f in folder.glob('*.log')]))
+
+    def test_diagnostics_survive_logcat_eof(self):
+        jre=(SRC/'net/kdt/pojavlaunch/utils/JREUtils.java').read_text()
+        self.assertNotIn('command("logcat", "-c")',jre)
+        self.assertNotIn('failTime',jre)
+        self.assertNotIn('dlopen("libjvm.so")',jre)
+        self.assertIn('requireRuntimeLibrary(jvm)',jre)
+        self.assertIn('LD_LIBRARY_PATH = jvmLibraryPath + ":" + LD_LIBRARY_PATH',jre)
+        self.assertIn('lockedNativeProperties.put("java.library.path", libraryPath)',jre)
+        native=(JNI/'utils.c').read_text()
+        self.assertIn('fprintf(stderr, "RuntimeLoader:',native)
+        self.assertIn('JLI_Launch returned %d', (JNI/'jre_launcher.c').read_text())
+        stdio=(JNI/'stdio_is.c').read_text()
+        self.assertNotIn('strstr(buf',stdio)
+        self.assertNotIn('char newChars[',stdio)
 
     def test_locked_bundle_really_matches_all_four_abis(self):
         manifest=json.loads((ROOT/'ZalithLauncher/src/main/assets/components/lwjgl3-sdl/native-manifest.json').read_text())

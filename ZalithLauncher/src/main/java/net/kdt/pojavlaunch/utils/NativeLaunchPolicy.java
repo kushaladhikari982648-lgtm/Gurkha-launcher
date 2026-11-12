@@ -13,6 +13,23 @@ public final class NativeLaunchPolicy {
             vmArgs.add(key + "=" + entry.getValue());
         }
     }
+    /** Drop manifest classpaths: the launcher appends one patched Android classpath. */
+    public static String[] manifestVmArgs(List<String> args, Map<String, String> values) {
+        java.util.ArrayList<String> result = new java.util.ArrayList<>();
+        for (int i = 0; i < args.size(); i++) {
+            String arg = args.get(i);
+            if (arg.equals("-cp") || arg.equals("-classpath") || arg.equals("--class-path")) {
+                if (++i >= args.size()) throw new IllegalArgumentException("Manifest classpath has no value");
+                continue;
+            }
+            if (arg.startsWith("--class-path=")) continue;
+            for (Map.Entry<String, String> entry : values.entrySet())
+                arg = arg.replace("${" + entry.getKey() + "}", entry.getValue() == null ? "" : entry.getValue());
+            result.add(arg);
+        }
+        return result.toArray(new String[0]);
+    }
+
     /** Explicit API-audited substitutions, not a promise of on-device rendering. */
     public static boolean supportsModern(String version) {
         return "3.4.1".equals(version) || "3.4.3".equals(version);

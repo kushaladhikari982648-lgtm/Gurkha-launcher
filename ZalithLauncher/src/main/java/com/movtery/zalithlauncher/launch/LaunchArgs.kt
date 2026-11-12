@@ -16,6 +16,7 @@ import net.kdt.pojavlaunch.JMinecraftVersionList
 import net.kdt.pojavlaunch.Logger
 import net.kdt.pojavlaunch.Tools
 import net.kdt.pojavlaunch.multirt.Runtime
+import net.kdt.pojavlaunch.utils.NativeLaunchPolicy
 import net.kdt.pojavlaunch.utils.JSONUtils
 import net.kdt.pojavlaunch.value.MinecraftAccount
 import org.jackhuang.hmcl.util.versioning.VersionNumber
@@ -106,6 +107,8 @@ class LaunchArgs(
         varArgMap["library_directory"] = getLibrariesHome()
         varArgMap["version_name"] = versionInfo.id
         varArgMap["natives_directory"] = PathManager.DIR_NATIVE_LIB
+        varArgMap["launcher_name"] = InfoDistributor.LAUNCHER_NAME
+        varArgMap["launcher_version"] = ZHTools.getVersionName()
 
         val minecraftArgs: MutableList<String> = java.util.ArrayList()
         versionInfo.arguments?.let {
@@ -119,7 +122,7 @@ class LaunchArgs(
                 }
             }
         }
-        return JSONUtils.insertJSONValueList(minecraftArgs.toTypedArray<String>(), varArgMap)
+        return NativeLaunchPolicy.manifestVmArgs(minecraftArgs, varArgMap)
     }
 
     private fun getMinecraftClientArgs(): Array<String> {

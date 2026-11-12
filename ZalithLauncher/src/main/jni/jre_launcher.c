@@ -121,7 +121,12 @@ static void abort_waiter_setup() {
 }
 
 static jint launchJVM(int margc, char** margv) {
-   void* libjli = dlopen("libjli.so", RTLD_LAZY | RTLD_GLOBAL);
+   const char *jli_path = getenv("POJAV_JLI_PATH");
+   if (!jli_path || jli_path[0] != '/') {
+       fprintf(stderr, "JVM startup: no absolute selected JLI path; refusing search-path fallback\n");
+       return -1;
+   }
+   void* libjli = dlopen(jli_path, RTLD_LAZY | RTLD_GLOBAL);
    struct sigaction clean_sa;
    memset(&clean_sa, 0, sizeof (struct sigaction));
 
@@ -139,7 +144,7 @@ static jint launchJVM(int margc, char** margv) {
    // LOGD("JLI lib = %x", (int)libjli);
    if (NULL == libjli)
    {
-       LOGE("JLI lib = NULL: %s", dlerror());
+       fprintf(stderr, "JVM startup: JLI load failed (%s): %s\n", jli_path, dlerror());
        return -1;
    }
    LOGD("Found JLI lib");
@@ -150,13 +155,13 @@ static jint launchJVM(int margc, char** margv) {
 
    if (NULL == pJLI_Launch)
    {
-       LOGE("JLI_Launch = NULL");
+       fprintf(stderr, "JVM startup: JLI_Launch missing in %s\n", jli_path);
        return -1;
    }
 
-   LOGD("Calling JLI_Launch");
+   fprintf(stderr, "JVM startup: entering JLI_Launch (%s)\n", jli_path);
 
-   return pJLI_Launch(margc, margv,
+   jint result = pJLI_Launch(margc, margv,
                    0, NULL, // sizeof(const_jargs) / sizeof(char *), const_jargs,
                    0, NULL, // sizeof(const_appclasspath) / sizeof(char *), const_appclasspath,
                    FULL_VERSION,
@@ -165,7 +170,8 @@ static jint launchJVM(int margc, char** margv) {
                    *margv, // (const_launcher != NULL) ? const_launcher : *margv,
                    (const_jargs != NULL) ? JNI_TRUE : JNI_FALSE,
                    const_cpwildcard, const_javaw, const_ergo_class);
-
+   fprintf(stderr, "JVM startup: JLI_Launch returned %d\n", result);
+   return result;
 }
 
 JNIEXPORT jint JNICALL Java_com_oracle_dalvik_VMLauncher_launchJVM(JNIEnv *env, jclass clazz, jobjectArray argsArray) {

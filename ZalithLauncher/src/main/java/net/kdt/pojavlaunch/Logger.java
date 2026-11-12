@@ -12,7 +12,7 @@ public class Logger {
 
 
     /** Reset the log file, effectively erasing any previous logs */
-    public static native void begin(String logFilePath);
+    public static synchronized native void begin(String logFilePath);
 
     /** Small listener for anything listening to the log */
     public interface eventLogListener {
