@@ -8,6 +8,8 @@ import java.io.File
 import com.movtery.zalithlauncher.feature.update.UpdateUtils
 import net.kdt.pojavlaunch.Tools
 import net.kdt.pojavlaunch.utils.NativeLibraryInfo
+import net.kdt.pojavlaunch.utils.NativeLaunchPolicy
+import net.kdt.pojavlaunch.Logger
 
 /**
  * Minecraft 26.3 and newer use SDL3 (through LWJGL 3.4.1) instead of GLFW for the window, the GL
@@ -56,10 +58,10 @@ object SdlSupport {
         val requested = version.libraries?.firstOrNull { it?.name?.startsWith("org.lwjgl:lwjgl:") == true }
             ?.name?.split(':')?.getOrNull(2)
         if (usesSdl(version) || usesLwjgl341WithGlfw(version)) {
-            check(net.kdt.pojavlaunch.utils.NativeLaunchPolicy.supportsModern(requested)) {
+            check(NativeLaunchPolicy.supportsModern(requested)) {
                 "No approved Android LWJGL bundle for $requested; refusing a legacy native fallback"
             }
-            net.kdt.pojavlaunch.Logger.appendToLog("Native plan: requested LWJGL $requested -> Android 3.4.1 JNI bundle; backend=" +
+            Logger.appendToLog("Native plan: requested LWJGL $requested -> Android 3.4.1 JNI bundle; backend=" +
                 (if (usesSdl(version)) "sdl" else "glfw") + "; ABI=" + UpdateUtils.getArchModel())
         }
     }
