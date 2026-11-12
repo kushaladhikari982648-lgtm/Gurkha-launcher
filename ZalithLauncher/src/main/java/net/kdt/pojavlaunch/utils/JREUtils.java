@@ -259,7 +259,10 @@ public final class JREUtils {
         envMap.putAll(currentRenderer.getRendererEnv().getValue());
 
         String eglName = currentRenderer.getRendererEGL();
-        if (eglName != null) envMap.put("POJAVEXEC_EGL", eglName);
+        if (eglName != null) envMap.put("POJAVEXEC_EGL", resolveRendererFile(eglName));
+        else envMap.remove("POJAVEXEC_EGL");
+        // Never inherit another renderer/backend's context provider from custom_env.txt.
+        for (String key : new String[]{"SDL_EGL_LIBRARY", "SDL_OPENGL_LIBRARY", "LTW_SDL_EGL_LTW_LIBRARY"}) envMap.remove(key);
 
         envMap.put("POJAV_RENDERER", rendererId);
         // A library loaded by SDL must never initialize the launcher's GLFW-only fields.
@@ -365,10 +368,13 @@ public final class JREUtils {
         RendererPlugin customRenderer = RendererPluginManager.getSelectedRendererPlugin();
 
         if (customRenderer != null) {
-            customRenderer.getDlopen().forEach(lib -> dlopen(customRenderer.getPath() + "/" + lib));
+            customRenderer.getDlopen().forEach(lib -> {
+                String path = resolveRendererFile(lib);
+                if (!dlopen(path)) throw new IllegalStateException("Failed to load renderer dependency: " + path);
+            });
         }
 
-        if (!dlopen(rendererLib) && !dlopen(findInLdLibPath(rendererLib))) {
+        if (!dlopen(rendererLib)) {
             throw new IllegalStateException("Failed to load renderer " + rendererLib + "; check the renderer/ABI and native loader log");
         }
     }
@@ -379,6 +385,7 @@ public final class JREUtils {
             final Runtime runtime,
             Version gameVersion,
             final List<String> JVMArgs,
+            final List<String> mainArgs,
             final String userArgsString
     ) {
         List<String> userArgs = getJavaArgs(runtimeHome, userArgsString);
@@ -402,14 +409,21 @@ public final class JREUtils {
         //Add automatically generated args
         userArgs.add("-Xms" + LowEndPolicy.initialHeapMb(AllSettings.getRamAllocation().getValue().getValue(), AllSettings.getLowEndMode().getValue()) + "M");
         userArgs.add("-Xmx" + AllSettings.getRamAllocation().getValue().getValue() + "M");
-        if (Renderers.INSTANCE.isCurrentRendererValid()) userArgs.add("-Dorg.lwjgl.opengl.libname=" + loadGraphicsLibrary());
+        Map<String, String> lockedNativeProperties = new java.util.LinkedHashMap<>();
+        if (Renderers.INSTANCE.isCurrentRendererValid() && gameVersion != null)
+            lockedNativeProperties.put("org.lwjgl.opengl.libname", loadGraphicsLibrary());
 
         // Force LWJGL to use the Freetype library intended for it, instead of using the one
         // that we ship with Java (since it may be older than what's needed)
-        userArgs.add("-Dorg.lwjgl.freetype.libname="+ DIR_NATIVE_LIB +"/libfreetype.so");
+        lockedNativeProperties.put("org.lwjgl.freetype.libname", DIR_NATIVE_LIB + "/libfreetype.so");
         // Minecraft 26.3+ (SDL3) and the GLFW versions on LWJGL 3.4.1 (26.2): LWJGL 3.4.1 uses its own natives
         // (overrides the freetype path above)
-        if (MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw) userArgs.addAll(SdlSupport.getJvmArgs(DIR_NATIVE_LIB));
+        if (gameVersion != null && (MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw)) {
+            for (String argument : SdlSupport.getJvmArgs(DIR_NATIVE_LIB)) {
+                int separator = argument.indexOf('=');
+                lockedNativeProperties.put(argument.substring(2, separator), argument.substring(separator + 1));
+            }
+        }
 
         // Some phones are not using the right number of cores, fix that
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());
@@ -431,14 +445,24 @@ public final class JREUtils {
         }
         userArgs.addAll(lowMemoryArgs);
 
-        userArgs.addAll(JVMArgs);
+        if (gameVersion == null) {
+            // Installer callers still supply a complete command; prepend their legacy properties.
+            NativeLaunchPolicy.enforceProperties(userArgs, lockedNativeProperties);
+            userArgs.addAll(JVMArgs);
+        } else {
+            userArgs.addAll(JVMArgs); // VM arguments only; main/game args are separate.
+            NativeLaunchPolicy.enforceProperties(userArgs, lockedNativeProperties);
+            userArgs.addAll(mainArgs);
+        }
         activity.runOnUiThread(() -> Toast.makeText(activity, activity.getString(R.string.autoram_info_msg, AllSettings.getRamAllocation().getValue().getValue()), Toast.LENGTH_SHORT).show());
-        System.out.println(JVMArgs);
         for (int i = 0; i < userArgs.size(); i++) {
             String arg = userArgs.get(i);
-            if (arg.startsWith("--accessToken")) {
+            if (arg.equals("--accessToken") || arg.equals("--clientId") || arg.equals("--xuid")) {
+                Logger.appendToLog("JVMArg: " + arg + " [redacted]");
                 i += 1;
+                continue;
             }
+            if (arg.startsWith("--accessToken=") || arg.startsWith("-javaagent:")) continue;
             Logger.appendToLog("JVMArg: " + arg);
         }
 
@@ -483,6 +507,13 @@ public final class JREUtils {
             final List<String> JVMArgs,
             final String userArgsString
     ) throws Throwable {
+        if (gameVersion != null) throw new IllegalArgumentException("Game launches must separate VM and main arguments");
+        launchWithUtils(activity, runtime, null, JVMArgs, java.util.Collections.emptyList(), userArgsString);
+    }
+
+    public static void launchWithUtils(final AppCompatActivity activity, final Runtime runtime,
+            Version gameVersion, final List<String> JVMArgs, final List<String> mainArgs,
+            final String userArgsString) throws Throwable {
         String runtimeHome = MultiRTUtils.getRuntimeHome(runtime.name).getAbsolutePath();
 
         relocateLibPath(runtime, runtimeHome);
@@ -495,7 +526,7 @@ public final class JREUtils {
 
         initGraphicAndSoundEngine(gameVersion != null);
 
-        launchJavaVM(activity, runtimeHome, runtime, gameVersion, JVMArgs, userArgsString);
+        launchJavaVM(activity, runtimeHome, runtime, gameVersion, JVMArgs, mainArgs, userArgsString);
     }
 
     /**
@@ -677,21 +708,20 @@ public final class JREUtils {
         return parsedArguments;
     }
 
-    /**
-     * Open the render library in accordance to the settings.
-     * It will fallback if it fails to load the library.
-     * @return The name of the loaded library
-     */
+    /** Resolve exactly the selected renderer, never an unrelated library on LD_LIBRARY_PATH. */
+    public static String resolveRendererFile(String name) {
+        RendererPlugin plugin = RendererPluginManager.getSelectedRendererPlugin();
+        File file = new File(name);
+        if (!file.isAbsolute()) file = new File(plugin == null ? DIR_NATIVE_LIB : plugin.getPath(), name);
+        if (!NativeLibraryInfo.matches(file, Tools.DEVICE_ARCHITECTURE))
+            throw new IllegalStateException("Missing or wrong-ABI renderer library: " + file.getAbsolutePath());
+        return file.getAbsolutePath();
+    }
+
     public static String loadGraphicsLibrary() {
         if (!Renderers.INSTANCE.isCurrentRendererValid()) return null;
-        else {
-            RendererPlugin rendererPlugin = RendererPluginManager.getSelectedRendererPlugin();
-            if (rendererPlugin != null) {
-                return rendererPlugin.getPath() + "/" + rendererPlugin.getGlName();
-            } else {
-                return Renderers.INSTANCE.getCurrentRenderer().getRendererLibrary();
-            }
-        }
+        RendererPlugin plugin = RendererPluginManager.getSelectedRendererPlugin();
+        return resolveRendererFile(plugin == null ? Renderers.INSTANCE.getCurrentRenderer().getRendererLibrary() : plugin.getGlName());
     }
 
     /**

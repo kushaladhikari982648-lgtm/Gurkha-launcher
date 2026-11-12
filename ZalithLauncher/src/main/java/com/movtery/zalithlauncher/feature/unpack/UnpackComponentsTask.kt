@@ -126,7 +126,7 @@ class UnpackComponentsTask(val context: Context, val component: Components) : Ab
         val names = am.list("components/${SdlSupport.NATIVES_COMPONENT}/$abi") ?: return false
         return names.contains("liblwjgl.so") && names.filter { it.endsWith(".so") }.all {
             NativeLibraryInfo.matches(File(SdlSupport.getNativesDir(), it), Tools.DEVICE_ARCHITECTURE)
-        }
+        } && runCatching { SdlSupport.validateNativeHashes(); true }.getOrDefault(false)
     }
 
     private fun requestEmptyParentDir(file: File) {

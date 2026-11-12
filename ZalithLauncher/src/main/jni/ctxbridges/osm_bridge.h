@@ -16,6 +16,7 @@ typedef struct {
     int32_t last_stride;
     bool disable_rendering;
     OSMesaContext context;
+    uint64_t window_generation;
 } osm_render_window_t;
 
 bool osm_init();

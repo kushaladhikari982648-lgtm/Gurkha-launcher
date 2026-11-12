@@ -232,6 +232,7 @@ class LaunchGame {
             check(RuntimeSelection.compatible(runtime, versionInfo.javaVersion?.majorVersion ?: 8, Tools.DEVICE_ARCHITECTURE)) {
                 "The selected runtime changed or is incompatible with this Minecraft version and APK architecture"
             }
+            SdlSupport.validateRequestedVersion(versionInfo)
             if (MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw) {
                 SdlSupport.validateInstallation(PathManager.DIR_NATIVE_LIB,
                     MinecraftGLSurface.sdlVersion)
@@ -250,11 +251,11 @@ class LaunchGame {
                 minecraftVersion.getVersionName(),
                 runtime,
                 launchClassPath
-            ).getAllArgs()
+            )
 
             FFmpegPlugin.discover(activity)
 
-            JREUtils.launchWithUtils(activity, runtime, minecraftVersion, launchArgs, customArgs)
+            JREUtils.launchWithUtils(activity, runtime, minecraftVersion, launchArgs.getVmArgs(), launchArgs.getMainArgs(), customArgs)
         }
 
         /**

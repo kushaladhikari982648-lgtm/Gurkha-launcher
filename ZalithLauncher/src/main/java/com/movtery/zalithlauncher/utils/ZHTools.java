@@ -398,15 +398,18 @@ public final class ZHTools {
 
                         File logsFolder = new File(PathManager.DIR_LAUNCHER_LOG);
                         if (logsFolder.exists() && logsFolder.isDirectory()) {
-                            FileTools.zipDirectory(logsFolder, "launcher_logs/", file -> {
-                                String fileName = file.getName();
-                                return fileName.equals("latestcrash.txt") || (fileName.startsWith("log") && fileName.endsWith(".txt"));
-                            }, zos);
+                            File[] recent = logsFolder.listFiles(file -> file.isFile() && file.getName().startsWith("log") && file.getName().endsWith(".txt"));
+                            if (recent != null) {
+                                java.util.Arrays.sort(recent, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+                                for (int i = 0; i < Math.min(2, recent.length); i++)
+                                    com.movtery.zalithlauncher.utils.file.CompactLogs.add(recent[i], "launcher_logs/" + recent[i].getName(), zos);
+                            }
+                            com.movtery.zalithlauncher.utils.file.CompactLogs.add(new File(logsFolder, "latestcrash.txt"), "launcher_logs/latestcrash.txt", zos);
                         } else Log.d("Zip Log", "The launcher log does not exist or is not available");
 
                         File latestLogFile = new File(PathManager.DIR_GAME_HOME, "/latestlog.txt");
                         if (latestLogFile.exists() && latestLogFile.isFile()) {
-                            FileTools.zipFile(latestLogFile, latestLogFile.getName(), zos);
+                            com.movtery.zalithlauncher.utils.file.CompactLogs.add(latestLogFile, latestLogFile.getName(), zos);
                         } else Log.d("Zip Log", "The game run log does not exist");
                     }
 
@@ -416,7 +419,10 @@ public final class ZHTools {
                     if (zipFile != null) {
                         FileTools.shareFile(context, zipFile);
                     }
-                }).onThrowable(t -> Logging.e("Zip Log", Tools.printToString(t)))
+                }).onThrowable(t -> {
+                    Logging.e("Zip Log", Tools.printToString(t));
+                    Tools.showError(context, t);
+                })
                 .finallyTask(TaskExecutors.getAndroidUI(), dialog::dismiss)
                 .execute();
     }

@@ -52,6 +52,8 @@ typedef __eglMustCastToProperFunctionPointerType proc_t;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static void *host_egl = NULL;
 static void *ltw = NULL;
+static bool ready;
+static __thread EGLint bridge_error = EGL_SUCCESS;
 // The API the caller bound with eglBindAPI. EGL keeps the bound API per thread.
 static __thread EGLenum requested_api = EGL_OPENGL_ES_API;
 
@@ -107,7 +109,7 @@ static void load_libraries(void) {
     host_egl = dlopen("libEGL.so", RTLD_NOW | RTLD_LOCAL);
     if (host_egl == NULL) {
         LOGE("Failed to load the system EGL: %s", dlerror());
-        abort();
+        return;
     }
 #define LOAD_HOST(name) host_##name = dlsym(host_egl, #name);
     LOAD_HOST(eglChooseConfig) LOAD_HOST(eglCopyBuffers) LOAD_HOST(eglCreatePbufferSurface)
@@ -130,7 +132,7 @@ static void load_libraries(void) {
     ltw = dlopen(ltw_path != NULL ? ltw_path : "libltw.so", RTLD_NOW | RTLD_LOCAL);
     if (ltw == NULL) {
         LOGE("Failed to load LTW: %s", dlerror());
-        abort();
+        return;
     }
     ltw_eglCreateContext = dlsym(ltw, "eglCreateContext");
     ltw_eglDestroyContext = dlsym(ltw, "eglDestroyContext");
@@ -138,13 +140,19 @@ static void load_libraries(void) {
     ltw_eglGetProcAddress = dlsym(ltw, "eglGetProcAddress");
     if (!ltw_eglCreateContext || !ltw_eglDestroyContext || !ltw_eglMakeCurrent || !ltw_eglGetProcAddress) {
         LOGE("libltw.so is missing EGL entry points");
-        abort();
+        return;
     }
+    if (!host_eglBindAPI || !host_eglQueryAPI || !host_eglChooseConfig || !host_eglCreateWindowSurface ||
+        !host_eglCreatePbufferSurface || !host_eglGetError || !host_eglInitialize || !host_eglGetDisplay ||
+        !host_eglGetCurrentContext || !host_eglDestroySurface || !host_eglSwapBuffers) return;
+    ready = true;
     LOGI("LTW EGL front ready");
 }
 
-static inline void init(void) {
+static inline bool init(void) {
     pthread_once(&init_once, load_libraries);
+    if (!ready) bridge_error = EGL_NOT_INITIALIZED;
+    return ready;
 }
 
 static bool emulating_desktop_gl(void) {
@@ -179,19 +187,20 @@ static void filter_attribs64(const EGLAttrib *in, EGLAttrib *out, EGLAttrib drop
 }
 
 EXPORT EGLBoolean eglBindAPI(EGLenum api) {
-    init();
-    requested_api = api;
-    // Desktop OpenGL is provided by LTW on top of OpenGL ES
-    return host_eglBindAPI(api == EGL_OPENGL_API ? EGL_OPENGL_ES_API : api);
+    if (!init()) return (EGLBoolean)0;
+    // Remember the requested API only when the underlying bind succeeds.
+    EGLBoolean result = host_eglBindAPI(api == EGL_OPENGL_API ? EGL_OPENGL_ES_API : api);
+    if (result) requested_api = api;
+    return result;
 }
 
 EXPORT EGLenum eglQueryAPI(void) {
-    init();
+    if (!init()) return (EGLenum)0;
     return emulating_desktop_gl() ? EGL_OPENGL_API : host_eglQueryAPI();
 }
 
 EXPORT EGLBoolean eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig *configs, EGLint config_size, EGLint *num_config) {
-    init();
+    if (!init()) return (EGLBoolean)0;
     EGLint attribs[MAX_ATTRIBS];
     int n = 0, renderable_index = -1;
     if (attrib_list != NULL) {
@@ -216,7 +225,7 @@ EXPORT EGLBoolean eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGL
 }
 
 EXPORT EGLContext eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_context, const EGLint *attrib_list) {
-    init();
+    if (!init()) return (EGLContext)0;
     bool desktop = emulating_desktop_gl();
     if (attrib_list != NULL) {
         for (const EGLint *a = attrib_list; a[0] != EGL_NONE; a += 2) {
@@ -239,21 +248,23 @@ EXPORT EGLContext eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext 
     attribs[1] = 3;
     attribs[2] = EGL_CONTEXT_MINOR_VERSION_KHR;
     attribs[3] = 0;
-    host_eglBindAPI(EGL_OPENGL_ES_API);
+    if (!host_eglBindAPI(EGL_OPENGL_ES_API)) return EGL_NO_CONTEXT;
     EGLContext context = ltw_eglCreateContext(dpy, config, share_context, attribs);
     if (context == EGL_NO_CONTEXT) {
-        LOGE("eglCreateContext (OpenGL ES 3 for LTW) failed: 0x%x", host_eglGetError());
+        bridge_error = host_eglGetError();
+        if (bridge_error == EGL_SUCCESS) bridge_error = EGL_BAD_CONTEXT;
+        LOGE("eglCreateContext (OpenGL ES 3 for LTW) failed: 0x%x", bridge_error);
     }
     return context;
 }
 
 EXPORT EGLBoolean eglDestroyContext(EGLDisplay dpy, EGLContext ctx) {
-    init();
+    if (!init()) return (EGLBoolean)0;
     return ltw_eglDestroyContext(dpy, ctx);
 }
 
 EXPORT EGLBoolean eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLContext ctx) {
-    init();
+    if (!init()) return (EGLBoolean)0;
     return ltw_eglMakeCurrent(dpy, draw, read, ctx);
 }
 
@@ -261,7 +272,7 @@ EXPORT EGLBoolean eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface rea
 static const EGLint colorspace_attrib[] = { EGL_GL_COLORSPACE_KHR };
 
 EXPORT EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNativeWindowType win, const EGLint *attrib_list) {
-    init();
+    if (!init()) return (EGLSurface)0;
     if (!emulating_desktop_gl()) return host_eglCreateWindowSurface(dpy, config, win, attrib_list);
     EGLint attribs[MAX_ATTRIBS];
     filter_attribs(attrib_list, attribs, colorspace_attrib, 1);
@@ -269,7 +280,7 @@ EXPORT EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNa
 }
 
 EXPORT EGLSurface eglCreatePbufferSurface(EGLDisplay dpy, EGLConfig config, const EGLint *attrib_list) {
-    init();
+    if (!init()) return (EGLSurface)0;
     if (!emulating_desktop_gl()) return host_eglCreatePbufferSurface(dpy, config, attrib_list);
     EGLint attribs[MAX_ATTRIBS];
     filter_attribs(attrib_list, attribs, colorspace_attrib, 1);
@@ -277,7 +288,7 @@ EXPORT EGLSurface eglCreatePbufferSurface(EGLDisplay dpy, EGLConfig config, cons
 }
 
 EXPORT EGLSurface eglCreatePlatformWindowSurface(EGLDisplay dpy, EGLConfig config, void *native_window, const EGLAttrib *attrib_list) {
-    init();
+    if (!init()) return (EGLSurface)0;
     if (host_eglCreatePlatformWindowSurface == NULL) return EGL_NO_SURFACE;
     if (!emulating_desktop_gl()) return host_eglCreatePlatformWindowSurface(dpy, config, native_window, attrib_list);
     EGLAttrib attribs[MAX_ATTRIBS];
@@ -288,7 +299,7 @@ EXPORT EGLSurface eglCreatePlatformWindowSurface(EGLDisplay dpy, EGLConfig confi
 // Everything else goes to the system EGL unchanged.
 #define FORWARD(ret, name, params, args)            \
     EXPORT ret name params {                        \
-        init();                                     \
+        if (!init()) return (ret) 0;                 \
         if (host_##name == NULL) return (ret) 0;    \
         return host_##name args;                    \
     }
@@ -300,7 +311,10 @@ FORWARD(EGLBoolean, eglGetConfigs, (EGLDisplay dpy, EGLConfig *configs, EGLint c
 FORWARD(EGLDisplay, eglGetCurrentDisplay, (void), ())
 FORWARD(EGLSurface, eglGetCurrentSurface, (EGLint readdraw), (readdraw))
 FORWARD(EGLDisplay, eglGetDisplay, (EGLNativeDisplayType display_id), (display_id))
-FORWARD(EGLint, eglGetError, (void), ())
+EXPORT EGLint eglGetError(void) {
+    if (bridge_error != EGL_SUCCESS) { EGLint error = bridge_error; bridge_error = EGL_SUCCESS; return error; }
+    return ready && host_eglGetError ? host_eglGetError() : EGL_SUCCESS;
+}
 FORWARD(EGLBoolean, eglInitialize, (EGLDisplay dpy, EGLint *major, EGLint *minor), (dpy, major, minor))
 FORWARD(EGLBoolean, eglQueryContext, (EGLDisplay dpy, EGLContext ctx, EGLint attribute, EGLint *value), (dpy, ctx, attribute, value))
 FORWARD(const char *, eglQueryString, (EGLDisplay dpy, EGLint name), (dpy, name))
@@ -332,6 +346,7 @@ static const struct {
     const char *name;
     proc_t function;
 } own_functions[] = {
+        { "eglGetError", (proc_t) eglGetError },
         { "eglBindAPI", (proc_t) eglBindAPI },
         { "eglQueryAPI", (proc_t) eglQueryAPI },
         { "eglChooseConfig", (proc_t) eglChooseConfig },
@@ -344,7 +359,7 @@ static const struct {
 };
 
 EXPORT proc_t eglGetProcAddress(const char *procname) {
-    init();
+    if (!init()) return (proc_t)0;
     if (procname == NULL) return NULL;
     for (size_t i = 0; i < sizeof(own_functions) / sizeof(own_functions[0]); i++) {
         if (strcmp(procname, own_functions[i].name) == 0) return own_functions[i].function;

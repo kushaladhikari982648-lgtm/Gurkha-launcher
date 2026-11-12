@@ -26,7 +26,7 @@ static jlong ndlopen_bugfix(__attribute__((unused)) JNIEnv *env,
     const char* filename = (const char*) filename_ptr;
 
     // Oveeride vulkan loading to let us load vulkan ourselves
-    if(strstr(filename, "libvulkan.so") == filename) {
+    if(filename && strcmp(filename, "libvulkan.so") == 0) {
         printf("LWJGL linkerhook: replacing load for libvulkan.so with custom driver\n");
         return (jlong) maybe_load_vulkan();
     }

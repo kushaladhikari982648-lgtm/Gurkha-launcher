@@ -24,13 +24,13 @@ public final class LowEndPolicy {
         return false;
     }
 
-    /** Keep small/common heaps fixed to avoid avoidable early heap-growth collections.
-     * Larger allocations can still grow up to the user's chosen Xmx.
+    /** Avoid committing the entire game heap while Java/native libraries initialize.
+     * The heap can still grow up to the user's chosen Xmx.
      * Mode off preserves the previous fixed-size-heap policy. Never emits Xms > Xmx.
      */
     public static int initialHeapMb(int maximumMb, boolean enabled) {
         if (maximumMb <= 0) throw new IllegalArgumentException("Heap allocation must be positive");
-        return enabled ? Math.min(maximumMb, 512) : maximumMb;
+        return enabled ? Math.min(maximumMb, 128) : maximumMb;
     }
 
     /** Do not rewrite the saved slider value; the profile only limits effective concurrency. */

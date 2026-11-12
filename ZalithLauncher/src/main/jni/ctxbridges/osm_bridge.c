@@ -6,6 +6,7 @@
 #include <environ/environ.h>
 #include <android/log.h>
 #include "osm_bridge.h"
+#include "window_slot.h"
 
 static const char* g_LogTag = "GLBridge";
 static __thread osm_render_window_t* currentBundle;
@@ -17,8 +18,7 @@ static bool hasSetNoRendererBuffer = false;
 void setNativeWindowSwapInterval(struct ANativeWindow* nativeWindow, int swapInterval);
 
 bool osm_init() {
-    dlsym_OSMesa();
-    return true; // no more specific initialization required
+    return dlsym_OSMesa();
 }
 
 osm_render_window_t* osm_get_current() {
@@ -48,34 +48,20 @@ void osm_set_no_render_buffer(ANativeWindow_Buffer* buffer) {
 }
 
 void osm_swap_surfaces(osm_render_window_t* bundle) {
-    if(bundle->nativeSurface != NULL && bundle->newNativeSurface != bundle->nativeSurface) {
-        if(!bundle->disable_rendering) {
-            __android_log_print(ANDROID_LOG_INFO, g_LogTag, "Unlocking for cleanup...");
-            ANativeWindow_unlockAndPost(bundle->nativeSurface);
-        }
-        ANativeWindow_release(bundle->nativeSurface);
-    }
-    if(bundle->newNativeSurface != NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, g_LogTag, "Switching to new native surface");
-        bundle->nativeSurface = bundle->newNativeSurface;
-        bundle->newNativeSurface = NULL;
-        ANativeWindow_acquire(bundle->nativeSurface);
-        ANativeWindow_setBuffersGeometry(bundle->nativeSurface, 0, 0, WINDOW_FORMAT_RGBX_8888);
-        bundle->disable_rendering = false;
-        return;
-    }else {
-        __android_log_print(ANDROID_LOG_ERROR, g_LogTag,
-                            "No new native surface, switching to dummy framebuffer");
-        bundle->nativeSurface = NULL;
-        osm_set_no_render_buffer(&bundle->buffer);
-        bundle->disable_rendering = true;
-    }
-
+    ANativeWindow *next = bridge_acquire_window(&bundle->window_generation);
+    if (bundle->nativeSurface) ANativeWindow_release(bundle->nativeSurface);
+    bundle->nativeSurface = next;
+    bundle->disable_rendering = !next;
+    if (next) ANativeWindow_setBuffersGeometry(next, 0, 0, WINDOW_FORMAT_RGBX_8888);
+    osm_set_no_render_buffer(&bundle->buffer);
 }
 
 void osm_release_window() {
-    currentBundle->newNativeSurface = NULL;
-    osm_swap_surfaces(currentBundle);
+    if (!currentBundle) return;
+    if (currentBundle->nativeSurface) ANativeWindow_release(currentBundle->nativeSurface);
+    currentBundle->nativeSurface = NULL;
+    currentBundle->disable_rendering = true;
+    osm_set_no_render_buffer(&currentBundle->buffer);
 }
 
 void osm_apply_current_ll() {
@@ -98,7 +84,7 @@ void osm_make_current(osm_render_window_t* bundle) {
     if(pojav_environ->mainWindowBundle == NULL) {
         pojav_environ->mainWindowBundle = (basic_render_window_t*) bundle;
         __android_log_print(ANDROID_LOG_INFO, g_LogTag, "Main window bundle is now %p", pojav_environ->mainWindowBundle);
-        pojav_environ->mainWindowBundle->newNativeSurface = pojav_environ->pojavWindow;
+
         hasSetMainWindow = true;
     }
     if(bundle->nativeSurface == NULL) {
@@ -116,7 +102,8 @@ void osm_make_current(osm_render_window_t* bundle) {
 }
 
 void osm_swap_buffers() {
-    if(currentBundle->state == STATE_RENDERER_NEW_WINDOW) {
+    if (!currentBundle) return;
+    if(currentBundle->window_generation != bridge_window_generation()) {
         osm_swap_surfaces(currentBundle);
         currentBundle->state = STATE_RENDERER_ALIVE;
     }
@@ -133,13 +120,7 @@ void osm_swap_buffers() {
             osm_release_window();
 }
 
-void osm_setup_window() {
-    if(pojav_environ->mainWindowBundle != NULL) {
-        __android_log_print(ANDROID_LOG_INFO, g_LogTag, "Main window bundle is not NULL, changing state");
-        pojav_environ->mainWindowBundle->state = STATE_RENDERER_NEW_WINDOW;
-        pojav_environ->mainWindowBundle->newNativeSurface = pojav_environ->pojavWindow;
-    }
-}
+void osm_setup_window() {}
 
 void osm_swap_interval(int swapInterval) {
     if(pojav_environ->mainWindowBundle != NULL && pojav_environ->mainWindowBundle->nativeSurface != NULL) {

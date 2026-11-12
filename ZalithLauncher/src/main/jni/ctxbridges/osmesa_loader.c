@@ -28,7 +28,8 @@ bool is_renderer_vulkan() {
 }
 
 char* construct_main_path(const char* mesa_name, const char* pojav_native_dir) {
-    char* main_path = NULL;if (mesa_name != NULL && strncmp(mesa_name, "/data", 5) == 0) {
+    if (!mesa_name || !*mesa_name || !pojav_native_dir) return NULL;
+    char* main_path = NULL;if (mesa_name != NULL && mesa_name[0] == '/') {
         main_path = strdup(mesa_name);
     } else {
         if (asprintf(&main_path, "%s/%s", pojav_native_dir, mesa_name) == -1) {
@@ -38,8 +39,8 @@ char* construct_main_path(const char* mesa_name, const char* pojav_native_dir) {
     return main_path;
 }
 
-void dlsym_OSMesa() {
-    if (!is_renderer_vulkan()) return;
+bool dlsym_OSMesa() {
+    if (!is_renderer_vulkan()) return false;
 
     char* mesa_name = getenv("LIB_MESA_NAME");
     char* pojav_native_dir = getenv("POJAV_NATIVEDIR");
@@ -47,14 +48,14 @@ void dlsym_OSMesa() {
     char* main_path = construct_main_path(mesa_name, pojav_native_dir);
     if (!main_path) {
         fprintf(stderr, "Error: Failed to construct main path.\n");
-        abort();
+        return false;
     }
 
     void* dl_handle = dlopen(main_path, RTLD_LOCAL | RTLD_LAZY);
     free(main_path);
     if (!dl_handle) {
         fprintf(stderr, "Error: Failed to open library: %s\n", dlerror());
-        abort();
+        return false;
     }
 
     OSMesaMakeCurrent_p = OSMGetProcAddress(dl_handle, "OSMesaMakeCurrent");
@@ -69,5 +70,12 @@ void dlsym_OSMesa() {
     glFinish_p = OSMGetProcAddress(dl_handle, "glFinish");
     glReadPixels_p = OSMGetProcAddress(dl_handle, "glReadPixels");
     glReadBuffer_p = OSMGetProcAddress(dl_handle, "glReadBuffer");
+
+    if (!OSMesaMakeCurrent_p || !OSMesaCreateContext_p || !OSMesaDestroyContext_p ||
+        !OSMesaPixelStore_p || !glFinish_p) {
+        fprintf(stderr, "OSMesa provider lacks required dispatch; refusing initialization\n");
+        return false;
+    }
+    return true;
 
 }

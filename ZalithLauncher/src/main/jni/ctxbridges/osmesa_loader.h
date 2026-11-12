@@ -1,3 +1,4 @@
+#include <stdbool.h>
 //
 // Modifile by Vera-Firefly on 28.08.2023.
 //
@@ -22,5 +23,5 @@ extern void (*glReadPixels_p) (GLint x, GLint y, GLsizei width, GLsizei height, 
 extern void (*glReadBuffer_p) (GLenum mode);
 extern void* (*OSMesaGetProcAddress_p)(const char* funcName);
 
-void dlsym_OSMesa();
+bool dlsym_OSMesa();
 #endif //POJAVLAUNCHER_OSMESA_LOADER_H

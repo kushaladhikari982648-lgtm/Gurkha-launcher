@@ -854,6 +854,7 @@ public class GLFW
 
         long __functionAddress = Functions.Terminate;
         invokeV(__functionAddress);
+        isGLFWReady = false;
     }
 
     public static void glfwInitHint(int hint, int value) { }
@@ -1059,6 +1060,7 @@ public class GLFW
     private static long mglfwCreateWindow(int width, int height, CharSequence title, long monitor, long share) {
         // Create an ACTUAL EGL context
         long ptr = nglfwCreateContext(share);
+        if (ptr == 0L) throw new IllegalStateException("EGL context creation failed; see EGLBridge diagnostics. No window was registered.");
         //nativeEglMakeCurrent(ptr);
         GLFWWindowProperties win = new GLFWWindowProperties();
         // win.width = width;

@@ -22,6 +22,7 @@ import net.kdt.pojavlaunch.utils.NativeLibraryInfo
 object SdlSupport {
     const val COMPONENT = "lwjgl3-sdl"
     const val NATIVES_COMPONENT = "lwjgl-3.4.1-natives"
+    const val BUNDLE_ID = "amethyst-3.4.1-jni-ccb9c7abe942cd40"
     const val ANDROID_CORE_JAR = "lwjgl-android-jni.jar"
     private const val PATCHES_JAR = "lwjgl-sdl-patches.jar"
     const val GLFW_STUB_JAR = "lwjgl-glfw-stub.jar"
@@ -50,6 +51,19 @@ object SdlSupport {
         return major > 3 || (major == 3 && minor >= 4)
     }
 
+    @JvmStatic
+    fun validateRequestedVersion(version: JMinecraftVersionList.Version) {
+        val requested = version.libraries?.firstOrNull { it?.name?.startsWith("org.lwjgl:lwjgl:") == true }
+            ?.name?.split(':')?.getOrNull(2)
+        if (usesSdl(version) || usesLwjgl341WithGlfw(version)) {
+            check(net.kdt.pojavlaunch.utils.NativeLaunchPolicy.supportsModern(requested)) {
+                "No approved Android LWJGL bundle for $requested; refusing a legacy native fallback"
+            }
+            net.kdt.pojavlaunch.Logger.appendToLog("Native plan: requested LWJGL $requested -> Android 3.4.1 JNI bundle; backend=" +
+                (if (usesSdl(version)) "sdl" else "glfw") + "; ABI=" + UpdateUtils.getArchModel())
+        }
+    }
+
     /** Set when a GLFW version on LWJGL 3.4.1 is started (see [usesLwjgl341WithGlfw]). */
     @JvmField
     @Volatile
@@ -62,12 +76,13 @@ object SdlSupport {
     fun getComponentDir(): File = File(PathManager.DIR_GAME_HOME, COMPONENT)
 
     @JvmStatic
-    fun getNativesDir(): File = File(File(PathManager.DIR_DATA, NATIVES_COMPONENT),
+    fun getNativesDir(): File = File(File(File(PathManager.DIR_DATA, NATIVES_COMPONENT), BUNDLE_ID),
         checkNotNull(UpdateUtils.getArchModel()) { "Unknown running APK architecture" })
 
     @JvmStatic
     fun validateInstallation(nativeLibDir: String, usesSdl: Boolean) {
         if (usesSdl) getClassPath() else getGlfwClassPath()
+        validateNativeHashes()
         val libraries = listOf("liblwjgl.so", "liblwjgl_opengl.so", "libfreetype.so", "liblwjgl_stb.so",
             "liblwjgl_tinyfd.so", "libshaderc.so", "liblwjgl_vma.so", "liblwjgl_spng.so", "liblwjgl_nanovg.so")
             .map { File(getNativesDir(), it) }.toMutableList()
@@ -80,6 +95,23 @@ object SdlSupport {
             check(NativeLibraryInfo.matches(library, Tools.DEVICE_ARCHITECTURE)) {
                 "Missing, damaged or wrong-ABI native library: ${library.name}. Restart the launcher to repair its components."
             }
+        }
+    }
+
+    @JvmStatic
+    fun validateNativeHashes() {
+        val manifest = org.json.JSONObject(File(getComponentDir(), "native-manifest.json").readText())
+        check(manifest.getString("bundle") == BUNDLE_ID) { "LWJGL bundle manifest mismatch; restart to repair components" }
+        val entries = manifest.getJSONObject("natives").getJSONObject(checkNotNull(UpdateUtils.getArchModel()))
+        entries.keys().forEach { name ->
+            val file = File(getNativesDir(), name)
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it) }
+            check(actual == entries.getString(name)) { "Damaged/stale LWJGL native $name; restart to repair components" }
         }
     }
 
@@ -119,6 +151,8 @@ object SdlSupport {
         val natives = getNativesDir().absolutePath
         return listOf(
             "-Dorg.lwjgl.librarypath=$natives",
+            "-Dorg.lwjgl.libname=$natives/liblwjgl.so",
+            "-Dorg.lwjgl.system.SharedLibraryExtractPath=$natives/extracted",
             "-Dorg.lwjgl.freetype.libname=$natives/libfreetype.so",
             "-Dorg.lwjgl.shaderc.libname=$natives/libshaderc.so",
             "-Dorg.lwjgl.spvc.libname=$nativeLibDir/libspirv-cross-c-shared.so",

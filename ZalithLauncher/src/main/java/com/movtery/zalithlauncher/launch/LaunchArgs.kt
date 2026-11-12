@@ -30,7 +30,9 @@ class LaunchArgs(
     private val runtime: Runtime,
     private val launchClassPath: String
 ) {
-    fun getAllArgs(): List<String> {
+    fun getAllArgs(): List<String> = getVmArgs() + getMainArgs()
+
+    fun getVmArgs(): List<String> {
         val argsList: MutableList<String> = ArrayList()
 
         argsList.addAll(getJavaArgs())
@@ -51,11 +53,10 @@ class LaunchArgs(
             argsList.add("$pkg/$pkg=ALL-UNNAMED")
         }
 
-        argsList.add(versionInfo.mainClass)
-        argsList.addAll(getMinecraftClientArgs())
-
         return argsList
     }
+
+    fun getMainArgs(): List<String> = listOf(versionInfo.mainClass) + getMinecraftClientArgs()
 
     private fun getJavaArgs(): List<String> {
         val argsList: MutableList<String> = ArrayList()

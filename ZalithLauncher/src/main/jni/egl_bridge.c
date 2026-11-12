@@ -30,6 +30,8 @@
 #include "utils.h"
 #include "ctxbridges/bridge_tbl.h"
 #include "ctxbridges/osm_bridge.h"
+#include "ctxbridges/window_slot.h"
+#include "ctxbridges/context_policy.h"
 
 #define GLFW_CLIENT_API 0x22001
 /* Consider GLFW_NO_API as Vulkan API */
@@ -50,37 +52,24 @@ void calculateFPS();
 EXTERNAL_API void pojavTerminate() {
     printf("EGLBridge: Terminating\n");
 
-    switch (pojav_environ->config_renderer) {
-        case RENDERER_GL4ES: {
-            eglMakeCurrent_p(potatoBridge.eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            eglDestroySurface_p(potatoBridge.eglDisplay, potatoBridge.eglSurface);
-            eglDestroyContext_p(potatoBridge.eglDisplay, potatoBridge.eglContext);
-            eglTerminate_p(potatoBridge.eglDisplay);
-            eglReleaseThread_p();
-
-            potatoBridge.eglContext = EGL_NO_CONTEXT;
-            potatoBridge.eglDisplay = EGL_NO_DISPLAY;
-            potatoBridge.eglSurface = EGL_NO_SURFACE;
-        } break;
-
-        case RENDERER_VK_ZINK: {
-            // Nothing to do here
-        } break;
-    }
+    if (bridge_is_sdl()) return; // SDL owns its contexts and surfaces.
+    if (pojav_environ->config_renderer == RENDERER_GL4ES) gl_terminate();
 }
 
 JNIEXPORT void JNICALL Java_net_kdt_pojavlaunch_utils_JREUtils_setupBridgeWindow(JNIEnv* env, ABI_COMPAT jclass clazz, jobject surface) {
-    pojav_environ->pojavWindow = ANativeWindow_fromSurface(env, surface);
-    if (br_setup_window) br_setup_window();
+    ANativeWindow *window = surface ? ANativeWindow_fromSurface(env, surface) : NULL;
+    if ((*env)->ExceptionCheck(env)) return;
+    /* fromSurface already acquired one reference. The slot takes ownership. */
+    bridge_publish_window(window);
 }
 
 JNIEXPORT void JNICALL
 Java_net_kdt_pojavlaunch_utils_JREUtils_releaseBridgeWindow(ABI_COMPAT JNIEnv *env, ABI_COMPAT jclass clazz) {
-    ANativeWindow_release(pojav_environ->pojavWindow);
+    bridge_publish_window(NULL); // idempotent; render thread consumes the generation change
 }
 
 EXTERNAL_API void* pojavGetCurrentContext() {
-    return br_get_current();
+    return !bridge_is_sdl() && br_get_current ? br_get_current() : NULL;
 }
 
 static void set_vulkan_ptr(void* ptr) {
@@ -111,50 +100,50 @@ void load_vulkan() {
 }
 
 int pojavInitOpenGL() {
+    if (bridge_is_sdl()) {
+        fprintf(stderr, "EGLBridge: GLFW initialization refused on SDL backend\n");
+        return 0;
+    }
     const char *forceVsync = getenv("FORCE_VSYNC");
-    if (!strcmp(forceVsync, "true"))
-        pojav_environ->force_vsync = true;
-
+    pojav_environ->force_vsync = forceVsync && !strcmp(forceVsync, "true");
     const char *renderer = getenv("POJAV_RENDERER");
-
-    load_vulkan();
-
-    if (!strncmp("opengles", renderer, 8))
-    {
+    if (!renderer) { fprintf(stderr, "EGLBridge: no renderer selected\n"); return 0; }
+    if (!strncmp("opengles", renderer, 8)) {
         pojav_environ->config_renderer = RENDERER_GL4ES;
         set_gl_bridge_tbl();
-    }
-
-    if (!strcmp(renderer, "custom_gallium"))
-    {
+    } else if (!strcmp(renderer, "custom_gallium") || !strcmp(renderer, "vulkan_zink")) {
         pojav_environ->config_renderer = RENDERER_VK_ZINK;
+        if (!strcmp(renderer, "vulkan_zink")) {
+            load_vulkan();
+            setenv("GALLIUM_DRIVER", "zink", 1);
+        }
         set_osm_bridge_tbl();
+    } else {
+        fprintf(stderr, "EGLBridge: unsupported renderer '%s'\n", renderer);
+        return 0;
     }
-
-    if (!strcmp(renderer, "vulkan_zink"))
-    {
-        pojav_environ->config_renderer = RENDERER_VK_ZINK;
-        load_vulkan();
-        setenv("GALLIUM_DRIVER", "zink", 1);
-        set_osm_bridge_tbl();
+    if (!br_init || !br_init()) {
+        fprintf(stderr, "EGLBridge: initialization failed for '%s'\n", renderer);
+        br_init_context = NULL; br_make_current = NULL; br_get_current = NULL;
+        br_swap_buffers = NULL; br_swap_interval = NULL;
+        return 0;
     }
-
-    if (br_init()) br_setup_window();
-
-    return 0;
-}
-
-EXTERNAL_API int pojavInit() {
-    ANativeWindow_acquire(pojav_environ->pojavWindow);
-    pojav_environ->savedWidth = ANativeWindow_getWidth(pojav_environ->pojavWindow);
-    pojav_environ->savedHeight = ANativeWindow_getHeight(pojav_environ->pojavWindow);
-    ANativeWindow_setBuffersGeometry(pojav_environ->pojavWindow,pojav_environ->savedWidth,pojav_environ->savedHeight,AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM);
-    pojavInitOpenGL();
     return 1;
 }
 
+EXTERNAL_API int pojavInit() {
+    if (bridge_is_sdl()) return 0;
+    ANativeWindow *window = bridge_acquire_window(NULL);
+    if (!window) { fprintf(stderr, "EGLBridge: no Android surface\n"); return 0; }
+    pojav_environ->savedWidth = ANativeWindow_getWidth(window);
+    pojav_environ->savedHeight = ANativeWindow_getHeight(window);
+    bool valid = pojav_environ->savedWidth > 0 && pojav_environ->savedHeight > 0;
+    ANativeWindow_release(window);
+    return valid ? pojavInitOpenGL() : 0;
+}
+
 EXTERNAL_API void pojavSetWindowHint(int hint, int value) {
-    if (hint != GLFW_CLIENT_API) return;
+    if (bridge_is_sdl() || hint != GLFW_CLIENT_API) return;
     switch (value) {
         case GLFW_NO_API:
             pojav_environ->config_renderer = RENDERER_VULKAN;
@@ -172,6 +161,7 @@ EXTERNAL_API void pojavSetWindowHint(int hint, int value) {
 }
 
 EXTERNAL_API void pojavSwapBuffers() {
+    if (bridge_is_sdl() || !br_swap_buffers) return;
     calculateFPS();
 
     if (pojav_environ->config_renderer == RENDERER_VK_ZINK
@@ -183,6 +173,7 @@ EXTERNAL_API void pojavSwapBuffers() {
 }
 
 EXTERNAL_API void pojavMakeCurrent(void* window) {
+    if (bridge_is_sdl() || !br_make_current) return;
     if (pojav_environ->config_renderer == RENDERER_VK_ZINK
      || pojav_environ->config_renderer == RENDERER_GL4ES)
     {
@@ -192,9 +183,12 @@ EXTERNAL_API void pojavMakeCurrent(void* window) {
 }
 
 EXTERNAL_API void* pojavCreateContext(void* contextSrc) {
-    if (pojav_environ->config_renderer == RENDERER_VULKAN)
-        return (void *) pojav_environ->pojavWindow;
-
+    if (bridge_is_sdl()) return NULL;
+    if (pojav_environ->config_renderer == RENDERER_VULKAN) {
+        /* Direct Vulkan owns this reference until process exit (legacy GLFW ABI). */
+        return bridge_acquire_window(NULL);
+    }
+    if (!br_init_context) return NULL;
     return br_init_context((basic_render_window_t*)contextSrc);
 }
 
@@ -233,6 +227,7 @@ Java_org_lwjgl_vulkan_VK_getVulkanDriverHandle(ABI_COMPAT JNIEnv *env, ABI_COMPA
 }
 
 EXTERNAL_API void pojavSwapInterval(int interval) {
+    if (bridge_is_sdl() || !br_swap_interval) return;
     if (pojav_environ->config_renderer == RENDERER_VK_ZINK
      || pojav_environ->config_renderer == RENDERER_GL4ES)
     {

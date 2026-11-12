@@ -177,6 +177,8 @@ public class MinecraftGLSurface extends View implements GrabListener {
                 public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
                     // The surface goes away whenever it is out of view; SDL must release its EGL surface
                     if (sdlEnabled) SDLActivity.getSDLSurface().surfaceDestroyed(holder);
+                    JREUtils.releaseBridgeWindow();
+                    mNativeSurface = null;
                 }
             });
 
@@ -218,6 +220,9 @@ public class MinecraftGLSurface extends View implements GrabListener {
                 @Override
                 public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surface) {
                     if (sdlEnabled) SDLActivity.getSDLSurface().surfaceDestroyed(null);
+                    JREUtils.releaseBridgeWindow();
+                    if (mNativeSurface != null) mNativeSurface.release();
+                    mNativeSurface = null;
                     return true;
                 }
 

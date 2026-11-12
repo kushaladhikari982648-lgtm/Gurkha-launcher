@@ -29,7 +29,7 @@ def main():
     props = dict(line.split('=', 1) for line in Path('ZalithLauncher/gradle.properties').read_text().splitlines()
                  if line and not line.startswith('#') and '=' in line)
     version = props['launcher_version_name']
-    require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+', version), 'Expected beta version')
+    require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+-(?:alpha|beta)\.[0-9]+', version), 'Expected alpha or beta development version')
     tag = 'preview-v' + version
     # Ordinary development pushes must not fail or replace an already published release.
     # Only an explicitly prepared draft is eligible. API/auth failures still fail the job.

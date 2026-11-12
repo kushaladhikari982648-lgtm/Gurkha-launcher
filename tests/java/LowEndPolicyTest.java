@@ -21,8 +21,8 @@ public final class LowEndPolicyTest {
             check(initial > 0 && initial <= max && initial <= 512, "bounded initial heap");
             check(LowEndPolicy.initialHeapMb(max, false) == max, "mode-off fixed heap");
         }
-        check(LowEndPolicy.initialHeapMb(500, true) == 500, "500 MB heap avoids forced growth");
-        check(LowEndPolicy.initialHeapMb(1024, true) == 512, "larger heaps retain a bounded initial commitment");
+        check(LowEndPolicy.initialHeapMb(500, true) == 128, "low-RAM startup commits less than maximum heap");
+        check(LowEndPolicy.initialHeapMb(1024, true) == 128, "larger heaps retain a bounded initial commitment");
         try {
             LowEndPolicy.initialHeapMb(0, true);
             throw new AssertionError("zero heap must be rejected");
