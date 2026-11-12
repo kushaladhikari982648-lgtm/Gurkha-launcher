@@ -101,3 +101,7 @@ class NativeLaunchHardeningTests(unittest.TestCase):
         self.assertNotIn('ANativeWindow_release(pojav_environ->pojavWindow)',bridge)
         shim=(ROOT/'jre_lwjgl3glfw/src/main/java/org/lwjgl/glfw/GLFW.java').read_text()
         self.assertIn('if (ptr == 0L) throw new IllegalStateException',shim)
+        input_bridge = (JNI/'input_bridge_v3.c').read_text()
+        self.assertIn('keepAttachedForSdl', input_bridge)
+        self.assertIn('if (attachedHere && !keepAttachedForSdl) (*dalvikVM)->DetachCurrentThread(dalvikVM);', input_bridge)
+        self.assertIn('if (attachedHere && !isSdl) (*dalvikVM)->DetachCurrentThread(dalvikVM);', input_bridge)

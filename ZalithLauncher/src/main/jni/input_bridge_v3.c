@@ -300,8 +300,13 @@ JNIEXPORT jstring JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeClipboard(JNI
     LOGD("Debug: Clipboard access is going on\n", pojav_environ->isUseStackQueueCall);
 #endif
 
-    JNIEnv *dalvikEnv;
-    (*pojav_environ->dalvikJavaVMPtr)->AttachCurrentThread(pojav_environ->dalvikJavaVMPtr, &dalvikEnv, NULL);
+    JavaVM *dalvikVM = pojav_environ->dalvikJavaVMPtr;
+    JNIEnv *dalvikEnv = NULL;
+    bool attachedHere = false;
+    if ((*dalvikVM)->GetEnv(dalvikVM, (void **) &dalvikEnv, JNI_VERSION_1_4) == JNI_EDETACHED) {
+        if ((*dalvikVM)->AttachCurrentThread(dalvikVM, &dalvikEnv, NULL) != JNI_OK) return NULL;
+        attachedHere = true;
+    }
     assert(dalvikEnv != NULL);
     assert(pojav_environ->bridgeClazz != NULL);
     
@@ -320,7 +325,9 @@ JNIEXPORT jstring JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeClipboard(JNI
         (*dalvikEnv)->DeleteLocalRef(dalvikEnv, copyDst);    
         (*env)->ReleaseByteArrayElements(env, copySrc, (jbyte *)copySrcC, 0);
     }
-    (*pojav_environ->dalvikJavaVMPtr)->DetachCurrentThread(pojav_environ->dalvikJavaVMPtr);
+    const char *backend = getenv("POJAV_WINDOW_BACKEND");
+    bool isSdl = backend != NULL && strcmp(backend, "sdl") == 0;
+    if (attachedHere && !isSdl) (*dalvikVM)->DetachCurrentThread(dalvikVM);
     return pasteDst;
 }
 
@@ -367,7 +374,13 @@ cleanup_notification:
         result = JNI_FALSE;
     }
     (*dalvikEnv)->DeleteLocalRef(dalvikEnv, dalvikAction);
-    if (attachedHere) (*dalvikVM)->DetachCurrentThread(dalvikVM);
+    /* SDL.setupJNI() caches dalvikEnv in SDL's pthread_key_t mThreadKey on this thread and
+     * registers Android_JNI_ThreadDestroyed to detach when the pthread exits. Detaching here
+     * frees dalvikEnv while mThreadKey still points to it, causing SIGSEGV in Android_JNI_InitTouch
+     * (libSDL3.so+0x7320a on armeabi-v7a). Only detach if SDL init failed. */
+    const char *backend = getenv("POJAV_WINDOW_BACKEND");
+    bool keepAttachedForSdl = (type == 0 && result == JNI_TRUE) || (backend != NULL && strcmp(backend, "sdl") == 0);
+    if (attachedHere && !keepAttachedForSdl) (*dalvikVM)->DetachCurrentThread(dalvikVM);
     return result;
 }
 
@@ -385,10 +398,17 @@ JNIEXPORT jboolean JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeSetInputRead
 }
 
 JNIEXPORT void JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeSetGrabbing(__attribute__((unused)) JNIEnv* env, __attribute__((unused)) jclass clazz, jboolean grabbing) {
-    JNIEnv *dalvikEnv;
-    (*pojav_environ->dalvikJavaVMPtr)->AttachCurrentThread(pojav_environ->dalvikJavaVMPtr, &dalvikEnv, NULL);
+    JavaVM *dalvikVM = pojav_environ->dalvikJavaVMPtr;
+    JNIEnv *dalvikEnv = NULL;
+    bool attachedHere = false;
+    if ((*dalvikVM)->GetEnv(dalvikVM, (void **) &dalvikEnv, JNI_VERSION_1_4) == JNI_EDETACHED) {
+        if ((*dalvikVM)->AttachCurrentThread(dalvikVM, &dalvikEnv, NULL) != JNI_OK) return;
+        attachedHere = true;
+    }
     (*dalvikEnv)->CallStaticVoidMethod(dalvikEnv, pojav_environ->bridgeClazz, pojav_environ->method_onGrabStateChanged, grabbing);
-    (*pojav_environ->dalvikJavaVMPtr)->DetachCurrentThread(pojav_environ->dalvikJavaVMPtr);
+    const char *backend = getenv("POJAV_WINDOW_BACKEND");
+    bool isSdl = backend != NULL && strcmp(backend, "sdl") == 0;
+    if (attachedHere && !isSdl) (*dalvikVM)->DetachCurrentThread(dalvikVM);
     pojav_environ->isGrabbing = grabbing;
 }
 
