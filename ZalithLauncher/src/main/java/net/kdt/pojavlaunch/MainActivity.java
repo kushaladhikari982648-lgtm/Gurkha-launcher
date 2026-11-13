@@ -909,11 +909,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             final int[] buttonIds,
             final String[] buttonTexts,
             final int[] colors) {
-        Logger.appendToLog("SDL MessageBox [" + title + "]: " + message);
-        if (org.libsdl.app.SDLActivity.mSingleton != null) {
-            return org.libsdl.app.SDLActivity.mSingleton.messageboxShowMessageBox(
-                    flags, title, message, buttonFlags, buttonIds, buttonTexts, colors);
-        }
-        return -1;
+        return org.libsdl.app.SDLActivity.showMessageBox(
+                this, flags, title, message, buttonFlags, buttonIds, buttonTexts, colors);
     }
 }

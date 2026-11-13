@@ -1658,7 +1658,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     // Messagebox
 
     /** Result of current messagebox. Also used for blocking the calling thread. */
-    protected final int[] messageboxSelection = new int[1];
+    protected static final int[] messageboxSelection = new int[1];
 
     /**
      * This method is called by SDL using JNI.
@@ -1678,12 +1678,24 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             final int[] buttonIds,
             final String[] buttonTexts,
             final int[] colors) {
+        return showMessageBox(getContext() != null ? getContext() : this, flags, title, message, buttonFlags, buttonIds, buttonTexts, colors);
+    }
+
+    public static int showMessageBox(
+            final Activity activity,
+            final int flags,
+            final String title,
+            final String message,
+            final int[] buttonFlags,
+            final int[] buttonIds,
+            final String[] buttonTexts,
+            final int[] colors) {
 
         messageboxSelection[0] = -1;
 
         // sanity checks
 
-        if ((buttonFlags.length != buttonIds.length) && (buttonIds.length != buttonTexts.length)) {
+        if (activity == null || ((buttonFlags.length != buttonIds.length) && (buttonIds.length != buttonTexts.length))) {
             return -1; // implementation broken
         }
 
@@ -1699,13 +1711,12 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         args.putIntArray("colors", colors);
 
         // trigger Dialog creation on UI thread
-        final Activity activity = getContext() != null ? getContext() : this;
         Logger.appendToLog("SDL MessageBox [" + title + "]: " + message);
 
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                messageboxCreateAndShow(args);
+                messageboxCreateAndShow(activity, args);
             }
         });
 
@@ -1725,8 +1736,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         return messageboxSelection[0];
     }
 
-    protected void messageboxCreateAndShow(Bundle args) {
-        final Activity context = getContext() != null ? getContext() : this;
+    protected static void messageboxCreateAndShow(final Activity context, Bundle args) {
 
         // TODO set values from "flags" to messagebox dialog
 
