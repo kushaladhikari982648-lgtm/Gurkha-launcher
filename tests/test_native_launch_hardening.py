@@ -157,7 +157,8 @@ class NativeLaunchHardeningTests(unittest.TestCase):
                 'cc', '-std=gnu11', '-Wall', '-Wextra', '-Werror',
                 '-Ddlopen=test_dlopen', '-Ddlsym=test_dlsym',
                 '-I'+str(ROOT/'tests/native/stubs'), '-I'+str(JNI),
-                str(JNI/'sdl_hook.c'), str(ROOT/'tests/native/sdl_hook_probe.c'),
+                str(JNI/'sdl_hook.c'), str(JNI/'sdl_dlopen_hook.c'),
+                str(ROOT/'tests/native/sdl_hook_probe.c'),
                 '-o', exe
             ], check=True)
             subprocess.run([exe], check=True, timeout=10)

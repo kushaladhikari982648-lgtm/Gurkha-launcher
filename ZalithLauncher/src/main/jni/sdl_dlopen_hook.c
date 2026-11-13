@@ -11,12 +11,11 @@
 
 #define TAG "SdlDlopenHook"
 
-typedef void* (*DlsymFn)(void*, const char*);
+typedef void* (*dlsym_func_t)(void*, const char*);
 
 static void* customDlsym(void* handle, const char* symbol) {
-    BYTEHOOK_STACK_SCOPE();
-    DlsymFn prev = BYTEHOOK_GET_PREV(customDlsym);
-    void* realSymbol = prev != NULL ? prev(handle, symbol) : dlsym(handle, symbol);
+    void* realSymbol = BYTEHOOK_CALL_PREV(customDlsym, dlsym_func_t, handle, symbol);
+    BYTEHOOK_POP_STACK();
     return sdlDlsymProxy(handle, symbol, realSymbol);
 }
 

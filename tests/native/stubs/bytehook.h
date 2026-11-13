@@ -15,8 +15,12 @@ typedef void (*bytehook_hooked_t)(
 #define BYTEHOOK_MODE_AUTOMATIC 0
 #define BYTEHOOK_STATUS_CODE_OK 0
 
-#define BYTEHOOK_STACK_SCOPE() do {} while (0)
-#define BYTEHOOK_GET_PREV(fn) (NULL)
-#define BYTEHOOK_POP_STACK() do {} while (0)
+void* bytehook_get_prev_func(void* func);
+void bytehook_pop_stack(void* return_address);
+
+#define BYTEHOOK_CALL_PREV(func, func_sig, ...) \
+    ((func_sig)(bytehook_get_prev_func((void*)(func))))(__VA_ARGS__)
+#define BYTEHOOK_POP_STACK() \
+    do { bytehook_pop_stack(__builtin_return_address(0)); } while (0)
 
 #endif // STUB_BYTEHOOK_H

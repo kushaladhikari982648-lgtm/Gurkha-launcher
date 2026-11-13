@@ -15,6 +15,15 @@ int __android_log_print(int priority, const char* tag, const char* fmt, ...) {
     return 0;
 }
 
+void* bytehook_get_prev_func(void* func) {
+    (void) func;
+    return NULL;
+}
+
+void bytehook_pop_stack(void* return_address) {
+    (void) return_address;
+}
+
 #define SDL_WINDOW_OPENGL 0x0000000000000002ULL
 #define SDL_WINDOW_HIDDEN 0x0000000000000008ULL
 #define SDL_WINDOW_VULKAN 0x0000000010000000ULL

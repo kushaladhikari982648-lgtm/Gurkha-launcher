@@ -377,59 +377,6 @@ static void prepareGlesBeforeCreateWindow(void) {
     }
 }
 
-static bool proxySdlGlSetAttribute(int attr, int value) {
-    BYTEHOOK_STACK_SCOPE();
-    int normalized = normalizeGlSetAttributeValue(attr, value);
-    SDL_GL_SetAttribute_t realFn = BYTEHOOK_GET_PREV(proxySdlGlSetAttribute);
-    if (realFn == NULL) realFn = sRealSdlGlSetAttribute;
-    return realFn != NULL ? realFn(attr, normalized) : false;
-}
-
-static void* proxySdlLoadObject(const char* sofile) {
-    BYTEHOOK_STACK_SCOPE();
-    if (sofile != NULL && strstr(sofile, "libvulkan") != NULL) {
-        return VULKAN_PTR;
-    }
-    SDL_LoadObject_t realFn = BYTEHOOK_GET_PREV(proxySdlLoadObject);
-    if (realFn == NULL) realFn = sRealSdlLoadObject;
-    return realFn != NULL ? realFn(sofile) : NULL;
-}
-
-static SDL_FunctionPointer proxySdlLoadFunction(void* handle, const char* name) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_LoadFunction_t realFn = BYTEHOOK_GET_PREV(proxySdlLoadFunction);
-    if (realFn == NULL) realFn = sRealSdlLoadFunction;
-    SDL_FunctionPointer realSym = realFn != NULL ? realFn(handle, name) : NULL;
-    return wrapEglSymbolIfNeeded(name, realSym);
-}
-
-static void proxySdlUnloadObject(void* handle) {
-    BYTEHOOK_STACK_SCOPE();
-    if (handle == VULKAN_PTR) {
-        return;
-    }
-    SDL_UnloadObject_t realFn = BYTEHOOK_GET_PREV(proxySdlUnloadObject);
-    if (realFn == NULL) realFn = sRealSdlUnloadObject;
-    if (realFn != NULL) {
-        realFn(handle);
-    }
-}
-
-static SDL_FunctionPointer proxySdlEglGetProcAddress(const char* proc) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_EGL_GetProcAddress_t realFn = BYTEHOOK_GET_PREV(proxySdlEglGetProcAddress);
-    if (realFn == NULL) realFn = sRealSdlEglGetProcAddress;
-    SDL_FunctionPointer realSym = realFn != NULL ? realFn(proc) : NULL;
-    return wrapEglSymbolIfNeeded(proc, realSym);
-}
-
-static SDL_FunctionPointer proxySdlGlGetProcAddress(const char* proc) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_GL_GetProcAddress_t realFn = BYTEHOOK_GET_PREV(proxySdlGlGetProcAddress);
-    if (realFn == NULL) realFn = sRealSdlGlGetProcAddress;
-    return realFn != NULL ? realFn(proc) : NULL;
-}
-
 static bool windowActuallyHasOpenGL(void* window, uint64_t requestedFlags) {
     resolveSdlHelperSymbols();
     if (window != NULL && sRealSdlGetWindowFlags != NULL) {
@@ -484,8 +431,13 @@ static void* reusePrimaryWindow(const char* caller, const char* title, bool hidd
     return sPrimaryWindow;
 }
 
-static void* proxySdlCreateWindow(const char* title, int w, int h, uint64_t flags) {
-    BYTEHOOK_STACK_SCOPE();
+static void* handleSdlCreateWindow(
+    SDL_CreateWindow_t realFn,
+    const char* title,
+    int w,
+    int h,
+    uint64_t flags
+) {
     if (sdlForceOpenGlBackend()) {
         flags = (flags & ~SDL_WINDOW_VULKAN) | SDL_WINDOW_OPENGL;
     }
@@ -503,8 +455,6 @@ static void* proxySdlCreateWindow(const char* title, int w, int h, uint64_t flag
         prepareGlesBeforeCreateWindow();
     }
 
-    SDL_CreateWindow_t realFn = BYTEHOOK_GET_PREV(proxySdlCreateWindow);
-    if (realFn == NULL) realFn = sRealSdlCreateWindow;
     sInCreateWindow++;
     void* window = realFn != NULL ? realFn(title, w, h, flags) : NULL;
     sInCreateWindow--;
@@ -528,12 +478,10 @@ static void* proxySdlCreateWindow(const char* title, int w, int h, uint64_t flag
     return window;
 }
 
-static void* proxySdlCreateWindowWithProperties(uint32_t props) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_CreateWindowWithProperties_t realFn = BYTEHOOK_GET_PREV(proxySdlCreateWindowWithProperties);
-    if (realFn == NULL) realFn = sRealSdlCreateWindowWithProperties;
-
-    // When called internally from SDL_CreateWindow, let proxySdlCreateWindow manage state.
+static void* handleSdlCreateWindowWithProperties(
+    SDL_CreateWindowWithProperties_t realFn,
+    uint32_t props
+) {
     if (sInCreateWindow > 0) {
         return realFn != NULL ? realFn(props) : NULL;
     }
@@ -599,13 +547,12 @@ static void* proxySdlCreateWindowWithProperties(uint32_t props) {
     return window;
 }
 
-static void proxySdlDestroyWindow(void* window) {
-    BYTEHOOK_STACK_SCOPE();
-    if (window == NULL) return;
+static bool shouldSkipDestroyWindow(void* window) {
+    if (window == NULL) return true;
 
     if (window == sReplacedVulkanWindow && window != sPrimaryWindow) {
         sReplacedVulkanWindow = NULL;
-        return;
+        return true;
     }
 
     if (sdlWindowReuseEnabled() && window == sPrimaryWindow) {
@@ -618,10 +565,9 @@ static void proxySdlDestroyWindow(void* window) {
                 window,
                 sPrimaryWindowRefs
             );
-            return;
+            return true;
         }
         if (sPrimaryWindowHasOpenGL) {
-            // Keep the OpenGL primary window and its Android EGL surface alive for subsequent windows.
             sPrimaryWindowRefs = 0;
             __android_log_print(
                 ANDROID_LOG_INFO,
@@ -629,80 +575,16 @@ static void proxySdlDestroyWindow(void* window) {
                 "SDL_DestroyWindow pinned OpenGL primary window=%p for single-window reuse",
                 window
             );
-            return;
+            return true;
         }
         sPrimaryWindow = NULL;
         sPrimaryWindowRefs = 0;
         sPrimaryWindowHasOpenGL = false;
     }
-
-    SDL_DestroyWindow_t realFn = BYTEHOOK_GET_PREV(proxySdlDestroyWindow);
-    if (realFn == NULL) realFn = sRealSdlDestroyWindow;
-    if (realFn != NULL) {
-        realFn(window);
-    }
+    return false;
 }
 
-static bool proxySdlSetWindowSize(void* window, int w, int h) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_SetWindowSize_t realFn = BYTEHOOK_GET_PREV(proxySdlSetWindowSize);
-    if (realFn == NULL) realFn = sRealSdlSetWindowSize;
-    if (window == NULL || w <= 0 || h <= 0) {
-        return realFn != NULL ? realFn(window, w, h) : false;
-    }
-    if (realFn != NULL) {
-        (void) realFn(window, w, h);
-    }
-    return true;
-}
-
-static bool proxySdlHideWindow(void* window) {
-    BYTEHOOK_STACK_SCOPE();
-    if (sdlWindowReuseEnabled() && window == sPrimaryWindow && sPrimaryWindowRefs > 1) {
-        // Do not hide or strip focus from the shared main window when the utility window hides itself.
-        return true;
-    }
-    SDL_HideWindow_t realFn = BYTEHOOK_GET_PREV(proxySdlHideWindow);
-    if (realFn == NULL) realFn = sRealSdlHideWindow;
-    return realFn != NULL ? realFn(window) : true;
-}
-
-static bool proxySdlGlMakeCurrent(void* window, void* context) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_GL_MakeCurrent_t realFn = BYTEHOOK_GET_PREV(proxySdlGlMakeCurrent);
-    if (realFn == NULL) realFn = sRealSdlGlMakeCurrent;
-    if (realFn == NULL) return false;
-
-    if (window == NULL && context != NULL && sPrimaryWindow != NULL) {
-        if (realFn(NULL, context)) {
-            return true;
-        }
-        return realFn(sPrimaryWindow, context);
-    }
-    return realFn(window, context);
-}
-
-static void* proxySdlGetWindowFromEvent(const void* event) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_GetWindowFromEvent_t realFn = BYTEHOOK_GET_PREV(proxySdlGetWindowFromEvent);
-    if (realFn == NULL) realFn = sRealSdlGetWindowFromEvent;
-    void* win = realFn != NULL ? realFn(event) : NULL;
-    if (win != NULL) {
-        sdlLastEventWindow = win;
-        return win;
-    }
-    if (sdlWindowReuseEnabled()) {
-        if (sdlLastEventWindow != NULL) return sdlLastEventWindow;
-        if (sPrimaryWindow != NULL) return sPrimaryWindow;
-    }
-    return NULL;
-}
-
-static void* proxySdlGetWindowFromID(uint32_t id) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_GetWindowFromID_t realFn = BYTEHOOK_GET_PREV(proxySdlGetWindowFromID);
-    if (realFn == NULL) realFn = sRealSdlGetWindowFromID;
-    void* win = realFn != NULL ? realFn(id) : NULL;
+static void* resolveEventWindowFallback(void* win) {
     if (win != NULL) {
         sdlLastEventWindow = win;
         return win;
@@ -729,29 +611,321 @@ static void rememberEventWindow(const void* event) {
     }
 }
 
+// --- dlsym / ndlsym function-pointer proxies (do not touch bytehook stack) ---
+
+static bool proxySdlGlSetAttribute(int attr, int value) {
+    int normalized = normalizeGlSetAttributeValue(attr, value);
+    return sRealSdlGlSetAttribute != NULL ? sRealSdlGlSetAttribute(attr, normalized) : false;
+}
+
+static void* proxySdlLoadObject(const char* sofile) {
+    if (sofile != NULL && strstr(sofile, "libvulkan") != NULL) {
+        return VULKAN_PTR;
+    }
+    return sRealSdlLoadObject != NULL ? sRealSdlLoadObject(sofile) : NULL;
+}
+
+static SDL_FunctionPointer proxySdlLoadFunction(void* handle, const char* name) {
+    SDL_FunctionPointer realSym = sRealSdlLoadFunction != NULL ? sRealSdlLoadFunction(handle, name) : NULL;
+    return wrapEglSymbolIfNeeded(name, realSym);
+}
+
+static void proxySdlUnloadObject(void* handle) {
+    if (handle == VULKAN_PTR) return;
+    if (sRealSdlUnloadObject != NULL) sRealSdlUnloadObject(handle);
+}
+
+static SDL_FunctionPointer proxySdlEglGetProcAddress(const char* proc) {
+    SDL_FunctionPointer realSym = sRealSdlEglGetProcAddress != NULL ? sRealSdlEglGetProcAddress(proc) : NULL;
+    return wrapEglSymbolIfNeeded(proc, realSym);
+}
+
+static SDL_FunctionPointer proxySdlGlGetProcAddress(const char* proc) {
+    return sRealSdlGlGetProcAddress != NULL ? sRealSdlGlGetProcAddress(proc) : NULL;
+}
+
+static void* proxySdlCreateWindow(const char* title, int w, int h, uint64_t flags) {
+    return handleSdlCreateWindow(sRealSdlCreateWindow, title, w, h, flags);
+}
+
+static void* proxySdlCreateWindowWithProperties(uint32_t props) {
+    return handleSdlCreateWindowWithProperties(sRealSdlCreateWindowWithProperties, props);
+}
+
+static void proxySdlDestroyWindow(void* window) {
+    if (shouldSkipDestroyWindow(window)) return;
+    if (sRealSdlDestroyWindow != NULL) sRealSdlDestroyWindow(window);
+}
+
+static bool proxySdlSetWindowSize(void* window, int w, int h) {
+    if (window == NULL || w <= 0 || h <= 0) {
+        return sRealSdlSetWindowSize != NULL ? sRealSdlSetWindowSize(window, w, h) : false;
+    }
+    if (sRealSdlSetWindowSize != NULL) {
+        (void) sRealSdlSetWindowSize(window, w, h);
+    }
+    return true;
+}
+
+static bool proxySdlHideWindow(void* window) {
+    if (sdlWindowReuseEnabled() && window == sPrimaryWindow && sPrimaryWindowRefs > 1) {
+        return true;
+    }
+    return sRealSdlHideWindow != NULL ? sRealSdlHideWindow(window) : true;
+}
+
+static bool proxySdlGlMakeCurrent(void* window, void* context) {
+    if (sRealSdlGlMakeCurrent == NULL) return false;
+    if (window == NULL && context != NULL && sPrimaryWindow != NULL) {
+        if (sRealSdlGlMakeCurrent(NULL, context)) return true;
+        return sRealSdlGlMakeCurrent(sPrimaryWindow, context);
+    }
+    return sRealSdlGlMakeCurrent(window, context);
+}
+
+static void* proxySdlGetWindowFromEvent(const void* event) {
+    void* win = sRealSdlGetWindowFromEvent != NULL ? sRealSdlGetWindowFromEvent(event) : NULL;
+    return resolveEventWindowFallback(win);
+}
+
+static void* proxySdlGetWindowFromID(uint32_t id) {
+    void* win = sRealSdlGetWindowFromID != NULL ? sRealSdlGetWindowFromID(id) : NULL;
+    return resolveEventWindowFallback(win);
+}
+
 static bool proxySdlPollEvent(void* event) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_PollEvent_t realFn = BYTEHOOK_GET_PREV(proxySdlPollEvent);
-    if (realFn == NULL) realFn = sRealSdlPollEvent;
-    bool ok = realFn != NULL ? realFn(event) : false;
+    bool ok = sRealSdlPollEvent != NULL ? sRealSdlPollEvent(event) : false;
     if (ok) rememberEventWindow(event);
     return ok;
 }
 
 static bool proxySdlWaitEvent(void* event) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_WaitEvent_t realFn = BYTEHOOK_GET_PREV(proxySdlWaitEvent);
-    if (realFn == NULL) realFn = sRealSdlWaitEvent;
-    bool ok = realFn != NULL ? realFn(event) : false;
+    bool ok = sRealSdlWaitEvent != NULL ? sRealSdlWaitEvent(event) : false;
     if (ok) rememberEventWindow(event);
     return ok;
 }
 
 static bool proxySdlWaitEventTimeout(void* event, int32_t timeoutMS) {
-    BYTEHOOK_STACK_SCOPE();
-    SDL_WaitEventTimeout_t realFn = BYTEHOOK_GET_PREV(proxySdlWaitEventTimeout);
-    if (realFn == NULL) realFn = sRealSdlWaitEventTimeout;
-    bool ok = realFn != NULL ? realFn(event, timeoutMS) : false;
+    bool ok = sRealSdlWaitEventTimeout != NULL ? sRealSdlWaitEventTimeout(event, timeoutMS) : false;
+    if (ok) rememberEventWindow(event);
+    return ok;
+}
+
+// --- bytehook PLT wrappers (use BYTEHOOK_CALL_PREV + BYTEHOOK_POP_STACK) ---
+
+static bool custom_SDL_GL_SetAttribute_Func(int attr, int value) {
+    int normalized = normalizeGlSetAttributeValue(attr, value);
+    bool res = BYTEHOOK_CALL_PREV(custom_SDL_GL_SetAttribute_Func, SDL_GL_SetAttribute_t, attr, normalized);
+    BYTEHOOK_POP_STACK();
+    return res;
+}
+
+static void* custom_SDL_LoadObject_Func(const char* sofile) {
+    if (sofile != NULL && strstr(sofile, "libvulkan") != NULL) {
+        BYTEHOOK_POP_STACK();
+        return VULKAN_PTR;
+    }
+    void* res = BYTEHOOK_CALL_PREV(custom_SDL_LoadObject_Func, SDL_LoadObject_t, sofile);
+    BYTEHOOK_POP_STACK();
+    return res;
+}
+
+static SDL_FunctionPointer custom_SDL_LoadFunction_Func(void* handle, const char* name) {
+    SDL_FunctionPointer realSym = BYTEHOOK_CALL_PREV(custom_SDL_LoadFunction_Func, SDL_LoadFunction_t, handle, name);
+    BYTEHOOK_POP_STACK();
+    return wrapEglSymbolIfNeeded(name, realSym);
+}
+
+static void custom_SDL_UnloadObject_Func(void* handle) {
+    if (handle != VULKAN_PTR) {
+        BYTEHOOK_CALL_PREV(custom_SDL_UnloadObject_Func, SDL_UnloadObject_t, handle);
+    }
+    BYTEHOOK_POP_STACK();
+}
+
+static SDL_FunctionPointer custom_SDL_EGL_GetProcAddress_Func(const char* proc) {
+    SDL_FunctionPointer realSym = BYTEHOOK_CALL_PREV(custom_SDL_EGL_GetProcAddress_Func, SDL_EGL_GetProcAddress_t, proc);
+    BYTEHOOK_POP_STACK();
+    return wrapEglSymbolIfNeeded(proc, realSym);
+}
+
+static SDL_FunctionPointer custom_SDL_GL_GetProcAddress_Func(const char* proc) {
+    SDL_FunctionPointer realSym = BYTEHOOK_CALL_PREV(custom_SDL_GL_GetProcAddress_Func, SDL_GL_GetProcAddress_t, proc);
+    BYTEHOOK_POP_STACK();
+    return realSym;
+}
+
+static void* custom_SDL_CreateWindow_Func(const char* title, int w, int h, uint64_t flags) {
+    if (sdlForceOpenGlBackend()) {
+        flags = (flags & ~SDL_WINDOW_VULKAN) | SDL_WINDOW_OPENGL;
+    }
+    bool requestsOpenGL = (flags & SDL_WINDOW_OPENGL) != 0 && (flags & SDL_WINDOW_VULKAN) == 0;
+    bool hidden = (flags & SDL_WINDOW_HIDDEN) != 0;
+
+    if (sdlWindowReuseEnabled()) {
+        replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, "SDL_CreateWindow");
+        if (sPrimaryWindow != NULL) {
+            void* reused = reusePrimaryWindow("SDL_CreateWindow", title, hidden);
+            BYTEHOOK_POP_STACK();
+            return reused;
+        }
+    }
+
+    if (requestsOpenGL) {
+        prepareGlesBeforeCreateWindow();
+    }
+
+    sInCreateWindow++;
+    void* window = BYTEHOOK_CALL_PREV(custom_SDL_CreateWindow_Func, SDL_CreateWindow_t, title, w, h, flags);
+    sInCreateWindow--;
+
+    if (sdlWindowReuseEnabled() && window != NULL && sPrimaryWindow == NULL) {
+        sPrimaryWindow = window;
+        sPrimaryWindowRefs = 1;
+        sPrimaryWindowHasOpenGL = windowActuallyHasOpenGL(window, flags);
+        if (sReplacedVulkanWindow == window) {
+            sReplacedVulkanWindow = NULL;
+        }
+    }
+    BYTEHOOK_POP_STACK();
+    return window;
+}
+
+static void* custom_SDL_CreateWindowWithProperties_Func(uint32_t props) {
+    if (sInCreateWindow > 0) {
+        void* inner = BYTEHOOK_CALL_PREV(custom_SDL_CreateWindowWithProperties_Func, SDL_CreateWindowWithProperties_t, props);
+        BYTEHOOK_POP_STACK();
+        return inner;
+    }
+
+    resolveSdlHelperSymbols();
+    uint64_t flags = sRealSdlGetNumberProperty != NULL
+        ? (uint64_t) sRealSdlGetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, 0)
+        : 0ULL;
+    bool propOpenGL = sRealSdlGetBooleanProperty != NULL &&
+        sRealSdlGetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN, (flags & SDL_WINDOW_OPENGL) != 0);
+    bool propVulkan = sRealSdlGetBooleanProperty != NULL &&
+        sRealSdlGetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_VULKAN_BOOLEAN, (flags & SDL_WINDOW_VULKAN) != 0);
+    bool propHidden = sRealSdlGetBooleanProperty != NULL &&
+        sRealSdlGetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, (flags & SDL_WINDOW_HIDDEN) != 0);
+    const char* title = sRealSdlGetStringProperty != NULL
+        ? sRealSdlGetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, NULL)
+        : NULL;
+
+    if (sdlForceOpenGlBackend()) {
+        flags = (flags & ~SDL_WINDOW_VULKAN) | SDL_WINDOW_OPENGL;
+        propOpenGL = true;
+        propVulkan = false;
+        if (sRealSdlSetNumberProperty != NULL) {
+            sRealSdlSetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, (int64_t) flags);
+        }
+        if (sRealSdlSetBooleanProperty != NULL) {
+            sRealSdlSetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN, true);
+            sRealSdlSetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_VULKAN_BOOLEAN, false);
+        }
+    }
+
+    bool requestsOpenGL = (propOpenGL || (flags & SDL_WINDOW_OPENGL) != 0) && !propVulkan && (flags & SDL_WINDOW_VULKAN) == 0;
+    if (sdlWindowReuseEnabled()) {
+        replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, "SDL_CreateWindowWithProperties");
+        if (sPrimaryWindow != NULL) {
+            void* reused = reusePrimaryWindow("SDL_CreateWindowWithProperties", title, propHidden || (flags & SDL_WINDOW_HIDDEN) != 0);
+            BYTEHOOK_POP_STACK();
+            return reused;
+        }
+    }
+
+    if (requestsOpenGL) {
+        prepareGlesBeforeCreateWindow();
+    }
+
+    sInCreateWindow++;
+    void* window = BYTEHOOK_CALL_PREV(custom_SDL_CreateWindowWithProperties_Func, SDL_CreateWindowWithProperties_t, props);
+    sInCreateWindow--;
+
+    if (sdlWindowReuseEnabled() && window != NULL && sPrimaryWindow == NULL) {
+        sPrimaryWindow = window;
+        sPrimaryWindowRefs = 1;
+        sPrimaryWindowHasOpenGL = windowActuallyHasOpenGL(window, requestsOpenGL ? SDL_WINDOW_OPENGL : flags);
+        if (sReplacedVulkanWindow == window) {
+            sReplacedVulkanWindow = NULL;
+        }
+    }
+    BYTEHOOK_POP_STACK();
+    return window;
+}
+
+static void custom_SDL_DestroyWindow_Func(void* window) {
+    if (!shouldSkipDestroyWindow(window)) {
+        BYTEHOOK_CALL_PREV(custom_SDL_DestroyWindow_Func, SDL_DestroyWindow_t, window);
+    }
+    BYTEHOOK_POP_STACK();
+}
+
+static bool custom_SDL_SetWindowSize_Func(void* window, int w, int h) {
+    if (window == NULL || w <= 0 || h <= 0) {
+        bool res = BYTEHOOK_CALL_PREV(custom_SDL_SetWindowSize_Func, SDL_SetWindowSize_t, window, w, h);
+        BYTEHOOK_POP_STACK();
+        return res;
+    }
+    (void) BYTEHOOK_CALL_PREV(custom_SDL_SetWindowSize_Func, SDL_SetWindowSize_t, window, w, h);
+    BYTEHOOK_POP_STACK();
+    return true;
+}
+
+static bool custom_SDL_HideWindow_Func(void* window) {
+    if (sdlWindowReuseEnabled() && window == sPrimaryWindow && sPrimaryWindowRefs > 1) {
+        BYTEHOOK_POP_STACK();
+        return true;
+    }
+    bool res = BYTEHOOK_CALL_PREV(custom_SDL_HideWindow_Func, SDL_HideWindow_t, window);
+    BYTEHOOK_POP_STACK();
+    return res;
+}
+
+static bool custom_SDL_GL_MakeCurrent_Func(void* window, void* context) {
+    if (window == NULL && context != NULL && sPrimaryWindow != NULL) {
+        bool ok = BYTEHOOK_CALL_PREV(custom_SDL_GL_MakeCurrent_Func, SDL_GL_MakeCurrent_t, NULL, context);
+        if (!ok) {
+            ok = BYTEHOOK_CALL_PREV(custom_SDL_GL_MakeCurrent_Func, SDL_GL_MakeCurrent_t, sPrimaryWindow, context);
+        }
+        BYTEHOOK_POP_STACK();
+        return ok;
+    }
+    bool res = BYTEHOOK_CALL_PREV(custom_SDL_GL_MakeCurrent_Func, SDL_GL_MakeCurrent_t, window, context);
+    BYTEHOOK_POP_STACK();
+    return res;
+}
+
+static void* custom_SDL_GetWindowFromEvent_Func(const void* event) {
+    void* win = BYTEHOOK_CALL_PREV(custom_SDL_GetWindowFromEvent_Func, SDL_GetWindowFromEvent_t, event);
+    BYTEHOOK_POP_STACK();
+    return resolveEventWindowFallback(win);
+}
+
+static void* custom_SDL_GetWindowFromID_Func(uint32_t id) {
+    void* win = BYTEHOOK_CALL_PREV(custom_SDL_GetWindowFromID_Func, SDL_GetWindowFromID_t, id);
+    BYTEHOOK_POP_STACK();
+    return resolveEventWindowFallback(win);
+}
+
+static bool custom_SDL_PollEvent_Func(void* event) {
+    bool ok = BYTEHOOK_CALL_PREV(custom_SDL_PollEvent_Func, SDL_PollEvent_t, event);
+    BYTEHOOK_POP_STACK();
+    if (ok) rememberEventWindow(event);
+    return ok;
+}
+
+static bool custom_SDL_WaitEvent_Func(void* event) {
+    bool ok = BYTEHOOK_CALL_PREV(custom_SDL_WaitEvent_Func, SDL_WaitEvent_t, event);
+    BYTEHOOK_POP_STACK();
+    if (ok) rememberEventWindow(event);
+    return ok;
+}
+
+static bool custom_SDL_WaitEventTimeout_Func(void* event, int32_t timeoutMS) {
+    bool ok = BYTEHOOK_CALL_PREV(custom_SDL_WaitEventTimeout_Func, SDL_WaitEventTimeout_t, event, timeoutMS);
+    BYTEHOOK_POP_STACK();
     if (ok) rememberEventWindow(event);
     return ok;
 }
@@ -762,73 +936,106 @@ void* sdlDlsymProxy(void* handle, const char* name, void* realPtr) {
     if (name == NULL || realPtr == NULL) return realPtr;
 
     if (strcmp(name, "SDL_GL_SetAttribute") == 0) {
-        if (realPtr != (void*) &proxySdlGlSetAttribute) sRealSdlGlSetAttribute = (SDL_GL_SetAttribute_t) realPtr;
+        if (realPtr != (void*) &proxySdlGlSetAttribute && realPtr != (void*) &custom_SDL_GL_SetAttribute_Func) {
+            sRealSdlGlSetAttribute = (SDL_GL_SetAttribute_t) realPtr;
+        }
         return (void*) &proxySdlGlSetAttribute;
     }
     if (strcmp(name, "SDL_LoadObject") == 0) {
-        if (realPtr != (void*) &proxySdlLoadObject) sRealSdlLoadObject = (SDL_LoadObject_t) realPtr;
+        if (realPtr != (void*) &proxySdlLoadObject && realPtr != (void*) &custom_SDL_LoadObject_Func) {
+            sRealSdlLoadObject = (SDL_LoadObject_t) realPtr;
+        }
         return (void*) &proxySdlLoadObject;
     }
     if (strcmp(name, "SDL_LoadFunction") == 0) {
-        if (realPtr != (void*) &proxySdlLoadFunction) sRealSdlLoadFunction = (SDL_LoadFunction_t) realPtr;
+        if (realPtr != (void*) &proxySdlLoadFunction && realPtr != (void*) &custom_SDL_LoadFunction_Func) {
+            sRealSdlLoadFunction = (SDL_LoadFunction_t) realPtr;
+        }
         return (void*) &proxySdlLoadFunction;
     }
     if (strcmp(name, "SDL_UnloadObject") == 0) {
-        if (realPtr != (void*) &proxySdlUnloadObject) sRealSdlUnloadObject = (SDL_UnloadObject_t) realPtr;
+        if (realPtr != (void*) &proxySdlUnloadObject && realPtr != (void*) &custom_SDL_UnloadObject_Func) {
+            sRealSdlUnloadObject = (SDL_UnloadObject_t) realPtr;
+        }
         return (void*) &proxySdlUnloadObject;
     }
     if (strcmp(name, "SDL_EGL_GetProcAddress") == 0) {
-        if (realPtr != (void*) &proxySdlEglGetProcAddress) sRealSdlEglGetProcAddress = (SDL_EGL_GetProcAddress_t) realPtr;
+        if (realPtr != (void*) &proxySdlEglGetProcAddress && realPtr != (void*) &custom_SDL_EGL_GetProcAddress_Func) {
+            sRealSdlEglGetProcAddress = (SDL_EGL_GetProcAddress_t) realPtr;
+        }
         return (void*) &proxySdlEglGetProcAddress;
     }
     if (strcmp(name, "SDL_GL_GetProcAddress") == 0) {
-        if (realPtr != (void*) &proxySdlGlGetProcAddress) sRealSdlGlGetProcAddress = (SDL_GL_GetProcAddress_t) realPtr;
+        if (realPtr != (void*) &proxySdlGlGetProcAddress && realPtr != (void*) &custom_SDL_GL_GetProcAddress_Func) {
+            sRealSdlGlGetProcAddress = (SDL_GL_GetProcAddress_t) realPtr;
+        }
         return (void*) &proxySdlGlGetProcAddress;
     }
     if (strcmp(name, "SDL_CreateWindow") == 0) {
-        if (realPtr != (void*) &proxySdlCreateWindow) sRealSdlCreateWindow = (SDL_CreateWindow_t) realPtr;
+        if (realPtr != (void*) &proxySdlCreateWindow && realPtr != (void*) &custom_SDL_CreateWindow_Func) {
+            sRealSdlCreateWindow = (SDL_CreateWindow_t) realPtr;
+        }
         return (void*) &proxySdlCreateWindow;
     }
     if (strcmp(name, "SDL_CreateWindowWithProperties") == 0) {
-        if (realPtr != (void*) &proxySdlCreateWindowWithProperties) {
+        if (realPtr != (void*) &proxySdlCreateWindowWithProperties &&
+            realPtr != (void*) &custom_SDL_CreateWindowWithProperties_Func) {
             sRealSdlCreateWindowWithProperties = (SDL_CreateWindowWithProperties_t) realPtr;
         }
         return (void*) &proxySdlCreateWindowWithProperties;
     }
     if (strcmp(name, "SDL_DestroyWindow") == 0) {
-        if (realPtr != (void*) &proxySdlDestroyWindow) sRealSdlDestroyWindow = (SDL_DestroyWindow_t) realPtr;
+        if (realPtr != (void*) &proxySdlDestroyWindow && realPtr != (void*) &custom_SDL_DestroyWindow_Func) {
+            sRealSdlDestroyWindow = (SDL_DestroyWindow_t) realPtr;
+        }
         return (void*) &proxySdlDestroyWindow;
     }
     if (strcmp(name, "SDL_SetWindowSize") == 0) {
-        if (realPtr != (void*) &proxySdlSetWindowSize) sRealSdlSetWindowSize = (SDL_SetWindowSize_t) realPtr;
+        if (realPtr != (void*) &proxySdlSetWindowSize && realPtr != (void*) &custom_SDL_SetWindowSize_Func) {
+            sRealSdlSetWindowSize = (SDL_SetWindowSize_t) realPtr;
+        }
         return (void*) &proxySdlSetWindowSize;
     }
     if (strcmp(name, "SDL_HideWindow") == 0) {
-        if (realPtr != (void*) &proxySdlHideWindow) sRealSdlHideWindow = (SDL_HideWindow_t) realPtr;
+        if (realPtr != (void*) &proxySdlHideWindow && realPtr != (void*) &custom_SDL_HideWindow_Func) {
+            sRealSdlHideWindow = (SDL_HideWindow_t) realPtr;
+        }
         return (void*) &proxySdlHideWindow;
     }
     if (strcmp(name, "SDL_GL_MakeCurrent") == 0) {
-        if (realPtr != (void*) &proxySdlGlMakeCurrent) sRealSdlGlMakeCurrent = (SDL_GL_MakeCurrent_t) realPtr;
+        if (realPtr != (void*) &proxySdlGlMakeCurrent && realPtr != (void*) &custom_SDL_GL_MakeCurrent_Func) {
+            sRealSdlGlMakeCurrent = (SDL_GL_MakeCurrent_t) realPtr;
+        }
         return (void*) &proxySdlGlMakeCurrent;
     }
     if (strcmp(name, "SDL_GetWindowFromEvent") == 0) {
-        if (realPtr != (void*) &proxySdlGetWindowFromEvent) sRealSdlGetWindowFromEvent = (SDL_GetWindowFromEvent_t) realPtr;
+        if (realPtr != (void*) &proxySdlGetWindowFromEvent && realPtr != (void*) &custom_SDL_GetWindowFromEvent_Func) {
+            sRealSdlGetWindowFromEvent = (SDL_GetWindowFromEvent_t) realPtr;
+        }
         return (void*) &proxySdlGetWindowFromEvent;
     }
     if (strcmp(name, "SDL_GetWindowFromID") == 0) {
-        if (realPtr != (void*) &proxySdlGetWindowFromID) sRealSdlGetWindowFromID = (SDL_GetWindowFromID_t) realPtr;
+        if (realPtr != (void*) &proxySdlGetWindowFromID && realPtr != (void*) &custom_SDL_GetWindowFromID_Func) {
+            sRealSdlGetWindowFromID = (SDL_GetWindowFromID_t) realPtr;
+        }
         return (void*) &proxySdlGetWindowFromID;
     }
     if (strcmp(name, "SDL_PollEvent") == 0) {
-        if (realPtr != (void*) &proxySdlPollEvent) sRealSdlPollEvent = (SDL_PollEvent_t) realPtr;
+        if (realPtr != (void*) &proxySdlPollEvent && realPtr != (void*) &custom_SDL_PollEvent_Func) {
+            sRealSdlPollEvent = (SDL_PollEvent_t) realPtr;
+        }
         return (void*) &proxySdlPollEvent;
     }
     if (strcmp(name, "SDL_WaitEvent") == 0) {
-        if (realPtr != (void*) &proxySdlWaitEvent) sRealSdlWaitEvent = (SDL_WaitEvent_t) realPtr;
+        if (realPtr != (void*) &proxySdlWaitEvent && realPtr != (void*) &custom_SDL_WaitEvent_Func) {
+            sRealSdlWaitEvent = (SDL_WaitEvent_t) realPtr;
+        }
         return (void*) &proxySdlWaitEvent;
     }
     if (strcmp(name, "SDL_WaitEventTimeout") == 0) {
-        if (realPtr != (void*) &proxySdlWaitEventTimeout) sRealSdlWaitEventTimeout = (SDL_WaitEventTimeout_t) realPtr;
+        if (realPtr != (void*) &proxySdlWaitEventTimeout && realPtr != (void*) &custom_SDL_WaitEventTimeout_Func) {
+            sRealSdlWaitEventTimeout = (SDL_WaitEventTimeout_t) realPtr;
+        }
         return (void*) &proxySdlWaitEventTimeout;
     }
     return realPtr;
@@ -841,22 +1048,22 @@ void create_sdl_hooks(void* bytehook_hook_all_p) {
     sBytehookHookAll = bytehook_hook_all_p;
     sHooksInstalled = true;
 
-    sBytehookHookAll(NULL, "SDL_GL_SetAttribute", (void*) &proxySdlGlSetAttribute, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_LoadObject", (void*) &proxySdlLoadObject, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_LoadFunction", (void*) &proxySdlLoadFunction, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_UnloadObject", (void*) &proxySdlUnloadObject, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_EGL_GetProcAddress", (void*) &proxySdlEglGetProcAddress, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_GL_GetProcAddress", (void*) &proxySdlGlGetProcAddress, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_CreateWindow", (void*) &proxySdlCreateWindow, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_CreateWindowWithProperties", (void*) &proxySdlCreateWindowWithProperties, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_DestroyWindow", (void*) &proxySdlDestroyWindow, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_SetWindowSize", (void*) &proxySdlSetWindowSize, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_HideWindow", (void*) &proxySdlHideWindow, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_GL_MakeCurrent", (void*) &proxySdlGlMakeCurrent, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_GetWindowFromEvent", (void*) &proxySdlGetWindowFromEvent, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_GetWindowFromID", (void*) &proxySdlGetWindowFromID, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_PollEvent", (void*) &proxySdlPollEvent, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_WaitEvent", (void*) &proxySdlWaitEvent, NULL, NULL);
-    sBytehookHookAll(NULL, "SDL_WaitEventTimeout", (void*) &proxySdlWaitEventTimeout, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_GL_SetAttribute", (void*) &custom_SDL_GL_SetAttribute_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_LoadObject", (void*) &custom_SDL_LoadObject_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_LoadFunction", (void*) &custom_SDL_LoadFunction_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_UnloadObject", (void*) &custom_SDL_UnloadObject_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_EGL_GetProcAddress", (void*) &custom_SDL_EGL_GetProcAddress_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_GL_GetProcAddress", (void*) &custom_SDL_GL_GetProcAddress_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_CreateWindow", (void*) &custom_SDL_CreateWindow_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_CreateWindowWithProperties", (void*) &custom_SDL_CreateWindowWithProperties_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_DestroyWindow", (void*) &custom_SDL_DestroyWindow_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_SetWindowSize", (void*) &custom_SDL_SetWindowSize_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_HideWindow", (void*) &custom_SDL_HideWindow_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_GL_MakeCurrent", (void*) &custom_SDL_GL_MakeCurrent_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_GetWindowFromEvent", (void*) &custom_SDL_GetWindowFromEvent_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_GetWindowFromID", (void*) &custom_SDL_GetWindowFromID_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_PollEvent", (void*) &custom_SDL_PollEvent_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_WaitEvent", (void*) &custom_SDL_WaitEvent_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_WaitEventTimeout", (void*) &custom_SDL_WaitEventTimeout_Func, NULL, NULL);
     __android_log_print(ANDROID_LOG_INFO, TAG, "Installed SDL3 single-window and OpenGL ES compatibility hooks");
 }
