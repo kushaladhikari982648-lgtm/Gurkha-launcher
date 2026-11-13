@@ -22,14 +22,18 @@
 #define SDL_WINDOW_HIDDEN 0x0000000000000008ULL
 #define SDL_WINDOW_VULKAN 0x0000000010000000ULL
 
-// SDL3 SDL_GLAttr enum values (verified against libSDL3.so disassembly)
+// SDL3 SDL_GLAttr enum values (verified against libSDL3.so SDL_GL_SetAttribute/GetAttribute jump tables)
 #define SDL_GL_CONTEXT_MAJOR_VERSION 17
 #define SDL_GL_CONTEXT_MINOR_VERSION 18
-#define SDL_GL_CONTEXT_FLAGS 20
-#define SDL_GL_CONTEXT_PROFILE_MASK 21
+#define SDL_GL_CONTEXT_FLAGS 19
+#define SDL_GL_CONTEXT_PROFILE_MASK 20
+#define SDL_GL_SHARE_WITH_CURRENT_CONTEXT 21
+#define SDL_GL_FRAMEBUFFER_SRGB_CAPABLE 22
 
 // SDL3 SDL_GLContextFlag / SDL_GLProfile bits
 #define SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG 0x0002
+#define SDL_GL_CONTEXT_PROFILE_CORE 0x0001
+#define SDL_GL_CONTEXT_PROFILE_COMPATIBILITY 0x0002
 #define SDL_GL_CONTEXT_PROFILE_ES 0x0004
 
 // EGL constants (verified against Khronos EGL/eglext.h and libSDL3.so SDL_EGL_CreateContext)
@@ -60,6 +64,7 @@ typedef void (*SDL_UnloadObject_t)(void* handle);
 typedef SDL_FunctionPointer (*SDL_EGL_GetProcAddress_t)(const char* proc);
 typedef SDL_FunctionPointer (*SDL_GL_GetProcAddress_t)(const char* proc);
 typedef bool (*SDL_GL_SetAttribute_t)(int attr, int value);
+typedef bool (*SDL_GL_GetAttribute_t)(int attr, int* value);
 typedef void* (*SDL_CreateWindow_t)(const char* title, int w, int h, uint64_t flags);
 typedef void* (*SDL_CreateWindowWithProperties_t)(uint32_t props);
 typedef void (*SDL_DestroyWindow_t)(void* window);
@@ -74,11 +79,23 @@ typedef void* (*SDL_GetWindowFromID_t)(uint32_t id);
 typedef bool (*SDL_PollEvent_t)(void* event);
 typedef bool (*SDL_WaitEvent_t)(void* event);
 typedef bool (*SDL_WaitEventTimeout_t)(void* event, int32_t timeoutMS);
+typedef bool (*SDL_ShowSimpleMessageBox_t)(uint32_t flags, const char* title, const char* message, void* window);
+typedef bool (*SDL_ShowMessageBox_t)(const void* messageboxdata, int* buttonid);
 typedef int64_t (*SDL_GetNumberProperty_t)(uint32_t props, const char* name, int64_t default_value);
 typedef bool (*SDL_SetNumberProperty_t)(uint32_t props, const char* name, int64_t value);
 typedef bool (*SDL_GetBooleanProperty_t)(uint32_t props, const char* name, bool default_value);
 typedef bool (*SDL_SetBooleanProperty_t)(uint32_t props, const char* name, bool value);
 typedef const char* (*SDL_GetStringProperty_t)(uint32_t props, const char* name, const char* default_value);
+
+typedef struct {
+    uint32_t flags;
+    void* window;
+    const char* title;
+    const char* message;
+    int numbuttons;
+    const void* buttons;
+    const void* colorScheme;
+} SDL_MessageBoxData_Layout;
 
 typedef int (*EglChooseConfig_t)(void* dpy, const int* attrib_list, void** configs, int config_size, int* num_config);
 typedef void* (*EglCreateContext_t)(void* dpy, void* config, void* share_context, const int* attrib_list);
@@ -108,6 +125,7 @@ static SDL_UnloadObject_t sRealSdlUnloadObject = NULL;
 static SDL_EGL_GetProcAddress_t sRealSdlEglGetProcAddress = NULL;
 static SDL_GL_GetProcAddress_t sRealSdlGlGetProcAddress = NULL;
 static SDL_GL_SetAttribute_t sRealSdlGlSetAttribute = NULL;
+static SDL_GL_GetAttribute_t sRealSdlGlGetAttribute = NULL;
 static SDL_CreateWindow_t sRealSdlCreateWindow = NULL;
 static SDL_CreateWindowWithProperties_t sRealSdlCreateWindowWithProperties = NULL;
 static SDL_DestroyWindow_t sRealSdlDestroyWindow = NULL;
@@ -122,6 +140,8 @@ static SDL_GetWindowFromID_t sRealSdlGetWindowFromID = NULL;
 static SDL_PollEvent_t sRealSdlPollEvent = NULL;
 static SDL_WaitEvent_t sRealSdlWaitEvent = NULL;
 static SDL_WaitEventTimeout_t sRealSdlWaitEventTimeout = NULL;
+static SDL_ShowSimpleMessageBox_t sRealSdlShowSimpleMessageBox = NULL;
+static SDL_ShowMessageBox_t sRealSdlShowMessageBox = NULL;
 static SDL_GetNumberProperty_t sRealSdlGetNumberProperty = NULL;
 static SDL_SetNumberProperty_t sRealSdlSetNumberProperty = NULL;
 static SDL_GetBooleanProperty_t sRealSdlGetBooleanProperty = NULL;
@@ -357,11 +377,32 @@ static int normalizeGlSetAttributeValue(int attr, int value) {
         case SDL_GL_CONTEXT_FLAGS:
             return value & ~SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG;
         case SDL_GL_CONTEXT_MAJOR_VERSION:
-            return (value < 2 || value > 3) ? 3 : value;
+            return value < 3 ? 3 : value;
         case SDL_GL_CONTEXT_MINOR_VERSION:
-            return 0;
+            return value < 3 ? 3 : value;
         default:
             return value;
+    }
+}
+
+static bool normalizeGlGetAttributeResult(int attr, int* value, bool ok) {
+    if (!sdlGlesCompatEnabled() || value == NULL) return ok;
+    switch (attr) {
+        case SDL_GL_CONTEXT_MAJOR_VERSION:
+            if (!ok || *value < 3) {
+                *value = 3;
+            }
+            return true;
+        case SDL_GL_CONTEXT_MINOR_VERSION:
+            if (!ok || *value < 3) {
+                *value = 3;
+            }
+            return true;
+        case SDL_GL_CONTEXT_PROFILE_MASK:
+            *value = SDL_GL_CONTEXT_PROFILE_CORE;
+            return true;
+        default:
+            return ok;
     }
 }
 
@@ -373,8 +414,36 @@ static void prepareGlesBeforeCreateWindow(void) {
         sRealSdlGlSetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
         sRealSdlGlSetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
         sRealSdlGlSetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        sRealSdlGlSetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        sRealSdlGlSetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     }
+}
+
+static bool handleShowSimpleMessageBox(uint32_t flags, const char* title, const char* message, void* window) {
+    (void) flags;
+    (void) window;
+    const char* safeTitle = title != NULL ? title : "Minecraft";
+    const char* safeMessage = message != NULL ? message : "<no message>";
+    __android_log_print(ANDROID_LOG_ERROR, TAG, "[SDL MessageBox] %s: %s", safeTitle, safeMessage);
+    fprintf(stderr, "[SDL MessageBox] %s: %s\n", safeTitle, safeMessage);
+    fflush(stderr);
+    return true;
+}
+
+static bool handleShowMessageBox(const void* messageboxdata, int* buttonid) {
+    if (buttonid != NULL) {
+        *buttonid = 0;
+    }
+    const char* safeTitle = "Minecraft";
+    const char* safeMessage = "<no message>";
+    if (messageboxdata != NULL) {
+        const SDL_MessageBoxData_Layout* data = (const SDL_MessageBoxData_Layout*) messageboxdata;
+        if (data->title != NULL) safeTitle = data->title;
+        if (data->message != NULL) safeMessage = data->message;
+    }
+    __android_log_print(ANDROID_LOG_ERROR, TAG, "[SDL MessageBox] %s: %s", safeTitle, safeMessage);
+    fprintf(stderr, "[SDL MessageBox] %s: %s\n", safeTitle, safeMessage);
+    fflush(stderr);
+    return true;
 }
 
 static bool windowActuallyHasOpenGL(void* window, uint64_t requestedFlags) {
@@ -618,6 +687,19 @@ static bool proxySdlGlSetAttribute(int attr, int value) {
     return sRealSdlGlSetAttribute != NULL ? sRealSdlGlSetAttribute(attr, normalized) : false;
 }
 
+static bool proxySdlGlGetAttribute(int attr, int* value) {
+    bool ok = sRealSdlGlGetAttribute != NULL ? sRealSdlGlGetAttribute(attr, value) : false;
+    return normalizeGlGetAttributeResult(attr, value, ok);
+}
+
+static bool proxySdlShowSimpleMessageBox(uint32_t flags, const char* title, const char* message, void* window) {
+    return handleShowSimpleMessageBox(flags, title, message, window);
+}
+
+static bool proxySdlShowMessageBox(const void* messageboxdata, int* buttonid) {
+    return handleShowMessageBox(messageboxdata, buttonid);
+}
+
 static void* proxySdlLoadObject(const char* sofile) {
     if (sofile != NULL && strstr(sofile, "libvulkan") != NULL) {
         return VULKAN_PTR;
@@ -716,6 +798,24 @@ static bool proxySdlWaitEventTimeout(void* event, int32_t timeoutMS) {
 static bool custom_SDL_GL_SetAttribute_Func(int attr, int value) {
     int normalized = normalizeGlSetAttributeValue(attr, value);
     bool res = BYTEHOOK_CALL_PREV(custom_SDL_GL_SetAttribute_Func, SDL_GL_SetAttribute_t, attr, normalized);
+    BYTEHOOK_POP_STACK();
+    return res;
+}
+
+static bool custom_SDL_GL_GetAttribute_Func(int attr, int* value) {
+    bool ok = BYTEHOOK_CALL_PREV(custom_SDL_GL_GetAttribute_Func, SDL_GL_GetAttribute_t, attr, value);
+    BYTEHOOK_POP_STACK();
+    return normalizeGlGetAttributeResult(attr, value, ok);
+}
+
+static bool custom_SDL_ShowSimpleMessageBox_Func(uint32_t flags, const char* title, const char* message, void* window) {
+    bool res = handleShowSimpleMessageBox(flags, title, message, window);
+    BYTEHOOK_POP_STACK();
+    return res;
+}
+
+static bool custom_SDL_ShowMessageBox_Func(const void* messageboxdata, int* buttonid) {
+    bool res = handleShowMessageBox(messageboxdata, buttonid);
     BYTEHOOK_POP_STACK();
     return res;
 }
@@ -941,6 +1041,24 @@ void* sdlDlsymProxy(void* handle, const char* name, void* realPtr) {
         }
         return (void*) &proxySdlGlSetAttribute;
     }
+    if (strcmp(name, "SDL_GL_GetAttribute") == 0) {
+        if (realPtr != (void*) &proxySdlGlGetAttribute && realPtr != (void*) &custom_SDL_GL_GetAttribute_Func) {
+            sRealSdlGlGetAttribute = (SDL_GL_GetAttribute_t) realPtr;
+        }
+        return (void*) &proxySdlGlGetAttribute;
+    }
+    if (strcmp(name, "SDL_ShowSimpleMessageBox") == 0) {
+        if (realPtr != (void*) &proxySdlShowSimpleMessageBox && realPtr != (void*) &custom_SDL_ShowSimpleMessageBox_Func) {
+            sRealSdlShowSimpleMessageBox = (SDL_ShowSimpleMessageBox_t) realPtr;
+        }
+        return (void*) &proxySdlShowSimpleMessageBox;
+    }
+    if (strcmp(name, "SDL_ShowMessageBox") == 0) {
+        if (realPtr != (void*) &proxySdlShowMessageBox && realPtr != (void*) &custom_SDL_ShowMessageBox_Func) {
+            sRealSdlShowMessageBox = (SDL_ShowMessageBox_t) realPtr;
+        }
+        return (void*) &proxySdlShowMessageBox;
+    }
     if (strcmp(name, "SDL_LoadObject") == 0) {
         if (realPtr != (void*) &proxySdlLoadObject && realPtr != (void*) &custom_SDL_LoadObject_Func) {
             sRealSdlLoadObject = (SDL_LoadObject_t) realPtr;
@@ -1049,6 +1167,9 @@ void create_sdl_hooks(void* bytehook_hook_all_p) {
     sHooksInstalled = true;
 
     sBytehookHookAll(NULL, "SDL_GL_SetAttribute", (void*) &custom_SDL_GL_SetAttribute_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_GL_GetAttribute", (void*) &custom_SDL_GL_GetAttribute_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_ShowSimpleMessageBox", (void*) &custom_SDL_ShowSimpleMessageBox_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_ShowMessageBox", (void*) &custom_SDL_ShowMessageBox_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_LoadObject", (void*) &custom_SDL_LoadObject_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_LoadFunction", (void*) &custom_SDL_LoadFunction_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_UnloadObject", (void*) &custom_SDL_UnloadObject_Func, NULL, NULL);

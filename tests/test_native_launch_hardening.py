@@ -167,6 +167,13 @@ class NativeLaunchHardeningTests(unittest.TestCase):
         self.assertIn('sdl_hook.c', android_mk)
         self.assertIn('sdl_dlopen_hook.c', android_mk)
 
+        sdl_hook_c = (JNI/'sdl_hook.c').read_text()
+        self.assertIn('#define SDL_GL_CONTEXT_FLAGS 19', sdl_hook_c)
+        self.assertIn('#define SDL_GL_CONTEXT_PROFILE_MASK 20', sdl_hook_c)
+        self.assertIn('sBytehookHookAll(NULL, "SDL_GL_GetAttribute",', sdl_hook_c)
+        self.assertIn('sBytehookHookAll(NULL, "SDL_ShowSimpleMessageBox",', sdl_hook_c)
+        self.assertIn('sBytehookHookAll(NULL, "SDL_ShowMessageBox",', sdl_hook_c)
+
         exit_hook = (JNI/'exit_hook.c').read_text()
         self.assertIn('create_sdl_hooks(bytehook_hook_all_p);', exit_hook)
         self.assertIn('create_sdl_dlopen_hooks(bytehook_hook_all_p);', exit_hook)

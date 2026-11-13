@@ -30,9 +30,10 @@ void bytehook_pop_stack(void* return_address) {
 
 #define SDL_GL_CONTEXT_MAJOR_VERSION 17
 #define SDL_GL_CONTEXT_MINOR_VERSION 18
-#define SDL_GL_CONTEXT_FLAGS 20
-#define SDL_GL_CONTEXT_PROFILE_MASK 21
+#define SDL_GL_CONTEXT_FLAGS 19
+#define SDL_GL_CONTEXT_PROFILE_MASK 20
 #define SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG 0x0002
+#define SDL_GL_CONTEXT_PROFILE_CORE 0x0001
 #define SDL_GL_CONTEXT_PROFILE_ES 0x0004
 
 #define EGL_NONE 0x3038
@@ -63,6 +64,22 @@ static bool fake_SDL_GL_SetAttribute(int attr, int value) {
         sGlAttrs[attr] = value;
     }
     return true;
+}
+
+static bool fake_SDL_GL_GetAttribute(int attr, int* value) {
+    if (value == NULL || attr < 0 || attr >= 32) return false;
+    *value = sGlAttrs[attr];
+    return true;
+}
+
+static bool fake_SDL_ShowSimpleMessageBox(uint32_t flags, const char* title, const char* message, void* window) {
+    (void) flags;
+    (void) title;
+    (void) message;
+    (void) window;
+    // Simulate cross-VM Android ART AttachCurrentThread crash if unhooked SDL_ShowSimpleMessageBox is called.
+    abort();
+    return false;
 }
 
 static uint64_t fake_SDL_GetWindowFlags(void* window) {
@@ -216,7 +233,9 @@ typedef void (*DestroyWindowFn)(void*);
 typedef bool (*SetWindowSizeFn)(void*, int, int);
 typedef bool (*HideWindowFn)(void*);
 typedef bool (*GlSetAttrFn)(int, int);
+typedef bool (*GlGetAttrFn)(int, int*);
 typedef bool (*GlMakeCurrentFn)(void*, void*);
+typedef bool (*ShowSimpleMessageBoxFn)(uint32_t, const char*, const char*, void*);
 typedef SDL_FunctionPointer (*EglGetProcFn)(const char*);
 typedef int (*EglChooseConfigFn)(void*, const int*, void**, int, int*);
 typedef void* (*EglCreateContextFn)(void*, void*, void*, const int*);
@@ -228,7 +247,9 @@ int main(void) {
     SetWindowSizeFn setWinSize = (SetWindowSizeFn) sdlDlsymProxy(NULL, "SDL_SetWindowSize", (void*) &fake_SDL_SetWindowSize);
     HideWindowFn hideWin = (HideWindowFn) sdlDlsymProxy(NULL, "SDL_HideWindow", (void*) &fake_SDL_HideWindow);
     GlSetAttrFn setAttr = (GlSetAttrFn) sdlDlsymProxy(NULL, "SDL_GL_SetAttribute", (void*) &fake_SDL_GL_SetAttribute);
+    GlGetAttrFn getAttr = (GlGetAttrFn) sdlDlsymProxy(NULL, "SDL_GL_GetAttribute", (void*) &fake_SDL_GL_GetAttribute);
     GlMakeCurrentFn makeCurrent = (GlMakeCurrentFn) sdlDlsymProxy(NULL, "SDL_GL_MakeCurrent", (void*) &fake_SDL_GL_MakeCurrent);
+    ShowSimpleMessageBoxFn showSimpleMsg = (ShowSimpleMessageBoxFn) sdlDlsymProxy(NULL, "SDL_ShowSimpleMessageBox", (void*) &fake_SDL_ShowSimpleMessageBox);
     EglGetProcFn getEglProc = (EglGetProcFn) sdlDlsymProxy(NULL, "SDL_EGL_GetProcAddress", (void*) &fake_SDL_EGL_GetProcAddress);
 
     // 1. Test Vulkan probe failure -> OpenGL fallback on single-window Android SDL3
@@ -269,15 +290,28 @@ int main(void) {
     // Surfaceless SDL_GL_MakeCurrent(NULL, ctx) falls back to sPrimaryWindow
     assert(makeCurrent(NULL, (void*) 0xCAFE) == true);
 
-    // 3. Test SDL_GL_SetAttribute normalization for GLES renderers
-    setAttr(SDL_GL_CONTEXT_PROFILE_MASK, 1 /* CORE */);
+    // 3. Test SDL_GL_SetAttribute & SDL_GL_GetAttribute for Minecraft 26.3 GlDevice.<init> OpenGL 3.3 check
+    setAttr(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     setAttr(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-    setAttr(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    setAttr(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     setAttr(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     assert(sGlAttrs[SDL_GL_CONTEXT_PROFILE_MASK] == SDL_GL_CONTEXT_PROFILE_ES);
     assert((sGlAttrs[SDL_GL_CONTEXT_FLAGS] & SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG) == 0);
     assert(sGlAttrs[SDL_GL_CONTEXT_MAJOR_VERSION] == 3);
-    assert(sGlAttrs[SDL_GL_CONTEXT_MINOR_VERSION] == 0);
+    assert(sGlAttrs[SDL_GL_CONTEXT_MINOR_VERSION] == 3);
+
+    int queriedMajor = 0;
+    int queriedMinor = 0;
+    int queriedProfile = 0;
+    assert(getAttr(SDL_GL_CONTEXT_MAJOR_VERSION, &queriedMajor) == true);
+    assert(getAttr(SDL_GL_CONTEXT_MINOR_VERSION, &queriedMinor) == true);
+    assert(getAttr(SDL_GL_CONTEXT_PROFILE_MASK, &queriedProfile) == true);
+    assert(queriedMajor == 3);
+    assert(queriedMinor == 3);
+    assert(queriedProfile == SDL_GL_CONTEXT_PROFILE_CORE);
+
+    // 3b. Test SDL_ShowSimpleMessageBox hook prevents cross-VM Android ART AttachCurrentThread crash
+    assert(showSimpleMsg(16, "Minecraft", "Test error dialog", NULL) == true);
 
     // 4. Test EGL config/context/surface wrappers
     EglChooseConfigFn chooseCfg = (EglChooseConfigFn) getEglProc("eglChooseConfig");
