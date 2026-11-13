@@ -149,3 +149,37 @@ class NativeLaunchHardeningTests(unittest.TestCase):
         self.assertIn('jvm_crash_report.log', error_activity)
         self.assertIn('latestlog.txt (tail)', error_activity)
 
+    @unittest.skipUnless(shutil.which('cc'), 'C compiler required')
+    def test_sdl_single_window_and_opengl_fallback_hooks(self):
+        with tempfile.TemporaryDirectory() as out:
+            exe = str(Path(out)/'sdl-hook-probe')
+            subprocess.run([
+                'cc', '-std=gnu11', '-Wall', '-Wextra', '-Werror',
+                '-Ddlopen=test_dlopen', '-Ddlsym=test_dlsym',
+                '-I'+str(ROOT/'tests/native/stubs'), '-I'+str(JNI),
+                str(JNI/'sdl_hook.c'), str(ROOT/'tests/native/sdl_hook_probe.c'),
+                '-o', exe
+            ], check=True)
+            subprocess.run([exe], check=True, timeout=10)
+
+        android_mk = (JNI/'Android.mk').read_text()
+        self.assertIn('sdl_hook.c', android_mk)
+        self.assertIn('sdl_dlopen_hook.c', android_mk)
+
+        exit_hook = (JNI/'exit_hook.c').read_text()
+        self.assertIn('create_sdl_hooks(bytehook_hook_all_p);', exit_hook)
+        self.assertIn('create_sdl_dlopen_hooks(bytehook_hook_all_p);', exit_hook)
+
+        lwjgl_hook = (JNI/'lwjgl_dlopen_hook.c').read_text()
+        self.assertIn('{"ndlsym", "(JJ)J", &ndlsym_bugfix}', lwjgl_hook)
+
+        graphics_backend = (SRC/'com/movtery/zalithlauncher/launch/GraphicsBackend.kt').read_text()
+        self.assertIn('const val STARTED_CLEANLY_OPTION = "startedCleanly"', graphics_backend)
+        self.assertIn('fun isVulkanHardwareSupported(): Boolean', graphics_backend)
+        self.assertIn('MCOptions.set(OPTION, "\\"$normalized\\"")', graphics_backend)
+        self.assertIn('MCOptions.set(STARTED_CLEANLY_OPTION, "true")', graphics_backend)
+
+        main_activity = (SRC/'net/kdt/pojavlaunch/MainActivity.java').read_text()
+        self.assertIn('public int messageboxShowMessageBox(', main_activity)
+
+

@@ -896,4 +896,24 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             binding.hotbarType.dismiss();
         }
     }
+
+    /**
+     * Called by SDL3's Android_JNI_ShowMessageBox on the runtime class of SDL.getContext().
+     */
+    @androidx.annotation.Keep
+    public int messageboxShowMessageBox(
+            final int flags,
+            final String title,
+            final String message,
+            final int[] buttonFlags,
+            final int[] buttonIds,
+            final String[] buttonTexts,
+            final int[] colors) {
+        Logger.appendToLog("SDL MessageBox [" + title + "]: " + message);
+        if (org.libsdl.app.SDLActivity.mSingleton != null) {
+            return org.libsdl.app.SDLActivity.mSingleton.messageboxShowMessageBox(
+                    flags, title, message, buttonFlags, buttonIds, buttonTexts, colors);
+        }
+        return -1;
+    }
 }

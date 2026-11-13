@@ -84,6 +84,8 @@ object MCOptions {
         parameterMap[key] = value
     }
 
+    fun isInitialized(): Boolean = ::versionGetter.isInitialized
+
     fun get(key: String): String? = parameterMap[key]
 
     fun containsKey(key: String): Boolean = key in parameterMap

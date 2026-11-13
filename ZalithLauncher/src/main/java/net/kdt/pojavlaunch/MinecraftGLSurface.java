@@ -445,6 +445,9 @@ public class MinecraftGLSurface extends View implements GrabListener {
         MCOptions.INSTANCE.set("fullscreen", "false");
         MCOptions.INSTANCE.set("overrideWidth", String.valueOf(windowWidth));
         MCOptions.INSTANCE.set("overrideHeight", String.valueOf(windowHeight));
+        String graphicsBackend = com.movtery.zalithlauncher.launch.GraphicsBackend.resolveBackend();
+        MCOptions.INSTANCE.set(com.movtery.zalithlauncher.launch.GraphicsBackend.OPTION, "\"" + graphicsBackend + "\"");
+        MCOptions.INSTANCE.set(com.movtery.zalithlauncher.launch.GraphicsBackend.STARTED_CLEANLY_OPTION, "true");
         MCOptions.INSTANCE.save();
         MCOptions.INSTANCE.getMcScale();
 

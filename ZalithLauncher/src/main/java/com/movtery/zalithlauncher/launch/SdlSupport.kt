@@ -172,7 +172,12 @@ object SdlSupport {
     @JvmStatic
     fun getRendererEnv(renderer: RendererInterface, nativeLibDir: String): Map<String, String> {
         val rendererLib = "$nativeLibDir/${renderer.getRendererLibrary()}"
-        val env = mutableMapOf("SDL_OPENGL_LIBRARY" to rendererLib)
+        val env = mutableMapOf(
+            "SDL_OPENGL_LIBRARY" to rendererLib,
+            "POJAV_GRAPHICS_BACKEND" to GraphicsBackend.resolveBackend(),
+            "POJAV_SDL_REUSE_WINDOW" to "1",
+            "SDL_OPENGL_FORCE_SRGB_FRAMEBUFFER" to "0"
+        )
         val customEgl = renderer.getRendererEGL()
         if (renderer.getRendererId() == LTWRenderer.ID || customEgl == null || customEgl == "libEGL.so") {
             env["SDL_EGL_LIBRARY"] = "$nativeLibDir/$EGL_FRONT_FOR_LTW"

@@ -1,5 +1,9 @@
 package com.movtery.zalithlauncher.launch
 
+import android.content.pm.PackageManager
+import android.os.Build
+import com.movtery.zalithlauncher.context.ContextExecutor
+import com.movtery.zalithlauncher.feature.MCOptions
 import com.movtery.zalithlauncher.setting.AllSettings
 import net.kdt.pojavlaunch.JMinecraftVersionList
 import java.io.File
@@ -14,6 +18,7 @@ import java.io.File
  */
 object GraphicsBackend {
     const val OPTION = "preferredGraphicsBackend"
+    const val STARTED_CLEANLY_OPTION = "startedCleanly"
     const val OPENGL = "opengl"
     const val VULKAN = "vulkan"
 
@@ -25,6 +30,21 @@ object GraphicsBackend {
     fun toggle(value: String?): String =
         if (normalize(value) == VULKAN) OPENGL else VULKAN
 
+    @JvmStatic
+    fun isVulkanHardwareSupported(): Boolean = runCatching {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+        val pm = ContextExecutor.getApplication().packageManager
+        pm.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL) ||
+            pm.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_VERSION)
+    }.getOrDefault(true)
+
+    @JvmStatic
+    @JvmOverloads
+    fun resolveBackend(selectedBackend: String? = AllSettings.graphicsApi.getValue()): String {
+        val requested = normalize(selectedBackend)
+        return if (requested == VULKAN && !isVulkanHardwareSupported()) OPENGL else requested
+    }
+
     /** The game arguments to add for a version ([versionInfo]) that runs in [gameDir]. */
     @JvmStatic
     @JvmOverloads
@@ -33,30 +53,57 @@ object GraphicsBackend {
         gameDir: File,
         selectedBackend: String? = AllSettings.graphicsApi.getValue()
     ): List<String> {
+        val backend = resolveBackend(selectedBackend)
+        writeOption(File(gameDir, "options.txt"), backend)
         // The Vulkan renderer comes with LWJGL's Vulkan bindings
         val hasVulkanRenderer = versionInfo?.libraries?.any { it?.name?.startsWith("org.lwjgl:lwjgl-vulkan:") == true } == true
         if (!hasVulkanRenderer) return emptyList()
-        val backend = normalize(selectedBackend)
-        writeOption(File(gameDir, "options.txt"), backend)
         return listOf("--graphicsBackend", backend)
     }
 
-    /** Updates preferredGraphicsBackend in options.txt if the file exists. */
+    /** Updates preferredGraphicsBackend and startedCleanly in options.txt (creating the file if missing) and syncs MCOptions. */
     @JvmStatic
     fun writeOption(optionsFile: File, backend: String) {
+        val normalized = normalize(backend)
         runCatching {
-            if (!optionsFile.isFile) return
-            val normalized = normalize(backend)
-            val lines = optionsFile.readLines().toMutableList()
-            val index = lines.indexOfFirst { it.startsWith("$OPTION:") }
-            val replacement = "$OPTION:\"$normalized\""
-            if (index >= 0) {
-                if (lines[index] == replacement) return
-                lines[index] = replacement
-            } else {
-                lines.add(replacement)
+            if (MCOptions.isInitialized()) {
+                MCOptions.set(OPTION, "\"$normalized\"")
+                MCOptions.set(STARTED_CLEANLY_OPTION, "true")
             }
-            optionsFile.writeText(lines.joinToString("\n") + "\n")
+        }
+        runCatching {
+            optionsFile.parentFile?.mkdirs()
+            val lines = if (optionsFile.isFile) {
+                optionsFile.readLines().toMutableList()
+            } else {
+                mutableListOf()
+            }
+            var changed = !optionsFile.isFile
+            val backendLine = "$OPTION:\"$normalized\""
+            val backendIndex = lines.indexOfFirst { it.startsWith("$OPTION:") }
+            if (backendIndex >= 0) {
+                if (lines[backendIndex] != backendLine) {
+                    lines[backendIndex] = backendLine
+                    changed = true
+                }
+            } else {
+                lines.add(backendLine)
+                changed = true
+            }
+            val cleanLine = "$STARTED_CLEANLY_OPTION:true"
+            val cleanIndex = lines.indexOfFirst { it.startsWith("$STARTED_CLEANLY_OPTION:") }
+            if (cleanIndex >= 0) {
+                if (lines[cleanIndex] != cleanLine) {
+                    lines[cleanIndex] = cleanLine
+                    changed = true
+                }
+            } else {
+                lines.add(cleanLine)
+                changed = true
+            }
+            if (changed) {
+                optionsFile.writeText(lines.joinToString("\n") + "\n")
+            }
         }
     }
 

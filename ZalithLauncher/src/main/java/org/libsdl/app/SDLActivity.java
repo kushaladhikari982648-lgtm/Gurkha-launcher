@@ -58,6 +58,7 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import net.kdt.pojavlaunch.Logger;
 import net.kdt.pojavlaunch.MainActivity;
 import net.kdt.pojavlaunch.MinecraftGLSurface;
 
@@ -1698,8 +1699,10 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         args.putIntArray("colors", colors);
 
         // trigger Dialog creation on UI thread
+        final Activity activity = getContext() != null ? getContext() : this;
+        Logger.appendToLog("SDL MessageBox [" + title + "]: " + message);
 
-        runOnUiThread(new Runnable() {
+        activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 messageboxCreateAndShow(args);
@@ -1723,6 +1726,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     }
 
     protected void messageboxCreateAndShow(Bundle args) {
+        final Activity context = getContext() != null ? getContext() : this;
 
         // TODO set values from "flags" to messagebox dialog
 
@@ -1751,7 +1755,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         // create dialog with title and a listener to wake up calling thread
 
-        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+        final AlertDialog dialog = new AlertDialog.Builder(context).create();
         dialog.setTitle(args.getString("title"));
         dialog.setCancelable(false);
         dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
@@ -1765,7 +1769,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         // create text
 
-        TextView message = new TextView(this);
+        TextView message = new TextView(context);
         message.setGravity(Gravity.CENTER);
         message.setText(args.getString("message"));
         if (textColor != Color.TRANSPARENT) {
@@ -1780,11 +1784,11 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         final SparseArray<Button> mapping = new SparseArray<Button>();
 
-        LinearLayout buttons = new LinearLayout(this);
+        LinearLayout buttons = new LinearLayout(context);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.CENTER);
         for (int i = 0; i < buttonTexts.length; ++i) {
-            Button button = new Button(this);
+            Button button = new Button(context);
             final int id = buttonIds[i];
             button.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -1827,7 +1831,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         // create content
 
-        LinearLayout content = new LinearLayout(this);
+        LinearLayout content = new LinearLayout(context);
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(message);
         content.addView(buttons);

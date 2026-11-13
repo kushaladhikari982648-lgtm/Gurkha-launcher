@@ -220,8 +220,10 @@ EXPORT EGLBoolean eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGL
         for (const EGLint *a = attrib_list; a[0] != EGL_NONE && n < MAX_ATTRIBS - 2; a += 2) {
             attribs[n] = a[0];
             attribs[n + 1] = a[1];
-            if (a[0] == EGL_RENDERABLE_TYPE && (a[1] & EGL_OPENGL_BIT)) {
-                attribs[n + 1] = (a[1] & ~(EGL_OPENGL_BIT | EGL_OPENGL_ES_BIT)) | EGL_OPENGL_ES3_BIT_KHR;
+            if (a[0] == EGL_RENDERABLE_TYPE) {
+                if (a[1] & EGL_OPENGL_BIT) {
+                    attribs[n + 1] = (a[1] & ~(EGL_OPENGL_BIT | EGL_OPENGL_ES_BIT)) | EGL_OPENGL_ES3_BIT_KHR;
+                }
                 renderable_index = n + 1;
             }
             n += 2;
@@ -231,7 +233,7 @@ EXPORT EGLBoolean eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGL
     EGLBoolean result = host_eglChooseConfig(dpy, attribs, configs, config_size, num_config);
     if (renderable_index >= 0 && (!result || (num_config != NULL && *num_config == 0))) {
         // No OpenGL ES 3 config (or no EGL_KHR_create_context): LTW still needs at least OpenGL ES 3, try ES 2 configs
-        attribs[renderable_index] = (attribs[renderable_index] & ~EGL_OPENGL_ES3_BIT_KHR) | EGL_OPENGL_ES2_BIT;
+        attribs[renderable_index] = (attribs[renderable_index] & ~(EGL_OPENGL_BIT | EGL_OPENGL_ES_BIT | EGL_OPENGL_ES3_BIT_KHR)) | EGL_OPENGL_ES2_BIT;
         result = host_eglChooseConfig(dpy, attribs, configs, config_size, num_config);
     }
     return result;
@@ -239,15 +241,9 @@ EXPORT EGLBoolean eglChooseConfig(EGLDisplay dpy, const EGLint *attrib_list, EGL
 
 EXPORT EGLContext eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_context, const EGLint *attrib_list) {
     if (!init()) return (EGLContext)0;
-    bool desktop = emulating_desktop_gl();
-    if (attrib_list != NULL) {
-        for (const EGLint *a = attrib_list; a[0] != EGL_NONE; a += 2) {
-            if (a[0] == EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR) desktop = true;
-        }
-    }
-    if (!desktop) return ltw_eglCreateContext(dpy, config, share_context, attrib_list);
 
-    // OpenGL ES 3.0 (drivers return the newest compatible version); LTW exposes desktop OpenGL on it
+    // Always normalize context attributes to OpenGL ES 3.0 (with fallback to pure EGL 1.4 ES3 / ES2),
+    // even when SDL bound EGL_OPENGL_ES_API directly and passed desktop minor/flags attributes (e.g. 3.3 + forward-compatible).
     EGLint attribs[MAX_ATTRIBS + 4];
     const EGLint drop[] = {
             EGL_CONTEXT_CLIENT_VERSION, // same value as EGL_CONTEXT_MAJOR_VERSION_KHR
@@ -298,15 +294,17 @@ static const EGLint colorspace_attrib[] = { EGL_GL_COLORSPACE_KHR };
 
 EXPORT EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLNativeWindowType win, const EGLint *attrib_list) {
     if (!init()) return (EGLSurface)0;
-    if (!emulating_desktop_gl()) return host_eglCreateWindowSurface(dpy, config, win, attrib_list);
     EGLint attribs[MAX_ATTRIBS];
     filter_attribs(attrib_list, attribs, colorspace_attrib, 1);
-    return host_eglCreateWindowSurface(dpy, config, win, attribs);
+    EGLSurface surface = host_eglCreateWindowSurface(dpy, config, win, attribs);
+    if (surface == EGL_NO_SURFACE && attribs[0] != EGL_NONE) {
+        surface = host_eglCreateWindowSurface(dpy, config, win, NULL);
+    }
+    return surface;
 }
 
 EXPORT EGLSurface eglCreatePbufferSurface(EGLDisplay dpy, EGLConfig config, const EGLint *attrib_list) {
     if (!init()) return (EGLSurface)0;
-    if (!emulating_desktop_gl()) return host_eglCreatePbufferSurface(dpy, config, attrib_list);
     EGLint attribs[MAX_ATTRIBS];
     filter_attribs(attrib_list, attribs, colorspace_attrib, 1);
     return host_eglCreatePbufferSurface(dpy, config, attribs);
@@ -315,7 +313,6 @@ EXPORT EGLSurface eglCreatePbufferSurface(EGLDisplay dpy, EGLConfig config, cons
 EXPORT EGLSurface eglCreatePlatformWindowSurface(EGLDisplay dpy, EGLConfig config, void *native_window, const EGLAttrib *attrib_list) {
     if (!init()) return (EGLSurface)0;
     if (host_eglCreatePlatformWindowSurface == NULL) return EGL_NO_SURFACE;
-    if (!emulating_desktop_gl()) return host_eglCreatePlatformWindowSurface(dpy, config, native_window, attrib_list);
     EGLAttrib attribs[MAX_ATTRIBS];
     filter_attribs64(attrib_list, attribs, EGL_GL_COLORSPACE_KHR);
     return host_eglCreatePlatformWindowSurface(dpy, config, native_window, attribs);

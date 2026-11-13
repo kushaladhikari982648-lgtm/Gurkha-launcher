@@ -33,3 +33,5 @@ streamPreferredServer:
 streamChatEnabled:0
 streamChatUserFilter:0
 streamMicToggleBehavior:0
+preferredGraphicsBackend:"opengl"
+startedCleanly:true
