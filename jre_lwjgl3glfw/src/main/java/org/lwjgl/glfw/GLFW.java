@@ -535,8 +535,10 @@ public class GLFW
         // CallbackBridge.receiveCallback(CallbackBridge.EVENT_TYPE_FRAMEBUFFER_SIZE, mGLFWWindowWidth, mGLFWWindowHeight, 0, 0);
         // CallbackBridge.receiveCallback(CallbackBridge.EVENT_TYPE_WINDOW_SIZE, mGLFWWindowWidth, mGLFWWindowHeight, 0, 0);
 
+        Library.initialize();
         try {
             System.loadLibrary("pojavexec");
+            nativeInitializeGLFWNativeBridge();
         } catch (UnsatisfiedLinkError e) {
             e.printStackTrace();
         }
@@ -595,6 +597,7 @@ public class GLFW
     private static native long nglfwSetWindowSizeCallback(long window, long ptr);
     // private static native void nglfwSetInputReady();
     private static native void nglfwSetShowingWindow(long window);
+    private static native void nativeInitializeGLFWNativeBridge();
 
     /*
      private static void priGlfwSetError(int error) {
@@ -1084,12 +1087,13 @@ public class GLFW
         int glMajor = 3;
         int glMinor = 3;
         // Custom defaults for specific renderers
-        if (System.getenv("POJAV_RENDERER").equals("vulkan_zink")) {
+        String renderer = System.getenv("POJAV_RENDERER");
+        if ("vulkan_zink".equals(renderer)) {
             glMajor = 4;
             glMinor = 6;
-        } else if (System.getenv("POJAV_RENDERER").equals("gallium_virgl")) {
+        } else if ("gallium_virgl".equals(renderer)) {
             glMajor = 4;
-        } else if (System.getenv("POJAV_RENDERER").equals("opengles3")) {
+        } else if ("opengles3".equals(renderer)) {
             glMajor = 4;
             glMinor = 0;
         }
@@ -1118,7 +1122,11 @@ public class GLFW
             System.out.println("GLFW: Warning: failed to remove window " + window);
             e.printStackTrace();
         }
-        nglfwSetShowingWindow(mGLFWWindowMap.size() == 0 ? 0 : mGLFWWindowMap.keyAt(mGLFWWindowMap.size() - 1));
+        long nextWindow = mGLFWWindowMap.size() == 0 ? 0L : mGLFWWindowMap.keyAt(mGLFWWindowMap.size() - 1);
+        if (mainContext == window) {
+            mainContext = nextWindow;
+        }
+        nglfwSetShowingWindow(nextWindow);
     }
 
     public static String glfwGetWindowTitle(long window) {

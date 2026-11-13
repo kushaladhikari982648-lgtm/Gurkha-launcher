@@ -29,6 +29,12 @@ osm_render_window_t* osm_init_context(osm_render_window_t* share) {
     osm_render_window_t* render_window = malloc(sizeof(osm_render_window_t));
     if(render_window == NULL) return NULL;
     memset(render_window, 0, sizeof(osm_render_window_t));
+    osm_render_window_t* existing = currentBundle ? currentBundle :
+        (share ? share : (osm_render_window_t*)pojav_environ->mainWindowBundle);
+    if (currentBundle != NULL && existing != NULL && existing->context != NULL) {
+        render_window->context = existing->context;
+        return render_window;
+    }
     OSMesaContext osmesa_share = NULL;
     if(share != NULL) osmesa_share = share->context;
     OSMesaContext context = OSMesaCreateContext_p(GL_RGBA, osmesa_share);
@@ -78,6 +84,23 @@ void osm_make_current(osm_render_window_t* bundle) {
         OSMesaMakeCurrent_p(NULL, NULL, 0, 0, 0);
         currentBundle = NULL;
         return;
+    }
+    osm_render_window_t* donor = currentBundle ? currentBundle : (osm_render_window_t*)pojav_environ->mainWindowBundle;
+    if (donor && donor != bundle &&
+        donor->context == bundle->context &&
+        bundle->nativeSurface == NULL &&
+        donor->nativeSurface != NULL) {
+        bundle->nativeSurface = donor->nativeSurface;
+        bundle->window_generation = donor->window_generation;
+        bundle->buffer = donor->buffer;
+        bundle->last_stride = donor->last_stride;
+        bundle->disable_rendering = donor->disable_rendering;
+        bundle->state = donor->state;
+        donor->nativeSurface = NULL;
+        donor->disable_rendering = true;
+        if (pojav_environ->mainWindowBundle == (basic_render_window_t*)donor) {
+            pojav_environ->mainWindowBundle = (basic_render_window_t*)bundle;
+        }
     }
     bool hasSetMainWindow = false;
     currentBundle = bundle;

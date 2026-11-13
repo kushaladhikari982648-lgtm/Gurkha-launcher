@@ -54,6 +54,62 @@ JNIEXPORT jint JNICALL Java_org_lwjgl_glfw_CallbackBridge_nativeGetWindowState(
 
 static void registerFunctions(JNIEnv *env);
 
+/**
+ * Resolve the GLFW class, method IDs, and direct input buffers on demand after libpojavexec
+ * and liblwjgl have finished loading.
+ *
+ * This MUST NOT run inside JNI_OnLoad: in LWJGL 3.4.1 (Minecraft 26.1/26.2),
+ * org.lwjgl.system.Library.<clinit> calls System.loadLibrary("pojavexec") at line 63 before
+ * Library.loadSystem("org.lwjgl", JNI_LIBRARY_NAME) loads liblwjgl.so at line 67. Calling
+ * GetStaticMethodID/GetStaticFieldID/GetStaticObjectField on org.lwjgl.glfw.GLFW inside
+ * JNI_OnLoad forces GLFW.<clinit> -> GLFWErrorCallbackI.<clinit> -> LibFFI.<clinit> to run
+ * while Library.<clinit> is still paused at line 63 on the same thread, causing
+ * LibFFI.FFI_TYPE_DOUBLE() to fail with UnsatisfiedLinkError and poisoning LibFFI.
+ */
+jboolean ensureGlfwRuntimeBridgeInitialized(JNIEnv *env) {
+    const char *backend = getenv("POJAV_WINDOW_BACKEND");
+    if (backend && strcmp(backend, "sdl") == 0) return JNI_TRUE;
+    if (pojav_environ->vmGlfwClass != NULL &&
+        pojav_environ->method_glftSetWindowAttrib != NULL &&
+        pojav_environ->method_internalWindowSizeChanged != NULL &&
+        pojav_environ->keyDownBuffer != NULL &&
+        pojav_environ->mouseDownBuffer != NULL) {
+        return JNI_TRUE;
+    }
+    if (env == NULL && pojav_environ->runtimeJavaVMPtr != NULL) {
+        jint status = (*pojav_environ->runtimeJavaVMPtr)->GetEnv(
+                pojav_environ->runtimeJavaVMPtr, (void**) &env, JNI_VERSION_1_4);
+        if (status == JNI_EDETACHED) {
+            (*pojav_environ->runtimeJavaVMPtr)->AttachCurrentThread(
+                    pojav_environ->runtimeJavaVMPtr, &env, NULL);
+        }
+    }
+    if (env == NULL) {
+        __android_log_print(ANDROID_LOG_ERROR, "Native", "ensureGlfwRuntimeBridgeInitialized: no game JVM JNIEnv available");
+        return JNI_FALSE;
+    }
+    struct gurkha_runtime_bridge bridge;
+    if (!gurkha_init_runtime_bridge(env, backend, &bridge)) {
+        if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionDescribe(env);
+            (*env)->ExceptionClear(env);
+        }
+        __android_log_print(ANDROID_LOG_ERROR, "Native", "ensureGlfwRuntimeBridgeInitialized: failed to resolve GLFW bridge members");
+        return JNI_FALSE;
+    }
+    pojav_environ->vmGlfwClass = bridge.glfw;
+    pojav_environ->method_glftSetWindowAttrib = bridge.set_attrib;
+    pojav_environ->method_internalWindowSizeChanged = bridge.resize;
+    pojav_environ->keyDownBuffer = bridge.keys;
+    pojav_environ->mouseDownBuffer = bridge.buttons;
+    return JNI_TRUE;
+}
+
+JNIEXPORT void JNICALL Java_org_lwjgl_glfw_GLFW_nativeInitializeGLFWNativeBridge(
+        JNIEnv* env, __attribute__((unused)) jclass clazz) {
+    ensureGlfwRuntimeBridgeInitialized(env);
+}
+
 jint JNI_OnLoad(JavaVM* vm, __attribute__((unused)) void* reserved) {
     if (pojav_environ->dalvikJavaVMPtr == NULL) {
         __android_log_print(ANDROID_LOG_INFO, "Native", "Saving DVM environ...");
@@ -67,23 +123,11 @@ jint JNI_OnLoad(JavaVM* vm, __attribute__((unused)) void* reserved) {
     } else if (pojav_environ->dalvikJavaVMPtr != vm) {
         __android_log_print(ANDROID_LOG_INFO, "Native", "Saving JVM environ...");
         pojav_environ->runtimeJavaVMPtr = vm;
-        (*vm)->GetEnv(vm, (void**) &pojav_environ->runtimeJNIEnvPtr_JRE, JNI_VERSION_1_4);
-        JNIEnv *env = pojav_environ->runtimeJNIEnvPtr_JRE;
-        struct gurkha_runtime_bridge bridge;
-        const char *backend = getenv("POJAV_WINDOW_BACKEND");
-        if (!gurkha_init_runtime_bridge(env, backend, &bridge)) {
-            if ((*env)->ExceptionCheck(env)) {
-                (*env)->ExceptionDescribe(env);
-                (*env)->ExceptionClear(env);
-            }
-            __android_log_print(ANDROID_LOG_ERROR, "Native", "GLFW runtime bridge is incomplete; refusing unsafe JNI initialization");
+        if ((*vm)->GetEnv(vm, (void**) &pojav_environ->runtimeJNIEnvPtr_JRE, JNI_VERSION_1_4) != JNI_OK ||
+            pojav_environ->runtimeJNIEnvPtr_JRE == NULL) {
             return JNI_ERR;
         }
-        pojav_environ->vmGlfwClass = bridge.glfw;
-        pojav_environ->method_glftSetWindowAttrib = bridge.set_attrib;
-        pojav_environ->method_internalWindowSizeChanged = bridge.resize;
-        pojav_environ->keyDownBuffer = bridge.keys;
-        pojav_environ->mouseDownBuffer = bridge.buttons;
+        const char *backend = getenv("POJAV_WINDOW_BACKEND");
         __android_log_print(ANDROID_LOG_INFO, "Native", "Runtime window backend: %s", backend ? backend : "glfw");
         hookExec();
         installLwjglDlopenHook();
@@ -103,6 +147,7 @@ jint JNI_OnLoad(JavaVM* vm, __attribute__((unused)) void* reserved) {
 
 #define ADD_CALLBACK_WWIN(NAME) \
 JNIEXPORT jlong JNICALL Java_org_lwjgl_glfw_GLFW_nglfwSet##NAME##Callback(JNIEnv * env, jclass cls, jlong window, jlong callbackptr) { \
+    ensureGlfwRuntimeBridgeInitialized(env); \
     void** oldCallback = (void**) &pojav_environ->GLFW_invoke_##NAME; \
     pojav_environ->GLFW_invoke_##NAME = (GLFW_invoke_##NAME##_func*) (uintptr_t) callbackptr; \
     return (jlong) (uintptr_t) *oldCallback; \
@@ -121,10 +166,16 @@ ADD_CALLBACK_WWIN(WindowSize)
 #undef ADD_CALLBACK_WWIN
 
 void handleFramebufferSizeJava(jlong window, jint w, jint h) {
+    JNIEnv *env = pojav_environ->runtimeJNIEnvPtr_JRE;
+    if (!ensureGlfwRuntimeBridgeInitialized(env) || env == NULL ||
+        pojav_environ->vmGlfwClass == NULL ||
+        pojav_environ->method_internalWindowSizeChanged == NULL) {
+        return;
+    }
     // internalWindowSizeChanged is "(JII)V": the window must be passed as a 64-bit jlong. On 32-bit
     // devices a C long is only 32 bits, so passing (long)window shifted every vararg and Java received a
     // garbage window and size, which broke resizing and crashed the game (PojavLauncher b5de32d3b).
-    (*pojav_environ->runtimeJNIEnvPtr_JRE)->CallStaticVoidMethod(pojav_environ->runtimeJNIEnvPtr_JRE, pojav_environ->vmGlfwClass, pojav_environ->method_internalWindowSizeChanged, window, w, h);
+    (*env)->CallStaticVoidMethod(env, pojav_environ->vmGlfwClass, pojav_environ->method_internalWindowSizeChanged, window, w, h);
 }
 
 void pojavPumpEvents(void* window) {
@@ -492,7 +543,9 @@ void noncritical_send_cursor_pos(__attribute__((unused)) JNIEnv* env, __attribut
      _a > _b ? _a : _b; })
 void critical_send_key(jint key, jint scancode, jint action, jint mods) {
     if (pojav_environ->GLFW_invoke_Key && pojav_environ->isInputReady) {
-        pojav_environ->keyDownBuffer[max(0, key-31)] = (jbyte) action;
+        if (pojav_environ->keyDownBuffer != NULL && key >= 31 && key < 31 + 317) {
+            pojav_environ->keyDownBuffer[key - 31] = (jbyte) action;
+        }
         if (pojav_environ->isUseStackQueueCall) {
             sendData(EVENT_TYPE_KEY, key, scancode, action, mods);
         } else {
@@ -506,7 +559,9 @@ void noncritical_send_key(__attribute__((unused)) JNIEnv* env, __attribute__((un
 
 void critical_send_mouse_button(jint button, jint action, jint mods) {
     if (pojav_environ->GLFW_invoke_MouseButton && pojav_environ->isInputReady) {
-        pojav_environ->mouseDownBuffer[max(0, button)] = (jbyte) action;
+        if (pojav_environ->mouseDownBuffer != NULL && button >= 0 && button < 8) {
+            pojav_environ->mouseDownBuffer[button] = (jbyte) action;
+        }
         if (pojav_environ->isUseStackQueueCall) {
             sendData(EVENT_TYPE_MOUSE_BUTTON, button, action, mods, 0);
         } else {
@@ -560,7 +615,8 @@ void noncritical_send_scroll(__attribute__((unused)) JNIEnv* env, __attribute__(
 }
 
 
-JNIEXPORT void JNICALL Java_org_lwjgl_glfw_GLFW_nglfwSetShowingWindow(__attribute__((unused)) JNIEnv* env, __attribute__((unused)) jclass clazz, jlong window) {
+JNIEXPORT void JNICALL Java_org_lwjgl_glfw_GLFW_nglfwSetShowingWindow(JNIEnv* env, __attribute__((unused)) jclass clazz, jlong window) {
+    ensureGlfwRuntimeBridgeInitialized(env);
     pojav_environ->showingWindow = (jlong) window;
 }
 

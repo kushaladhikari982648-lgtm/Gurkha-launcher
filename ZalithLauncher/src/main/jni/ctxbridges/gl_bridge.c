@@ -61,6 +61,16 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
         gl_failure("invalid LIBGL_ES (expected 1, 2 or 3)", EGL_BAD_ATTRIBUTE);
         return NULL;
     }
+    gl_render_window_t *existing = currentBundle ? currentBundle :
+        (share ? share : (gl_render_window_t*)pojav_environ->mainWindowBundle);
+    if (currentBundle != NULL && existing != NULL && existing->context != EGL_NO_CONTEXT) {
+        gl_render_window_t *bundle = calloc(1, sizeof(*bundle));
+        if (!bundle) { gl_failure("allocate context bundle", EGL_BAD_ALLOC); return NULL; }
+        bundle->config = existing->config;
+        bundle->format = existing->format;
+        bundle->context = existing->context;
+        return bundle;
+    }
     const char *renderer = getenv("POJAV_RENDERER");
     bool desktop = renderer && !strncmp(renderer, "opengles3_desktopgl", 19);
     EGLint renderable = desktop ? EGL_OPENGL_BIT : es >= 3 ? EGL_OPENGL_ES3_BIT_KHR :
@@ -82,6 +92,10 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
     stage = "create context";
     bundle->context = eglCreateContext_p(g_EglDisplay, bundle->config,
         share ? share->context : EGL_NO_CONTEXT, desktop ? NULL : context_attrs);
+    if (bundle->context == EGL_NO_CONTEXT && share != NULL) {
+        bundle->context = eglCreateContext_p(g_EglDisplay, bundle->config,
+            EGL_NO_CONTEXT, desktop ? NULL : context_attrs);
+    }
     if (bundle->context == EGL_NO_CONTEXT) goto failed;
     return bundle;
 failed:
@@ -127,6 +141,21 @@ void gl_make_current(gl_render_window_t* bundle) {
         if (eglMakeCurrent_p(g_EglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) currentBundle = NULL;
         else gl_failure("detach context", eglGetError_p());
         return;
+    }
+    gl_render_window_t *donor = currentBundle ? currentBundle : (gl_render_window_t*)pojav_environ->mainWindowBundle;
+    if (donor && donor != bundle &&
+        donor->context == bundle->context &&
+        bundle->surface == EGL_NO_SURFACE &&
+        donor->surface != EGL_NO_SURFACE) {
+        bundle->surface = donor->surface;
+        bundle->nativeSurface = donor->nativeSurface;
+        bundle->window_generation = donor->window_generation;
+        bundle->has_window_generation = donor->has_window_generation;
+        donor->surface = EGL_NO_SURFACE;
+        donor->nativeSurface = NULL;
+        if (pojav_environ->mainWindowBundle == (basic_render_window_t*)donor) {
+            pojav_environ->mainWindowBundle = (basic_render_window_t*)bundle;
+        }
     }
     bool main = !pojav_environ->mainWindowBundle || pojav_environ->mainWindowBundle == (basic_render_window_t*)bundle;
     if (bundle->surface == EGL_NO_SURFACE || (main && bundle->window_generation != bridge_window_generation())) {

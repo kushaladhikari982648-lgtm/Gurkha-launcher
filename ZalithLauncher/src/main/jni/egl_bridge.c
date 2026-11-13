@@ -48,6 +48,7 @@ struct PotatoBridge potatoBridge;
 
 void* loadTurnipVulkan();
 void calculateFPS();
+extern jboolean ensureGlfwRuntimeBridgeInitialized(JNIEnv *env);
 
 EXTERNAL_API void pojavTerminate() {
     printf("EGLBridge: Terminating\n");
@@ -133,6 +134,22 @@ int pojavInitOpenGL() {
 
 EXTERNAL_API int pojavInit() {
     if (bridge_is_sdl()) return 0;
+    if (pojav_environ->runtimeJavaVMPtr != NULL) {
+        JNIEnv *jvm_env = NULL;
+        jint env_result = (*pojav_environ->runtimeJavaVMPtr)->GetEnv(
+                pojav_environ->runtimeJavaVMPtr, (void**) &jvm_env, JNI_VERSION_1_4);
+        if (env_result == JNI_EDETACHED) {
+            env_result = (*pojav_environ->runtimeJavaVMPtr)->AttachCurrentThread(
+                    pojav_environ->runtimeJavaVMPtr, &jvm_env, NULL);
+        }
+        if (env_result == JNI_OK && jvm_env != NULL) {
+            pojav_environ->runtimeJNIEnvPtr_JRE = jvm_env;
+        }
+    }
+    if (!ensureGlfwRuntimeBridgeInitialized(pojav_environ->runtimeJNIEnvPtr_JRE)) {
+        fprintf(stderr, "EGLBridge: GLFW runtime bridge is not initialized\n");
+        return 0;
+    }
     ANativeWindow *window = bridge_acquire_window(NULL);
     if (!window) { fprintf(stderr, "EGLBridge: no Android surface\n"); return 0; }
     pojav_environ->savedWidth = ANativeWindow_getWidth(window);

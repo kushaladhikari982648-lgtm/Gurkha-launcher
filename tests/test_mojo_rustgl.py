@@ -41,6 +41,7 @@ class MojoRustGLTests(unittest.TestCase):
         self.assertIn('"POJAV_WINDOW_BACKEND", MinecraftGLSurface.sdlVersion ? "sdl" : "glfw"', java)
         native = (ROOT / 'ZalithLauncher/src/main/jni/input_bridge_v3.c').read_text()
         self.assertIn('if (!gurkha_init_runtime_bridge', native)
+        self.assertIn('jboolean ensureGlfwRuntimeBridgeInitialized(JNIEnv *env)', native)
         self.assertIn('return JNI_ERR;', native)
         sdl = (SRC / 'com/movtery/zalithlauncher/launch/SdlSupport.kt').read_text()
         sdl_classpath = sdl.split('fun getClassPath(): String {')[1].split('fun getGlfwClassPath()')[0]

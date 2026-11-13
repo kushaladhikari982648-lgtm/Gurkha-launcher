@@ -190,4 +190,20 @@ class NativeLaunchHardeningTests(unittest.TestCase):
         main_activity = (SRC/'net/kdt/pojavlaunch/MainActivity.java').read_text()
         self.assertIn('public int messageboxShowMessageBox(', main_activity)
 
+        input_bridge = (JNI/'input_bridge_v3.c').read_text()
+        self.assertIn('jboolean ensureGlfwRuntimeBridgeInitialized(JNIEnv *env)', input_bridge)
+        self.assertIn('Java_org_lwjgl_glfw_GLFW_nativeInitializeGLFWNativeBridge', input_bridge)
+        jni_onload_slice = input_bridge[input_bridge.index('jint JNI_OnLoad'):input_bridge.index('#define ADD_CALLBACK_WWIN')]
+        self.assertNotIn('gurkha_init_runtime_bridge', jni_onload_slice)
+
+        egl_bridge = (JNI/'egl_bridge.c').read_text()
+        self.assertIn('ensureGlfwRuntimeBridgeInitialized(pojav_environ->runtimeJNIEnvPtr_JRE)', egl_bridge)
+
+        glfw_java = (ROOT/'jre_lwjgl3glfw/src/main/java/org/lwjgl/glfw/GLFW.java').read_text()
+        self.assertIn('Library.initialize();', glfw_java)
+        self.assertIn('nativeInitializeGLFWNativeBridge();', glfw_java)
+        self.assertLess(glfw_java.index('Library.initialize();'), glfw_java.index('mGLFWErrorCallback = GLFWErrorCallback.createPrint();'))
+        self.assertIn('if (mainContext == window) {', glfw_java)
+
+
 

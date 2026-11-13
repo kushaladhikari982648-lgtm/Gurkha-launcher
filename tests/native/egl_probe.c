@@ -99,6 +99,22 @@ int main(int argc,char **argv) {
     assert(gl_get_current()==ctx);gl_swap_buffers();
     if(!strcmp(mode,"lost-context")) { assert(!gl_get_current());gl_swap_buffers();assert(swaps==1);puts("PASS lost context is not used");return 0; }
     ANativeWindow_acquire(&b);bridge_publish_window(&b);gl_swap_buffers();assert(a.refs==0 && b.refs==2);
+    /* Minecraft 26.2 RenderPearl GLFW sequence on the same render thread:
+     * 1. Hidden utility window (ctx) is current;
+     * 2. Hidden test window (test_ctx) is created on the same thread and discarded;
+     * 3. Visible main window (main_ctx) is created on the same thread and made current,
+     *    reusing the single EGLContext (creates == 1) and adopting the window surface ((void*)4)
+     *    instead of falling back to an offscreen 1x1 Pbuffer ((void*)5). */
+    gl_render_window_t *test_ctx=gl_init_context(ctx);
+    assert(test_ctx && test_ctx->context==ctx->context && creates==1);
+    free(test_ctx);
+    gl_render_window_t *main_ctx=gl_init_context(ctx);
+    assert(main_ctx && main_ctx->context==ctx->context && creates==1);
+    gl_make_current(main_ctx);
+    assert(gl_get_current()==main_ctx && main_ctx->surface==(void*)4 && ctx->surface==EGL_NO_SURFACE && pojav_environ->mainWindowBundle==(basic_render_window_t*)main_ctx);
+    gl_make_current(ctx);
+    assert(gl_get_current()==ctx && ctx->surface==(void*)4 && main_ctx->surface==EGL_NO_SURFACE && pojav_environ->mainWindowBundle==(basic_render_window_t*)ctx);
+    free(main_ctx);
     bridge_publish_window(NULL);gl_swap_buffers();assert(b.refs==0 && ctx->surface==(void*)5);
     bridge_publish_window(NULL);gl_swap_buffers();
     pthread_t thread;assert(!pthread_create(&thread,NULL,publish_many,NULL));
