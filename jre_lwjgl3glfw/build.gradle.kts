@@ -44,6 +44,10 @@ val stubJar by tasks.registering(Jar::class) {
     exclude("org/lwjgl/input/InfdevMouse*")
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
+    doLast {
+        val versionFile = file("../ZalithLauncher/src/main/assets/components/lwjgl3/version")
+        versionFile.writeText(System.currentTimeMillis().toString())
+    }
 }
 
 tasks.jar {

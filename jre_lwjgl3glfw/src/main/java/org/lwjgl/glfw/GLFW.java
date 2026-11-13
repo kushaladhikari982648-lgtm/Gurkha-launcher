@@ -1013,6 +1013,9 @@ public class GLFW
     }
 
     public static void glfwMakeContextCurrent(@NativeType("GLFWwindow *") long window) {
+        if ("sdl".equals(System.getenv("POJAV_WINDOW_BACKEND"))) {
+            return;
+        }
         long __functionAddress = Functions.MakeContextCurrent;
         invokePV(window, __functionAddress);
     }

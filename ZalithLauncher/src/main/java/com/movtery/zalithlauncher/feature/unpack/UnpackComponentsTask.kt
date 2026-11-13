@@ -48,6 +48,10 @@ class UnpackComponentsTask(val context: Context, val component: Components) : Ab
             requestEmptyParentDir(versionFile)
             return true
         }
+        if (component == Components.LWJGL3 && !File(rootDir, "lwjgl3/${SdlSupport.GLFW_STUB_JAR}").isFile) {
+            requestEmptyParentDir(versionFile)
+            return true
+        }
 
         if (!versionFile.exists()) {
             requestEmptyParentDir(versionFile)

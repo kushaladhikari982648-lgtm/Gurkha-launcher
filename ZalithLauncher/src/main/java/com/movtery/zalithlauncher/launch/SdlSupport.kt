@@ -160,6 +160,7 @@ object SdlSupport {
             "-Dorg.lwjgl.shaderc.libname=$natives/libshaderc.so",
             "-Dorg.lwjgl.spvc.libname=$nativeLibDir/libspirv-cross-c-shared.so",
             "-Dorg.lwjgl.sdl.libname=$nativeLibDir/libSDL3.so",
+            "-Dorg.lwjgl.glfw.libname=$nativeLibDir/libpojavexec.so",
             // jemalloc is not shipped
             "-Dorg.lwjgl.system.allocator=system"
         )

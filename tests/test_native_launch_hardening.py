@@ -180,6 +180,13 @@ class NativeLaunchHardeningTests(unittest.TestCase):
 
         lwjgl_hook = (JNI/'lwjgl_dlopen_hook.c').read_text()
         self.assertIn('{"ndlsym", "(JJ)J", &ndlsym_bugfix}', lwjgl_hook)
+        self.assertIn('strcmp(filename, "libglfw.so") == 0', lwjgl_hook)
+
+        sdl_support = (SRC/'com/movtery/zalithlauncher/launch/SdlSupport.kt').read_text()
+        self.assertIn('"-Dorg.lwjgl.glfw.libname=$nativeLibDir/libpojavexec.so"', sdl_support)
+
+        jre_utils = (SRC/'net/kdt/pojavlaunch/utils/JREUtils.java').read_text()
+        self.assertIn('envMap.remove("POJAV_RENDERER");', jre_utils)
 
         graphics_backend = (SRC/'com/movtery/zalithlauncher/launch/GraphicsBackend.kt').read_text()
         self.assertIn('const val STARTED_CLEANLY_OPTION = "startedCleanly"', graphics_backend)

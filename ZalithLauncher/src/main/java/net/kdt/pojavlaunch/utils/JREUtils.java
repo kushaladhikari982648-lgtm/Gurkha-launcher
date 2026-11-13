@@ -264,11 +264,18 @@ public final class JREUtils {
         // Never inherit another renderer/backend's context provider from custom_env.txt.
         for (String key : new String[]{"SDL_EGL_LIBRARY", "SDL_OPENGL_LIBRARY", "LTW_SDL_EGL_LTW_LIBRARY"}) envMap.remove(key);
 
-        envMap.put("POJAV_RENDERER", rendererId);
         // A library loaded by SDL must never initialize the launcher's GLFW-only fields.
         envMap.put("POJAV_WINDOW_BACKEND", MinecraftGLSurface.sdlVersion ? "sdl" : "glfw");
-        // Minecraft 26.3+: SDL creates the GL context itself and needs the renderer's libraries
-        if (MinecraftGLSurface.sdlVersion) envMap.putAll(SdlSupport.getRendererEnv(currentRenderer, DIR_NATIVE_LIB));
+        if (MinecraftGLSurface.sdlVersion) {
+            // In SDL3 mode (26.3+), do not set POJAV_RENDERER: GL.createCapabilities() in
+            // lwjgl-opengl.jar checks System.getenv("POJAV_RENDERER") != null to decide whether
+            // to call GL.fixPojavGLContext(), which reflects org.lwjgl.glfw.GLFW.
+            envMap.remove("POJAV_RENDERER");
+            // Minecraft 26.3+: SDL creates the GL context itself and needs the renderer's libraries
+            envMap.putAll(SdlSupport.getRendererEnv(currentRenderer, DIR_NATIVE_LIB));
+        } else {
+            envMap.put("POJAV_RENDERER", rendererId);
+        }
 
         if (RendererPluginManager.getSelectedRendererPlugin() != null) return;
 

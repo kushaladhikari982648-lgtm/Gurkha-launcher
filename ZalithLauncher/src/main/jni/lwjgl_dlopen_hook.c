@@ -46,6 +46,20 @@ static jlong ndlopen_bugfix(__attribute__((unused)) JNIEnv *env,
         return (jlong) (uintptr_t) maybe_load_vulkan();
     }
 
+    if (filename != NULL) {
+        size_t len = strlen(filename);
+        if (strcmp(filename, "libglfw.so") == 0 ||
+            (len >= 11 && strcmp(filename + len - 11, "/libglfw.so") == 0)) {
+            void* handle = dlopen("libpojavexec.so", (int) jmode | RTLD_NOLOAD);
+            if (handle == NULL) {
+                handle = dlopen("libpojavexec.so", (int) jmode);
+            }
+            if (handle != NULL) {
+                return (jlong) (uintptr_t) handle;
+            }
+        }
+    }
+
     // This hook also serves the task of mitigating a bug: the idea is that since, on Android 10 and
     // earlier, the linker doesn't really do namespace nesting.
     // It is not a problem as most of the libraries are in the launcher path, but when you try to run
