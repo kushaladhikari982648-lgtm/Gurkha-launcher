@@ -1,5 +1,5 @@
 {
-  "sha256": "918df4d4c7a0214bc579c1d12269020b6173844e66444f06647a1cecb66b3a0f",
+  "sha256": "7d2066bf305e9abd81818a0d1ada538a07a1aac68c77be981c600908c86cd4a4",
   "abis": [
     "armeabi-v7a",
     "arm64-v8a",
