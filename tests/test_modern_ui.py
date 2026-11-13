@@ -57,3 +57,14 @@ class ModernUiTests(unittest.TestCase):
             if e.get(A+'id')=='@+id/shadowView':
                 self.assertEqual('gone',e.get(A+'visibility'))
                 self.assertNotEqual('0dp',e.get(A+'layout_width'))
+
+    def test_video_settings_has_graphics_api_switch_button(self):
+        root = ET.parse(RES / 'layout/settings_fragment_video.xml').getroot()
+        ids = [e.get(A + 'id', '').split('/')[-1] for e in root.iter() if A + 'id' in e.attrib]
+        for control in ('graphics_api_layout', 'graphics_api_title', 'graphics_api_value', 'graphics_api_switch_button'):
+            self.assertIn(control, ids)
+        video_frag = (SRC / 'com/movtery/zalithlauncher/ui/fragment/settings/VideoSettingsFragment.kt').read_text()
+        self.assertIn('binding.graphicsApiSwitchButton.setOnClickListener', video_frag)
+        self.assertIn('GraphicsBackend.toggle(AllSettings.graphicsApi.getValue())', video_frag)
+        backend = (SRC / 'com/movtery/zalithlauncher/launch/GraphicsBackend.kt').read_text()
+        self.assertIn('writeOption(File(gameDir, "options.txt"), backend)', backend)

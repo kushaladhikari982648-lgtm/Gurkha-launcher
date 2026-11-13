@@ -415,6 +415,11 @@
     <string name="setting_renderer_local_import_failed">Failed to import the renderer plugin. The file format of the compressed package might be incorrect, or the plugin may conflict with other plugins!</string>
     <string name="setting_renderer_local_manage">Manage Local Renderer Plugins</string>
     <string name="setting_renderer_local_delete">Are you sure you want to delete this renderer plugin? This action cannot be undone!</string>
+    <string name="setting_graphics_api_title">Graphics API (Minecraft 26.2+)</string>
+    <string name="setting_graphics_api_opengl">OpenGL (Recommended for LTW / GLES renderers)</string>
+    <string name="setting_graphics_api_vulkan">Vulkan</string>
+    <string name="setting_graphics_api_switch_to_opengl">Switch to OpenGL</string>
+    <string name="setting_graphics_api_switch_to_vulkan">Switch to Vulkan</string>
     <string name="setting_driver_title">Vulkan Driver</string>
     <string name="setting_ignore_notch_title">Fullscreen Mode</string>
     <string name="setting_ignore_notch_desc">Ignore the notch and extend the screen content to full screen for a more immersive experience</string>

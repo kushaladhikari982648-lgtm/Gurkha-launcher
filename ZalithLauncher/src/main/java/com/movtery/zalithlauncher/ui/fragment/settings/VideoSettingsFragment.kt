@@ -14,7 +14,10 @@ import com.movtery.anim.animations.Animations
 import com.movtery.zalithlauncher.R
 import com.movtery.zalithlauncher.databinding.SettingsFragmentVideoBinding
 import com.movtery.zalithlauncher.event.single.LauncherIgnoreNotchEvent
+import androidx.appcompat.app.AlertDialog
 import com.movtery.zalithlauncher.feature.log.Logging
+import com.movtery.zalithlauncher.feature.version.VersionsManager
+import com.movtery.zalithlauncher.launch.GraphicsBackend
 import com.movtery.zalithlauncher.plugins.driver.DriverPluginManager
 import com.movtery.zalithlauncher.plugins.renderer.RendererPluginManager
 import com.movtery.zalithlauncher.renderer.Renderers
@@ -118,6 +121,46 @@ class VideoSettingsFragment : AbstractSettingsFragment(R.layout.settings_fragmen
         )
 
         binding.rendererDownload.setOnClickListener { ZHTools.openLink(context, UrlManager.URL_FCL_RENDERER_PLUGIN) }
+
+        val graphicsApiEntries = arrayOf(
+            getString(R.string.setting_graphics_api_opengl),
+            getString(R.string.setting_graphics_api_vulkan)
+        )
+        val graphicsApiValues = arrayOf(GraphicsBackend.OPENGL, GraphicsBackend.VULKAN)
+
+        fun applyGraphicsApi(selected: String) {
+            val normalized = GraphicsBackend.normalize(selected)
+            AllSettings.graphicsApi.put(normalized).save()
+            VersionsManager.getCurrentVersion()?.getGameDir()?.let { gameDir ->
+                GraphicsBackend.writeOption(File(gameDir, "options.txt"), normalized)
+            }
+            val isVulkan = normalized == GraphicsBackend.VULKAN
+            binding.graphicsApiValue.text = if (isVulkan) {
+                getString(R.string.setting_graphics_api_vulkan)
+            } else {
+                getString(R.string.setting_graphics_api_opengl)
+            }
+            binding.graphicsApiSwitchButton.text = getString(
+                if (isVulkan) R.string.setting_graphics_api_switch_to_opengl
+                else R.string.setting_graphics_api_switch_to_vulkan
+            )
+        }
+
+        applyGraphicsApi(AllSettings.graphicsApi.getValue())
+        binding.graphicsApiSwitchButton.setOnClickListener {
+            applyGraphicsApi(GraphicsBackend.toggle(AllSettings.graphicsApi.getValue()))
+        }
+        binding.graphicsApiLayout.setOnClickListener {
+            val currentIndex = graphicsApiValues.indexOf(GraphicsBackend.normalize(AllSettings.graphicsApi.getValue())).coerceAtLeast(0)
+            AlertDialog.Builder(context, R.style.CustomAlertDialogTheme)
+                .setTitle(binding.graphicsApiTitle.text)
+                .setSingleChoiceItems(graphicsApiEntries, currentIndex) { dialog, which ->
+                    applyGraphicsApi(graphicsApiValues[which])
+                    dialog.dismiss()
+                }
+                .setPositiveButton(android.R.string.cancel, null)
+                .show()
+        }
 
         BaseSettingsWrapper(
             context,
