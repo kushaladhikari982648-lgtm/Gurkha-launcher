@@ -70,6 +70,7 @@
                     android:id="@+id/error_text"
                     android:text="Error"
                     android:textSize="@dimen/_12ssp"
+                    android:textIsSelectable="true"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:textColor="@color/black_or_white"

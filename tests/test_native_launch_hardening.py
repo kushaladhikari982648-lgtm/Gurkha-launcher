@@ -105,3 +105,47 @@ class NativeLaunchHardeningTests(unittest.TestCase):
         self.assertIn('keepAttachedForSdl', input_bridge)
         self.assertIn('if (attachedHere && !keepAttachedForSdl) (*dalvikVM)->DetachCurrentThread(dalvikVM);', input_bridge)
         self.assertIn('if (attachedHere && !isSdl) (*dalvikVM)->DetachCurrentThread(dalvikVM);', input_bridge)
+
+    def test_arm32_26_3_sdl_and_crash_diagnostics_hardening(self):
+        jre = (SRC/'net/kdt/pojavlaunch/utils/JREUtils.java').read_text()
+        self.assertIn('if ("libfreetype.so".equals(name) || "libjsig.so".equals(name)) continue;', jre)
+        self.assertIn('new File(DIR_NATIVE_LIB, "libfreetype.so")', jre)
+        self.assertIn('lockedNativeProperties.put("org.lwjgl.openal.libname", DIR_NATIVE_LIB + "/libopenal.so");', jre)
+        self.assertIn('args.add("-Xss1024k");', jre)
+        self.assertIn('JVMArg: <classpath: ', jre)
+
+        utils_c = (JNI/'utils.c').read_text()
+        self.assertNotIn('RuntimeLoader: dlopen %s success', utils_c)
+
+        stdio_c = (JNI/'stdio_is.c').read_text()
+        self.assertIn('static void drainPipeToLog(void)', stdio_c)
+        self.assertIn('drainPipeToLog();', stdio_c)
+
+        jre_launcher_c = (JNI/'jre_launcher.c').read_text()
+        self.assertIn('memset(sigactions, 0, sizeof(sigactions));', jre_launcher_c)
+
+        sdl_support = (SRC/'com/movtery/zalithlauncher/launch/SdlSupport.kt').read_text()
+        self.assertIn('"-Dorg.lwjgl.librarypath=$natives:$nativeLibDir"', sdl_support)
+        self.assertIn('"-Dorg.lwjgl.openal.libname=$nativeLibDir/libopenal.so"', sdl_support)
+        self.assertIn('customEgl == null || customEgl == "libEGL.so"', sdl_support)
+
+        ltw_egl = (JNI/'ltw_sdl_egl.c').read_text()
+        self.assertIn('EGL_KHR_create_context', ltw_egl)
+        self.assertIn('{ "eglQueryString", (proc_t) eglQueryString }', ltw_egl)
+
+        gl_surface = (SRC/'net/kdt/pojavlaunch/MinecraftGLSurface.java').read_text()
+        self.assertEqual(gl_surface.count('if (sdlVersion) SDLSurface.setNativeSurface(mNativeSurface);'), 2)
+
+        sdl_class = (ROOT/'jre_lwjgl3sdl/src/main/java/org/lwjgl/sdl/SDL.java').read_text()
+        self.assertIn('CallbackBridge.initializeSdl();', sdl_class)
+        sdl_bridge = (ROOT/'jre_lwjgl3sdl/src/main/java/org/lwjgl/glfw/CallbackBridge.java').read_text()
+        self.assertIn('private static volatile boolean sdlInitialized;', sdl_bridge)
+
+        launch_args = (SRC/'com/movtery/zalithlauncher/launch/LaunchArgs.kt').read_text()
+        self.assertIn('if (runtime.javaVersion <= 17)', launch_args)
+
+        error_activity = (SRC/'com/movtery/zalithlauncher/ui/activity/ErrorActivity.kt').read_text()
+        self.assertNotIn('FLAG_SECURE', error_activity)
+        self.assertIn('jvm_crash_report.log', error_activity)
+        self.assertIn('latestlog.txt (tail)', error_activity)
+

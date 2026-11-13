@@ -4,13 +4,16 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import android.view.WindowManager
 import androidx.core.content.ContextCompat
 import com.movtery.zalithlauncher.InfoCenter
 import com.movtery.zalithlauncher.R
 import com.movtery.zalithlauncher.databinding.ActivityErrorBinding
 import com.movtery.zalithlauncher.utils.ZHTools
+import com.movtery.zalithlauncher.utils.path.PathManager
 import net.kdt.pojavlaunch.Tools
+import java.io.File
+import java.io.RandomAccessFile
+import java.nio.charset.StandardCharsets
 
 class ErrorActivity : BaseActivity() {
     private lateinit var binding: ActivityErrorBinding
@@ -37,8 +40,6 @@ class ErrorActivity : BaseActivity() {
             return
         }
         if (extras.getBoolean(BUNDLE_IS_GAME_CRASH, false)) {
-            //如果不是应用崩溃，那么这个页面就不允许截图
-            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             showGameCrash(extras)
             return
         }
@@ -76,19 +77,44 @@ class ErrorActivity : BaseActivity() {
         val errorText = if (extras.getBoolean(BUNDLE_IS_SIGNAL)) R.string.game_singnal_message else R.string.game_exit_message
 
         val context = this
+        val crashDetails = buildString {
+            append(getString(errorText, code))
+            readLogSnippet(File(PathManager.DIR_GAME_HOME, "jvm_crash_report.log"), head = true, maxBytes = 2048)?.let {
+                append("\n\n--- jvm_crash_report.log ---\n").append(it)
+            }
+            readLogSnippet(File(PathManager.DIR_GAME_HOME, "latestlog.txt"), head = false, maxBytes = 4096)?.let {
+                append("\n\n--- latestlog.txt (tail) ---\n").append(it)
+            }
+        }
 
         binding.apply {
             this.errorTitle.setText(R.string.generic_wrong_tip)
             this.errorText.apply {
-                text = getString(errorText, code)
+                text = crashDetails
                 textSize = 14f
             }
             this.errorTip.visibility = View.VISIBLE
-            this.errorNoScreenshot.visibility = View.VISIBLE
+            this.errorNoScreenshot.visibility = View.GONE
 
             this.topView.setBackgroundColor(ContextCompat.getColor(context, R.color.background_menu_top))
             this.background.setBackgroundColor(ContextCompat.getColor(context, R.color.background_app))
         }
+    }
+
+    private fun readLogSnippet(file: File, head: Boolean, maxBytes: Int): String? {
+        if (!file.isFile || file.length() <= 0L) return null
+        return runCatching {
+            RandomAccessFile(file, "r").use { raf ->
+                val len = raf.length()
+                val count = minOf(len, maxBytes.toLong()).toInt()
+                if (!head && len > count) {
+                    raf.seek(len - count)
+                }
+                val bytes = ByteArray(count)
+                raf.readFully(bytes)
+                String(bytes, StandardCharsets.UTF_8).trim()
+            }
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
     }
 
     private fun showEasterEgg() {

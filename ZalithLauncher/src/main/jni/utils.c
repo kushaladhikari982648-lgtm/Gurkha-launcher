@@ -111,7 +111,6 @@ JNIEXPORT jboolean JNICALL Java_net_kdt_pojavlaunch_utils_JREUtils_dlopen(JNIEnv
 	void* handle = dlopen(nameUtf, RTLD_GLOBAL | RTLD_LAZY);
 	/* stderr is captured directly, even when an OEM logcat reader dies. */
 	if (!handle) fprintf(stderr, "RuntimeLoader: dlopen %s failed: %s\n", nameUtf, dlerror());
-	else fprintf(stderr, "RuntimeLoader: dlopen %s success\n", nameUtf);
 	(*env)->ReleaseStringUTFChars(env, name, nameUtf);
 	return handle != NULL;
 }

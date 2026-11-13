@@ -151,7 +151,21 @@ Java_net_kdt_pojavlaunch_Logger_begin(JNIEnv *env, __attribute((unused)) jclass 
     }
 }
 
+static void drainPipeToLog(void) {
+    fflush(stdout);
+    fflush(stderr);
+    if (!logger_started || pfd[0] < 0) return;
+    int flags = fcntl(pfd[0], F_GETFL, 0);
+    if (flags >= 0) fcntl(pfd[0], F_SETFL, flags | O_NONBLOCK);
+    char drain_buf[2048];
+    ssize_t n;
+    while ((n = read(pfd[0], drain_buf, sizeof(drain_buf))) > 0) {
+        recordBuffer(drain_buf, (size_t)n);
+    }
+}
+
 _Noreturn void nominal_exit(int code, bool is_signal) {
+    drainPipeToLog();
     char diagnostic[128];
     int length = snprintf(diagnostic, sizeof(diagnostic), "Native exit hook: code=%d, is_signal=%s\n", code, is_signal ? "true" : "false");
     if (length > 0) recordBuffer(diagnostic, (size_t)length);

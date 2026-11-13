@@ -146,24 +146,24 @@ public class MinecraftGLSurface extends View implements GrabListener {
             SurfaceView surfaceView = new SurfaceView(getContext());
             mSurface = surfaceView;
             mNativeSurface = surfaceView.getHolder().getSurface();
-            if (!isAlreadyRunning) setupSDL(getContext(), mNativeSurface, (ViewGroup) getParent());
 
             surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
                 private boolean isCalled = isAlreadyRunning;
                 @Override
                 public void surfaceCreated(@NonNull SurfaceHolder holder) {
                     mNativeSurface = holder.getSurface();
+                    if (!isCalled) setupSDL(getContext(), mNativeSurface, (ViewGroup) getParent());
+                    if (sdlVersion) SDLSurface.setNativeSurface(mNativeSurface);
                     if(isCalled) {
                         JREUtils.setupBridgeWindow(mNativeSurface);
                         if (sdlEnabled) {
-                            SDLSurface.setNativeSurface(mNativeSurface);
                             SDLActivity.getSDLSurface().surfaceChanged();
                         }
                         return;
                     }
                     isCalled = true;
 
-                    realStart(surfaceView.getHolder().getSurface());
+                    realStart(mNativeSurface);
                 }
 
                 @Override
@@ -197,10 +197,10 @@ public class MinecraftGLSurface extends View implements GrabListener {
                     mNativeSurface = tSurface;
                     // Do not reset SDL's Java/JNI state while the existing game is resuming.
                     if (!isCalled) setupSDL(getContext(), mNativeSurface, (ViewGroup) getParent());
+                    if (sdlVersion) SDLSurface.setNativeSurface(mNativeSurface);
                     if(isCalled) {
                         JREUtils.setupBridgeWindow(tSurface);
                         if (sdlEnabled) {
-                            SDLSurface.setNativeSurface(mNativeSurface);
                             SDLActivity.getSDLSurface().surfaceChanged();
                         }
                         return;

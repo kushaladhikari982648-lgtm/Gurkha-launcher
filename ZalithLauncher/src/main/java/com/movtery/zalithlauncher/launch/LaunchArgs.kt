@@ -71,7 +71,9 @@ class LaunchArgs(
             }
         }
 
-        argsList.addAll(getCacioJavaArgs(runtime.javaVersion == 8))
+        if (runtime.javaVersion <= 17) {
+            argsList.addAll(getCacioJavaArgs(runtime.javaVersion == 8))
+        }
 
         // Minecraft 1.14 - 1.20.4: smaller spawn area with small allocations, see LowMemoryProfile
         val allocation = AllSettings.ramAllocation.value.getValue()

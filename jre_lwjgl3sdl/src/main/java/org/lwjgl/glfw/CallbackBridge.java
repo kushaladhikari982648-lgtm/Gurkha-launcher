@@ -10,14 +10,18 @@ public class CallbackBridge {
     public static final int SDL = 0;
     public static final int INIT = 0;
 
+    private static volatile boolean sdlInitialized;
+
     static {
         System.loadLibrary("pojavexec");
     }
 
-    public static void initializeSdl() {
+    public static synchronized void initializeSdl() {
+        if (sdlInitialized) return;
         if (!nativeNotifyLauncher(SDL, INIT)) {
             throw new IllegalStateException("SDL Android bridge initialization failed; inspect the launcher log before retrying");
         }
+        sdlInitialized = true;
     }
 
     /** Tells the launcher whether the game captured the mouse (relative mouse mode). */

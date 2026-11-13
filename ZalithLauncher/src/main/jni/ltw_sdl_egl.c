@@ -19,6 +19,7 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -98,12 +99,18 @@ HOST_FUNC(EGLDisplay, eglGetPlatformDisplay, (EGLenum, void *, const EGLAttrib *
 HOST_FUNC(EGLSurface, eglCreatePlatformWindowSurface, (EGLDisplay, EGLConfig, void *, const EGLAttrib *))
 HOST_FUNC(EGLSurface, eglCreatePlatformPixmapSurface, (EGLDisplay, EGLConfig, void *, const EGLAttrib *))
 HOST_FUNC(EGLBoolean, eglWaitSync, (EGLDisplay, EGLSync, EGLint))
+HOST_FUNC(EGLContext, eglCreateContext, (EGLDisplay, EGLConfig, EGLContext, const EGLint *))
+HOST_FUNC(EGLBoolean, eglDestroyContext, (EGLDisplay, EGLContext))
+HOST_FUNC(EGLBoolean, eglMakeCurrent, (EGLDisplay, EGLSurface, EGLSurface, EGLContext))
+HOST_FUNC(proc_t, eglGetProcAddress, (const char *))
 #undef HOST_FUNC
 
 static EGLContext (*ltw_eglCreateContext)(EGLDisplay, EGLConfig, EGLContext, const EGLint *) = NULL;
 static EGLBoolean (*ltw_eglDestroyContext)(EGLDisplay, EGLContext) = NULL;
 static EGLBoolean (*ltw_eglMakeCurrent)(EGLDisplay, EGLSurface, EGLSurface, EGLContext) = NULL;
 static proc_t (*ltw_eglGetProcAddress)(const char *) = NULL;
+static proc_t (*ltw_glXGetProcAddress)(const char *) = NULL;
+static char cached_extensions[4096];
 
 static void load_libraries(void) {
     host_egl = dlopen("libEGL.so", RTLD_NOW | RTLD_LOCAL);
@@ -126,20 +133,26 @@ static void load_libraries(void) {
     LOAD_HOST(eglGetSyncAttrib) LOAD_HOST(eglCreateImage) LOAD_HOST(eglDestroyImage)
     LOAD_HOST(eglGetPlatformDisplay) LOAD_HOST(eglCreatePlatformWindowSurface)
     LOAD_HOST(eglCreatePlatformPixmapSurface) LOAD_HOST(eglWaitSync)
+    LOAD_HOST(eglCreateContext) LOAD_HOST(eglDestroyContext) LOAD_HOST(eglMakeCurrent)
+    LOAD_HOST(eglGetProcAddress)
 #undef LOAD_HOST
 
     const char *ltw_path = getenv("LTW_SDL_EGL_LTW_LIBRARY");
     ltw = dlopen(ltw_path != NULL ? ltw_path : "libltw.so", RTLD_NOW | RTLD_LOCAL);
     if (ltw == NULL) {
-        LOGE("Failed to load LTW: %s", dlerror());
+        LOGE("Failed to load renderer library: %s", dlerror());
         return;
     }
     ltw_eglCreateContext = dlsym(ltw, "eglCreateContext");
     ltw_eglDestroyContext = dlsym(ltw, "eglDestroyContext");
     ltw_eglMakeCurrent = dlsym(ltw, "eglMakeCurrent");
     ltw_eglGetProcAddress = dlsym(ltw, "eglGetProcAddress");
-    if (!ltw_eglCreateContext || !ltw_eglDestroyContext || !ltw_eglMakeCurrent || !ltw_eglGetProcAddress) {
-        LOGE("libltw.so is missing EGL entry points");
+    ltw_glXGetProcAddress = dlsym(ltw, "glXGetProcAddress");
+    if (!ltw_eglCreateContext) ltw_eglCreateContext = host_eglCreateContext;
+    if (!ltw_eglDestroyContext) ltw_eglDestroyContext = host_eglDestroyContext;
+    if (!ltw_eglMakeCurrent) ltw_eglMakeCurrent = host_eglMakeCurrent;
+    if (!ltw_eglCreateContext || !ltw_eglDestroyContext || !ltw_eglMakeCurrent) {
+        LOGE("Renderer and system EGL are missing context entry points");
         return;
     }
     if (!host_eglBindAPI || !host_eglQueryAPI || !host_eglChooseConfig || !host_eglCreateWindowSurface ||
@@ -251,6 +264,18 @@ EXPORT EGLContext eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext 
     if (!host_eglBindAPI(EGL_OPENGL_ES_API)) return EGL_NO_CONTEXT;
     EGLContext context = ltw_eglCreateContext(dpy, config, share_context, attribs);
     if (context == EGL_NO_CONTEXT) {
+        // Retry without EGL_CONTEXT_MINOR_VERSION_KHR for strict EGL 1.4 drivers
+        attribs[2] = EGL_CONTEXT_CLIENT_VERSION;
+        attribs[3] = 3;
+        context = ltw_eglCreateContext(dpy, config, share_context, attribs + 2);
+    }
+    if (context == EGL_NO_CONTEXT) {
+        // Fallback to OpenGL ES 2.0 context attributes if ES 3 attribute rejected
+        attribs[2] = EGL_CONTEXT_CLIENT_VERSION;
+        attribs[3] = 2;
+        context = ltw_eglCreateContext(dpy, config, share_context, attribs + 2);
+    }
+    if (context == EGL_NO_CONTEXT) {
         bridge_error = host_eglGetError();
         if (bridge_error == EGL_SUCCESS) bridge_error = EGL_BAD_CONTEXT;
         LOGE("eglCreateContext (OpenGL ES 3 for LTW) failed: 0x%x", bridge_error);
@@ -317,7 +342,19 @@ EXPORT EGLint eglGetError(void) {
 }
 FORWARD(EGLBoolean, eglInitialize, (EGLDisplay dpy, EGLint *major, EGLint *minor), (dpy, major, minor))
 FORWARD(EGLBoolean, eglQueryContext, (EGLDisplay dpy, EGLContext ctx, EGLint attribute, EGLint *value), (dpy, ctx, attribute, value))
-FORWARD(const char *, eglQueryString, (EGLDisplay dpy, EGLint name), (dpy, name))
+EXPORT const char *eglQueryString(EGLDisplay dpy, EGLint name) {
+    if (!init()) return NULL;
+    if (host_eglQueryString == NULL) return NULL;
+    const char *str = host_eglQueryString(dpy, name);
+    if (name == EGL_EXTENSIONS) {
+        if (str == NULL) return "EGL_KHR_create_context";
+        if (strstr(str, "EGL_KHR_create_context") == NULL) {
+            snprintf(cached_extensions, sizeof(cached_extensions), "%s EGL_KHR_create_context", str);
+            return cached_extensions;
+        }
+    }
+    return str;
+}
 FORWARD(EGLBoolean, eglQuerySurface, (EGLDisplay dpy, EGLSurface surface, EGLint attribute, EGLint *value), (dpy, surface, attribute, value))
 FORWARD(EGLBoolean, eglSwapBuffers, (EGLDisplay dpy, EGLSurface surface), (dpy, surface))
 FORWARD(EGLBoolean, eglTerminate, (EGLDisplay dpy), (dpy))
@@ -349,6 +386,7 @@ static const struct {
         { "eglGetError", (proc_t) eglGetError },
         { "eglBindAPI", (proc_t) eglBindAPI },
         { "eglQueryAPI", (proc_t) eglQueryAPI },
+        { "eglQueryString", (proc_t) eglQueryString },
         { "eglChooseConfig", (proc_t) eglChooseConfig },
         { "eglCreateContext", (proc_t) eglCreateContext },
         { "eglDestroyContext", (proc_t) eglDestroyContext },
@@ -364,6 +402,18 @@ EXPORT proc_t eglGetProcAddress(const char *procname) {
     for (size_t i = 0; i < sizeof(own_functions) / sizeof(own_functions[0]); i++) {
         if (strcmp(procname, own_functions[i].name) == 0) return own_functions[i].function;
     }
-    // OpenGL functions come from LTW; other EGL functions and extensions from the system (through LTW)
-    return ltw_eglGetProcAddress(procname);
+    // OpenGL functions come from the renderer library; other EGL functions and extensions from the system
+    if (ltw_eglGetProcAddress) {
+        proc_t p = ltw_eglGetProcAddress(procname);
+        if (p) return p;
+    }
+    if (ltw_glXGetProcAddress) {
+        proc_t p = ltw_glXGetProcAddress(procname);
+        if (p) return p;
+    }
+    if (ltw) {
+        proc_t p = (proc_t) dlsym(ltw, procname);
+        if (p) return p;
+    }
+    return host_eglGetProcAddress ? host_eglGetProcAddress(procname) : NULL;
 }

@@ -100,6 +100,8 @@ public final class JREUtils {
         if (list != null) {
             for(File f : list) {
                 if (f.isFile() && f.getName().endsWith(".so")) {
+                    String name = f.getName();
+                    if ("libfreetype.so".equals(name) || "libjsig.so".equals(name)) continue;
                     returnValue.add(f);
                 }else if (f.isDirectory()) {
                     returnValue.addAll(locateLibs(f));
@@ -128,7 +130,8 @@ public final class JREUtils {
         dlopen(findInLdLibPath("libnio.so"));
         dlopen(findInLdLibPath("libawt.so"));
         dlopen(findInLdLibPath("libawt_headless.so"));
-        dlopen(findInLdLibPath("libfreetype.so"));
+        File modernFreetype = new File(DIR_NATIVE_LIB, "libfreetype.so");
+        dlopen(modernFreetype.isFile() ? modernFreetype.getAbsolutePath() : findInLdLibPath("libfreetype.so"));
         dlopen(findInLdLibPath("libfontmanager.so"));
         for (File f : locateLibs(new File(jreHome, Tools.DIRNAME_HOME_JRE))) {
             dlopen(f.getAbsolutePath());
@@ -413,6 +416,7 @@ public final class JREUtils {
         // Force LWJGL to use the Freetype library intended for it, instead of using the one
         // that we ship with Java (since it may be older than what's needed)
         lockedNativeProperties.put("org.lwjgl.freetype.libname", DIR_NATIVE_LIB + "/libfreetype.so");
+        lockedNativeProperties.put("org.lwjgl.openal.libname", DIR_NATIVE_LIB + "/libopenal.so");
         // Minecraft 26.3+ (SDL3) and the GLFW versions on LWJGL 3.4.1 (26.2): LWJGL 3.4.1 uses its own natives
         // (overrides the freetype path above)
         if (gameVersion != null && (MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw)) {
@@ -477,6 +481,13 @@ public final class JREUtils {
                 continue;
             }
             if (arg.startsWith("--accessToken=") || arg.startsWith("-javaagent:")) continue;
+            if (i > 0 && (userArgs.get(i - 1).equals("-cp") || userArgs.get(i - 1).equals("-classpath") || userArgs.get(i - 1).equals("--class-path"))) {
+                String[] entries = arg.split(File.pathSeparator);
+                String first = entries.length > 0 ? new File(entries[0]).getName() : "";
+                String last = entries.length > 0 ? new File(entries[entries.length - 1]).getName() : "";
+                Logger.appendToLog("JVMArg: <classpath: " + entries.length + " entries, " + arg.length() + " chars, first=" + first + ", last=" + last + ">");
+                continue;
+            }
             Logger.appendToLog("JVMArg: " + arg);
         }
 
@@ -584,6 +595,20 @@ public final class JREUtils {
         List<String> args = new ArrayList<>();
         int runtimeArch = runtime.arch != null ? Architecture.archAsInt(runtime.arch) : Tools.DEVICE_ARCHITECTURE;
         if (runtimeArch != Architecture.ARCH_ARM) return args;
+
+        // 32-bit ARM OpenJDK sets ThreadStackSize = 320 KB by default (leaving ~224 KB usable after
+        // HotSpot guard/shadow zones), whereas LTW's Mesa GLSL compiler (_mesa_glsl_compile_shader +
+        // _mesa_glsl_parse + glcpp_preprocess) allocates >148 KB of C stack on top of Java/JNI frames.
+        boolean userChoseStackSize = false;
+        for (String arg : userArgs) {
+            if (arg.startsWith("-Xss") || arg.contains("ThreadStackSize=")) {
+                userChoseStackSize = true;
+                break;
+            }
+        }
+        if (!userChoseStackSize) {
+            args.add("-Xss1024k");
+        }
 
         // Java 8 for arm32 is already a client VM; the client emulation mode exists since JDK 17.
         boolean userChoseServerClass = false;

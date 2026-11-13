@@ -152,10 +152,11 @@ object SdlSupport {
     fun getJvmArgs(nativeLibDir: String): List<String> {
         val natives = getNativesDir().absolutePath
         return listOf(
-            "-Dorg.lwjgl.librarypath=$natives",
+            "-Dorg.lwjgl.librarypath=$natives:$nativeLibDir",
             "-Dorg.lwjgl.libname=$natives/liblwjgl.so",
             "-Dorg.lwjgl.system.SharedLibraryExtractPath=$natives/extracted",
             "-Dorg.lwjgl.freetype.libname=$natives/libfreetype.so",
+            "-Dorg.lwjgl.openal.libname=$nativeLibDir/libopenal.so",
             "-Dorg.lwjgl.shaderc.libname=$natives/libshaderc.so",
             "-Dorg.lwjgl.spvc.libname=$nativeLibDir/libspirv-cross-c-shared.so",
             "-Dorg.lwjgl.sdl.libname=$nativeLibDir/libSDL3.so",
@@ -165,17 +166,19 @@ object SdlSupport {
     }
 
     /**
-     * Environment for SDL's EGL code: the renderer's GL library and, for LTW, the EGL front that lets SDL
-     * create LTW contexts (see ltw_sdl_egl.c).
+     * Environment for SDL's EGL code: the renderer's GL library and, for GLES-based renderers (LTW, RustGL,
+     * GL4ES, Krypton), the EGL front that translates desktop OpenGL context requests to OpenGL ES (see ltw_sdl_egl.c).
      */
     @JvmStatic
     fun getRendererEnv(renderer: RendererInterface, nativeLibDir: String): Map<String, String> {
-        val env = mutableMapOf("SDL_OPENGL_LIBRARY" to "$nativeLibDir/${renderer.getRendererLibrary()}")
-        if (renderer.getRendererId() == LTWRenderer.ID) {
+        val rendererLib = "$nativeLibDir/${renderer.getRendererLibrary()}"
+        val env = mutableMapOf("SDL_OPENGL_LIBRARY" to rendererLib)
+        val customEgl = renderer.getRendererEGL()
+        if (renderer.getRendererId() == LTWRenderer.ID || customEgl == null || customEgl == "libEGL.so") {
             env["SDL_EGL_LIBRARY"] = "$nativeLibDir/$EGL_FRONT_FOR_LTW"
-            env["LTW_SDL_EGL_LTW_LIBRARY"] = "$nativeLibDir/${LTWRenderer.LIBRARY}"
+            env["LTW_SDL_EGL_LTW_LIBRARY"] = rendererLib
         } else {
-            renderer.getRendererEGL()?.let { env["SDL_EGL_LIBRARY"] = "$nativeLibDir/$it" }
+            env["SDL_EGL_LIBRARY"] = "$nativeLibDir/$customEgl"
         }
         return env
     }

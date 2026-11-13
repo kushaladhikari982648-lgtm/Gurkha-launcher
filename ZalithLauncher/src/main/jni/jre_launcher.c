@@ -74,8 +74,11 @@ _Noreturn extern void nominal_exit(int code, bool is_signal);
 
 _Noreturn static void* abort_waiter_thread(void* extraArg) {
     pthread_sigmask(SIG_BLOCK, &abort_waiter_data.tracked_sigset, NULL);
-    int signal;
-    read(abort_waiter_data.pipe[0], &signal, sizeof(int));
+    int signal = 0;
+    if (read(abort_waiter_data.pipe[0], &signal, sizeof(int)) > 0) {
+        fprintf(stderr, "JVM startup: caught fatal signal %d\n", signal);
+        fflush(stderr);
+    }
     nominal_exit(signal, true);
 }
 
@@ -88,11 +91,13 @@ static void abort_waiter_setup() {
     const static int tracked_signals[] = {SIGABRT};
     const static int ntracked = (sizeof(tracked_signals) / sizeof(tracked_signals[0]));
     struct sigaction sigactions[ntracked];
+    memset(sigactions, 0, sizeof(sigactions));
     sigemptyset(&abort_waiter_data.tracked_sigset);
 
     for (size_t i = 0; i < ntracked; i++)
     {
         sigaddset(&abort_waiter_data.tracked_sigset, tracked_signals[i]);
+        sigemptyset(&sigactions[i].sa_mask);
         sigactions[i].sa_handler = abort_waiter_handler;
     }
 
