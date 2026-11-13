@@ -68,3 +68,24 @@ class ModernUiTests(unittest.TestCase):
         self.assertIn('GraphicsBackend.toggle(AllSettings.graphicsApi.getValue())', video_frag)
         backend = (SRC / 'com/movtery/zalithlauncher/launch/GraphicsBackend.kt').read_text()
         self.assertIn('writeOption(File(gameDir, "options.txt"), backend)', backend)
+
+    def test_right_side_play_panel_liquid_glass_and_orientation_toggle(self):
+        for directory in ('layout', 'layout-port'):
+            root = ET.parse(RES / directory / 'fragment_launcher.xml').getroot()
+            ids = [e.get(A + 'id', '').split('/')[-1] for e in root.iter() if A + 'id' in e.attrib]
+            for removed in ('quick_versions', 'quick_mods', 'quick_tools'):
+                self.assertNotIn(removed, ids)
+            self.assertIn('orientation_toggle_button', ids)
+        landscape_root = ET.parse(RES / 'layout/fragment_launcher.xml').getroot()
+        play_layout = next(e for e in landscape_root.iter() if e.get(A + 'id') == '@+id/play_layout')
+        main_row = list(play_layout)[1]
+        self.assertEqual('@+id/play_buttons_layout', list(main_row)[-1].get(A + 'id'))
+        activity_root = ET.parse(RES / 'layout/activity_launcher.xml').getroot()
+        activity_ids = [e.get(A + 'id', '').split('/')[-1] for e in activity_root.iter() if A + 'id' in e.attrib]
+        self.assertIn('orientation_button', activity_ids)
+        launcher_java = (SRC / 'net/kdt/pojavlaunch/LauncherActivity.java').read_text()
+        self.assertIn('public void toggleLauncherOrientation()', launcher_java)
+        for drawable in ('background_card', 'mc_button_normal', 'mc_header', 'modern_primary_fill'):
+            xml = ET.parse(RES / f'drawable/{drawable}.xml').getroot()
+            self.assertIsNotNone(xml.find('gradient'))
+

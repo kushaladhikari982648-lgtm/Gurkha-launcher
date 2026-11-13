@@ -177,7 +177,9 @@ object SdlSupport {
             "SDL_OPENGL_LIBRARY" to rendererLib,
             "POJAV_GRAPHICS_BACKEND" to GraphicsBackend.resolveBackend(),
             "POJAV_SDL_REUSE_WINDOW" to "1",
-            "SDL_OPENGL_FORCE_SRGB_FRAMEBUFFER" to "0"
+            "SDL_OPENGL_FORCE_SRGB_FRAMEBUFFER" to "0",
+            "SDL_ORIENTATIONS" to "LandscapeLeft LandscapeRight",
+            "SDL_IOS_ORIENTATIONS" to "LandscapeLeft LandscapeRight"
         )
         val customEgl = renderer.getRendererEGL()
         if (renderer.getRendererId() == LTWRenderer.ID || customEgl == null || customEgl == "libEGL.so") {

@@ -111,6 +111,7 @@ import java.util.Random;
 import java.util.concurrent.Future;
 
 public class LauncherActivity extends BaseActivity {
+    private static int sUserRequestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
     private final AnimPlayer noticeAnimPlayer = new AnimPlayer();
     public final ActivityResultLauncher<Object> modInstallerLauncher =
             registerForActivityResult(new OpenDocumentWithExtension("jar"), (uris) -> {
@@ -350,6 +351,9 @@ public class LauncherActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (sUserRequestedOrientation != android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
+            setRequestedOrientation(sUserRequestedOrientation);
+        }
         binding = ActivityLauncherBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
@@ -422,6 +426,10 @@ public class LauncherActivity extends BaseActivity {
         setPageOpacity(AllSettings.getPageOpacity().getValue());
         mSettingsButtonWrapper = new SettingsButtonWrapper(binding.settingButton);
         mSettingsButtonWrapper.setOnTypeChangeListener(type -> ViewAnimUtils.setViewAnim(binding.settingButton, Animations.Pulse));
+        binding.orientationButton.setOnClickListener(v -> {
+            ViewAnimUtils.setViewAnim(binding.orientationButton, Animations.Pulse);
+            toggleLauncherOrientation();
+        });
         binding.downloadButton.setOnClickListener(v -> {
             Fragment fragment = getSupportFragmentManager().findFragmentById(binding.containerFragment.getId());
             if (fragment != null && !(fragment instanceof DownloadFragment || fragment instanceof DownloadModFragment)) {
@@ -485,6 +493,16 @@ public class LauncherActivity extends BaseActivity {
         //愚人节彩蛋
         if (ZHTools.checkDate(4, 1)) binding.hair.setVisibility(View.VISIBLE);
         else binding.hair.setVisibility(View.GONE);
+    }
+
+    public void toggleLauncherOrientation() {
+        int current = getResources().getConfiguration().orientation;
+        if (current == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
+            sUserRequestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
+        } else {
+            sUserRequestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+        }
+        setRequestedOrientation(sUserRequestedOrientation);
     }
 
     @Override

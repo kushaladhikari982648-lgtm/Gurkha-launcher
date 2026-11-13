@@ -1219,70 +1219,33 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
      */
     public static void setOrientationBis(int w, int h, boolean resizable, String hint)
     {
-        int orientation_landscape = -1;
-        int orientation_portrait = -1;
-
+        if (mSingleton == null) {
+            return;
+        }
         if (w <= 1 || h <= 1) {
             // Invalid width/height, ignore this request
             return;
         }
 
-        /* If set, hint "explicitly controls which UI orientations are allowed". */
-        if (hint.contains("LandscapeRight") && hint.contains("LandscapeLeft")) {
-            orientation_landscape = ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE;
-        } else if (hint.contains("LandscapeLeft")) {
-            orientation_landscape = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
-        } else if (hint.contains("LandscapeRight")) {
-            orientation_landscape = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
-        }
-
-        /* exact match to 'Portrait' to distinguish with PortraitUpsideDown */
-        boolean contains_Portrait = hint.contains("Portrait ") || hint.endsWith("Portrait");
-
-        if (contains_Portrait && hint.contains("PortraitUpsideDown")) {
-            orientation_portrait = ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT;
-        } else if (contains_Portrait) {
-            orientation_portrait = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
-        } else if (hint.contains("PortraitUpsideDown")) {
-            orientation_portrait = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT;
-        }
-
-        boolean is_landscape_allowed = (orientation_landscape != -1);
-        boolean is_portrait_allowed = (orientation_portrait != -1);
-        int req; /* Requested orientation */
-
-        /* No valid hint, nothing is explicitly allowed */
-        if (!is_portrait_allowed && !is_landscape_allowed) {
-            if (resizable) {
-                /* All orientations are allowed, respecting user orientation lock setting */
+        // Minecraft in MainActivity is always a landscape game. RenderPearl (26.3+) creates a 64x64
+        // non-resizable hidden utility window first ("Minecraft - RenderPearl OpenGL Hidden Utility Window"),
+        // where SDL's stock (w > h) check evaluates 64 > 64 == false and forces SCREEN_ORIENTATION_SENSOR_PORTRAIT,
+        // locking the phone into portrait mode and destroying the landscape game surface mid-startup.
+        int req = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
+        if (hint != null) {
+            if (hint.contains("LandscapeRight") && hint.contains("LandscapeLeft")) {
                 req = ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE;
-            } else {
-                /* Fixed window and nothing specified. Get orientation from w/h of created window */
-                req = (w > h ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
-            }
-        } else {
-            /* At least one orientation is allowed */
-            if (resizable) {
-                if (is_portrait_allowed && is_landscape_allowed) {
-                    /* hint allows both landscape and portrait, prefer landscape*/
-                    req = ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE;
-                } else {
-                    /* Use the only one allowed "orientation" */
-                    req = (is_landscape_allowed ? orientation_landscape : orientation_portrait);
-                }
-            } else {
-                /* Fixed window and both orientations are allowed. Choose one. */
-                if (is_portrait_allowed && is_landscape_allowed) {
-                    req = (w > h ? orientation_landscape : orientation_portrait);
-                } else {
-                    /* Use the only one allowed "orientation" */
-                    req = (is_landscape_allowed ? orientation_landscape : orientation_portrait);
-                }
+            } else if (hint.contains("LandscapeLeft")) {
+                req = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+            } else if (hint.contains("LandscapeRight")) {
+                req = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
             }
         }
 
         Log.v(TAG, "setOrientation() requestedOrientation=" + req + " width=" + w +" height="+ h +" resizable=" + resizable + " hint=" + hint);
-        mSingleton.setRequestedOrientation(req);
+        if (mSingleton.getRequestedOrientation() != req) {
+            mSingleton.setRequestedOrientation(req);
+        }
     }
 
     /**

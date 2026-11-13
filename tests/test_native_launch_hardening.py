@@ -184,6 +184,11 @@ class NativeLaunchHardeningTests(unittest.TestCase):
 
         sdl_support = (SRC/'com/movtery/zalithlauncher/launch/SdlSupport.kt').read_text()
         self.assertIn('"-Dorg.lwjgl.glfw.libname=$nativeLibDir/libpojavexec.so"', sdl_support)
+        self.assertIn('"SDL_ORIENTATIONS" to "LandscapeLeft LandscapeRight"', sdl_support)
+
+        sdl_activity = (SRC/'org/libsdl/app/SDLActivity.java').read_text()
+        self.assertIn('int req = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;', sdl_activity)
+        self.assertNotIn('ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT', sdl_activity)
 
         jre_utils = (SRC/'net/kdt/pojavlaunch/utils/JREUtils.java').read_text()
         self.assertIn('envMap.remove("POJAV_RENDERER");', jre_utils)

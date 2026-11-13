@@ -144,9 +144,11 @@ public class MainMenuFragment extends FragmentWithAnim {
                 });
             }
         });
-        binding.quickVersions.setOnClickListener(v -> binding.versionsButton.performClick());
-        binding.quickMods.setOnClickListener(v -> binding.modsButton.performClick());
-        binding.quickTools.setOnClickListener(v -> binding.toolsButton.performClick());
+        binding.orientationToggleButton.setOnClickListener(v -> {
+            if (getActivity() instanceof net.kdt.pojavlaunch.LauncherActivity) {
+                ((net.kdt.pojavlaunch.LauncherActivity) getActivity()).toggleLauncherOrientation();
+            }
+        });
         binding.performanceButton.setOnClickListener(v -> binding.settingsButton.performClick());
 
         // No always-running text marquee on the low-end home screen.
@@ -197,8 +199,9 @@ public class MainMenuFragment extends FragmentWithAnim {
         binding.rendererSummary.setText(getString(R.string.mc_renderer, Renderers.INSTANCE.getDisplayName(renderer)));
         binding.memorySummary.setText(getString(R.string.mc_memory, AllSettings.getRamAllocation().getValue().getValue()));
         binding.lowEndStatus.setText(AllSettings.getLowEndMode().getValue() ? R.string.mc_low_end_on : R.string.mc_low_end_off);
+        boolean isPortrait = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT;
+        binding.orientationToggleButton.setText(isPortrait ? R.string.modern_switch_landscape : R.string.modern_switch_portrait);
         binding.modsButton.setEnabled(version != null);
-        binding.quickMods.setEnabled(version != null);
         binding.playButton.setText(version == null ? R.string.modern_add_version : R.string.modern_launch);
 
         int versionInfoVisibility;

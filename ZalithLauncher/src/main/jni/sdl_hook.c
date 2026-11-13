@@ -478,11 +478,14 @@ static void replaceNonOpenGlPrimaryWindowIfNeeded(bool requestsOpenGL, const cha
     }
 }
 
-static void* reusePrimaryWindow(const char* caller, const char* title, bool hidden) {
+static void* reusePrimaryWindow(const char* caller, const char* title, int w, int h, bool hidden) {
     resolveSdlHelperSymbols();
     sPrimaryWindowRefs++;
     if (title != NULL && title[0] != '\0' && sRealSdlSetWindowTitle != NULL) {
         sRealSdlSetWindowTitle(sPrimaryWindow, title);
+    }
+    if (!hidden && w > 64 && h > 64 && sRealSdlSetWindowSize != NULL) {
+        sRealSdlSetWindowSize(sPrimaryWindow, w, h);
     }
     if (!hidden && sRealSdlShowWindow != NULL) {
         sRealSdlShowWindow(sPrimaryWindow);
@@ -490,12 +493,14 @@ static void* reusePrimaryWindow(const char* caller, const char* title, bool hidd
     __android_log_print(
         ANDROID_LOG_INFO,
         TAG,
-        "%s reusing primary SDL_Window=%p (refs=%d, hasGL=%d, hidden=%d)",
+        "%s reusing primary SDL_Window=%p (refs=%d, hasGL=%d, hidden=%d, size=%dx%d)",
         caller,
         sPrimaryWindow,
         sPrimaryWindowRefs,
         sPrimaryWindowHasOpenGL ? 1 : 0,
-        hidden ? 1 : 0
+        hidden ? 1 : 0,
+        w,
+        h
     );
     return sPrimaryWindow;
 }
@@ -516,7 +521,7 @@ static void* handleSdlCreateWindow(
     if (sdlWindowReuseEnabled()) {
         replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, "SDL_CreateWindow");
         if (sPrimaryWindow != NULL) {
-            return reusePrimaryWindow("SDL_CreateWindow", title, hidden);
+            return reusePrimaryWindow("SDL_CreateWindow", title, w, h, hidden);
         }
     }
 
@@ -524,8 +529,13 @@ static void* handleSdlCreateWindow(
         prepareGlesBeforeCreateWindow();
     }
 
+    // Ensure square hidden utility windows (e.g. RenderPearl's 64x64 window) always satisfy w > h
+    // so SDL's Android backend never infers a portrait window orientation.
+    int createW = (hidden && w > 0 && w <= h) ? (h + 1) : w;
+    int createH = h;
+
     sInCreateWindow++;
-    void* window = realFn != NULL ? realFn(title, w, h, flags) : NULL;
+    void* window = realFn != NULL ? realFn(title, createW, createH, flags) : NULL;
     sInCreateWindow--;
 
     if (sdlWindowReuseEnabled() && window != NULL && sPrimaryWindow == NULL) {
@@ -586,7 +596,7 @@ static void* handleSdlCreateWindowWithProperties(
     if (sdlWindowReuseEnabled()) {
         replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, "SDL_CreateWindowWithProperties");
         if (sPrimaryWindow != NULL) {
-            return reusePrimaryWindow("SDL_CreateWindowWithProperties", title, propHidden || (flags & SDL_WINDOW_HIDDEN) != 0);
+            return reusePrimaryWindow("SDL_CreateWindowWithProperties", title, 0, 0, propHidden || (flags & SDL_WINDOW_HIDDEN) != 0);
         }
     }
 
@@ -865,7 +875,7 @@ static void* custom_SDL_CreateWindow_Func(const char* title, int w, int h, uint6
     if (sdlWindowReuseEnabled()) {
         replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, "SDL_CreateWindow");
         if (sPrimaryWindow != NULL) {
-            void* reused = reusePrimaryWindow("SDL_CreateWindow", title, hidden);
+            void* reused = reusePrimaryWindow("SDL_CreateWindow", title, w, h, hidden);
             BYTEHOOK_POP_STACK();
             return reused;
         }
@@ -875,8 +885,11 @@ static void* custom_SDL_CreateWindow_Func(const char* title, int w, int h, uint6
         prepareGlesBeforeCreateWindow();
     }
 
+    int createW = (hidden && w > 0 && w <= h) ? (h + 1) : w;
+    int createH = h;
+
     sInCreateWindow++;
-    void* window = BYTEHOOK_CALL_PREV(custom_SDL_CreateWindow_Func, SDL_CreateWindow_t, title, w, h, flags);
+    void* window = BYTEHOOK_CALL_PREV(custom_SDL_CreateWindow_Func, SDL_CreateWindow_t, title, createW, createH, flags);
     sInCreateWindow--;
 
     if (sdlWindowReuseEnabled() && window != NULL && sPrimaryWindow == NULL) {
@@ -929,7 +942,7 @@ static void* custom_SDL_CreateWindowWithProperties_Func(uint32_t props) {
     if (sdlWindowReuseEnabled()) {
         replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, "SDL_CreateWindowWithProperties");
         if (sPrimaryWindow != NULL) {
-            void* reused = reusePrimaryWindow("SDL_CreateWindowWithProperties", title, propHidden || (flags & SDL_WINDOW_HIDDEN) != 0);
+            void* reused = reusePrimaryWindow("SDL_CreateWindowWithProperties", title, 0, 0, propHidden || (flags & SDL_WINDOW_HIDDEN) != 0);
             BYTEHOOK_POP_STACK();
             return reused;
         }

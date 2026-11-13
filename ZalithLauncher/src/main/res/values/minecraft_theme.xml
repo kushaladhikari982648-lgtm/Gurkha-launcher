@@ -79,4 +79,7 @@
   <string name="modern_launch">Launch game</string>
   <string name="modern_add_version">Add a version</string>
   <string name="modern_downloads">Downloads</string>
+  <string name="modern_switch_portrait">Portrait mode</string>
+  <string name="modern_switch_landscape">Landscape mode</string>
+  <string name="modern_toggle_orientation">Switch orientation</string>
 </resources>

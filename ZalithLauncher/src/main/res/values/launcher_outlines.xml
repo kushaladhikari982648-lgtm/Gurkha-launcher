@@ -1,7 +1,7 @@
 <resources>
-  <dimen name="launcher_outline_width">1dp</dimen>
-  <dimen name="launcher_outline_active_width">1dp</dimen>
-  <color name="launcher_outline">#303A32</color>
-  <color name="launcher_outline_active">#B5E5A7</color>
-  <color name="launcher_outline_disabled">#29312B</color>
+  <dimen name="launcher_outline_width">1.1dp</dimen>
+  <dimen name="launcher_outline_active_width">1.3dp</dimen>
+  <color name="launcher_outline">#58D4F5E6</color>
+  <color name="launcher_outline_active">#DDA8F9CD</color>
+  <color name="launcher_outline_disabled">#2E8CA89B</color>
 </resources>
