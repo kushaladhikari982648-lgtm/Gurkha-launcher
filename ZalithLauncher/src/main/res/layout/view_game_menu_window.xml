@@ -23,7 +23,7 @@
         android:layout_marginHorizontal="@dimen/_8sdp"
         android:layout_toEndOf="@id/settings_button"
         android:visibility="gone"
-        android:text="FPS: 114514"
+        android:text="FPS: 0"
         android:textColor="@android:color/white"
         tools:ignore="HardcodedText" />
 

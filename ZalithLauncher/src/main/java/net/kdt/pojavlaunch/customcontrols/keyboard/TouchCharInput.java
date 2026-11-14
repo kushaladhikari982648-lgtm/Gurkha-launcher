@@ -44,7 +44,9 @@ public class TouchCharInput extends androidx.appcompat.widget.AppCompatEditText 
     @Override
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         super.onWindowFocusChanged(hasWindowFocus);
-        disable();
+        if (!hasWindowFocus) {
+            disable();
+        }
     }
 
     /**
@@ -54,24 +56,49 @@ public class TouchCharInput extends androidx.appcompat.widget.AppCompatEditText 
     @Override
     public boolean onKeyPreIme(final int keyCode, final KeyEvent event) {
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) {
-            disable();
+            hideKeyboard();
         }
         return super.onKeyPreIme(keyCode, event);
     }
 
+    /**
+     * Explicitly show the soft keyboard for this input view (used by both the launcher keyboard button
+     * and SDL3's SDL_StartTextInput in Minecraft 26.3+).
+     */
+    public void showKeyboard() {
+        InputMethodManager imm = (InputMethodManager) getContext().getSystemService(INPUT_METHOD_SERVICE);
+        enable();
+        if (imm != null) {
+            imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT);
+            post(() -> {
+                if (isEnabled() && hasFocus()) {
+                    imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT);
+                }
+            });
+        }
+    }
+
+    /**
+     * Explicitly hide the soft keyboard and disable this input view.
+     */
+    public void hideKeyboard() {
+        InputMethodManager imm = (InputMethodManager) getContext().getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null && getWindowToken() != null) {
+            imm.hideSoftInputFromWindow(getWindowToken(), 0);
+        }
+        clear();
+        disable();
+    }
 
     /**
      * Toggle on and off the soft keyboard, depending of the state
      */
     public void switchKeyboardState(){
-        InputMethodManager imm = (InputMethodManager) getContext().getSystemService(INPUT_METHOD_SERVICE);
         // Allow, regardless of whether or not a hardware keyboard is declared
         if(hasFocus()){
-            clear();
-            disable();
+            hideKeyboard();
         }else{
-            enable();
-            imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT);
+            showKeyboard();
         }
     }
 
@@ -94,20 +121,15 @@ public class TouchCharInput extends androidx.appcompat.widget.AppCompatEditText 
 
     /** Regain ability to exist, take focus and have some text being input */
     public void enable(){
-        // Minecraft 26.3+ (SDL3): SDL handles text input through its own input connection
-        if (MinecraftGLSurface.sdlEnabled && SDLActivity.isUsingSDLTextEdit()) {
-            SDLActivity.enableSDLEditKeyboard();
-            return;
-        }
         setEnabled(true);
         setFocusable(true);
+        setFocusableInTouchMode(true);
         setVisibility(VISIBLE);
         requestFocus();
     }
 
     /** Lose ability to exist, take focus and have some text being input */
     public void disable(){
-        if (MinecraftGLSurface.sdlEnabled && SDLActivity.isUsingSDLTextEdit()) SDLActivity.disableSDLEditKeyboard();
         clear();
         setVisibility(GONE);
         clearFocus();
@@ -133,8 +155,7 @@ public class TouchCharInput extends androidx.appcompat.widget.AppCompatEditText 
         addTextChangedListener(new InputTextWatcher());
         setOnEditorActionListener((textView, i, keyEvent) -> {
             sendEnter();
-            clear();
-            disable();
+            hideKeyboard();
             return false;
         });
         clear();
@@ -158,7 +179,15 @@ public class TouchCharInput extends androidx.appcompat.widget.AppCompatEditText 
                     mCharacterSender.sendBackspace();
                 }
                 for(int i=start, count = 0; count < lengthAfter; ++i){
-                    mCharacterSender.sendChar(text.charAt(i));
+                    char c = text.charAt(i);
+                    if (c == '\n' || c == '\r') {
+                        post(() -> {
+                            sendEnter();
+                            hideKeyboard();
+                        });
+                        return;
+                    }
+                    mCharacterSender.sendChar(c);
                     ++count;
                 }
             }

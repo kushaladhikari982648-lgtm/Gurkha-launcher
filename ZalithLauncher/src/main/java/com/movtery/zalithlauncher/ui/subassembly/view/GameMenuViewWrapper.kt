@@ -48,6 +48,8 @@ class GameMenuViewWrapper(
             addViewLifecycle(object : IFxViewLifecycle {
                 override fun initView(holder: FxViewHolder) {
                     holder.view.alpha = AllSettings.gameMenuAlpha.getValue().toFloat() / 100f
+                    holder.view.elevation = 16f
+                    holder.view.translationZ = 16f
 
                     updateInfoText(holder.view)
                 }
@@ -90,11 +92,11 @@ class GameMenuViewWrapper(
             if (scopeFx != null) {
                 updateInfoText()
             } else {
-                scopeFx = getWindow().apply {
-                    updateInfoText()
-                    show()
-                    getView()?.let { startNewbieGuide(it) }
-                }
+                val window = getWindow()
+                scopeFx = window
+                window.show()
+                updateInfoText()
+                window.getView()?.let { startNewbieGuide(it) }
             }
         } else {
             scopeFx?.cancel()

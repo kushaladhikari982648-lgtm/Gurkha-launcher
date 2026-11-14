@@ -7,6 +7,7 @@
 
 #include <ctxbridges/common.h>
 #include <stdatomic.h>
+#include <stdint.h>
 #include <jni.h>
 
 /* How many events can be handled at the same time */
@@ -61,6 +62,10 @@ struct pojav_environ_s {
     jlong showingWindow;
     bool isInputReady, isCursorEntered, isUseStackQueueCall, shouldUpdateMouse;
     int savedWidth, savedHeight;
+    atomic_int currentFps;
+    atomic_int fpsFrameCount;
+    _Atomic uint64_t lastFpsTimestampMs;
+    atomic_int hasExplicitFrameSwap;
 #define ADD_CALLBACK_WWIN(NAME) \
     GLFW_invoke_##NAME##_func* GLFW_invoke_##NAME;
     ADD_CALLBACK_WWIN(Char);
@@ -76,5 +81,9 @@ struct pojav_environ_s {
 #undef ADD_CALLBACK_WWIN
 };
 extern struct pojav_environ_s *pojav_environ;
+
+void pojavRecordFrame(void);
+void pojavMarkExplicitFrameSwap(void);
+void pojavRecordFrameIfNoExplicitSwap(void);
 
 #endif //POJAVLAUNCHER_ENVIRON_H

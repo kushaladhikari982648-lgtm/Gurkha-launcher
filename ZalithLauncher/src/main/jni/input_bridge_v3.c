@@ -252,6 +252,43 @@ void pojavStopPumping() {
     atomic_fetch_sub_explicit(&pojav_environ->eventCounter, pojav_environ->inEventCount, memory_order_acquire);
     // Make sure the next frame won't send mouse updates if it's unnecessary
     pojav_environ->shouldUpdateMouse = false;
+    if (atomic_load_explicit(&pojav_environ->hasExplicitFrameSwap, memory_order_relaxed) == 0) {
+        pojavRecordFrame();
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_org_lwjgl_glfw_CallbackBridge_nativeEnsureSdlKeyboardFocus(
+        __attribute__((unused)) JNIEnv *env,
+        __attribute__((unused)) jclass clazz,
+        jboolean ensureTextInputActive) {
+    void* sdl = dlopen("libSDL3.so", RTLD_LAZY | RTLD_NOLOAD);
+    if (sdl == NULL) {
+        sdl = dlopen("libSDL3.so", RTLD_LAZY | RTLD_LOCAL);
+    }
+    if (sdl == NULL) return;
+
+    typedef void* (*SDL_GetKeyboardFocus_t)(void);
+    typedef void (*SDL_OnApplicationDidEnterForeground_t)(void);
+    typedef bool (*SDL_TextInputActive_t)(void* window);
+    typedef bool (*SDL_StartTextInput_t)(void* window);
+
+    SDL_GetKeyboardFocus_t getFocus = (SDL_GetKeyboardFocus_t) dlsym(sdl, "SDL_GetKeyboardFocus");
+    SDL_OnApplicationDidEnterForeground_t enterFg =
+        (SDL_OnApplicationDidEnterForeground_t) dlsym(sdl, "SDL_OnApplicationDidEnterForeground");
+    SDL_TextInputActive_t isTextActive = (SDL_TextInputActive_t) dlsym(sdl, "SDL_TextInputActive");
+    SDL_StartTextInput_t startText = (SDL_StartTextInput_t) dlsym(sdl, "SDL_StartTextInput");
+
+    void* focusWin = getFocus != NULL ? getFocus() : NULL;
+    if (focusWin == NULL && enterFg != NULL) {
+        enterFg();
+        focusWin = getFocus != NULL ? getFocus() : NULL;
+    }
+    if (ensureTextInputActive && focusWin != NULL && isTextActive != NULL && startText != NULL) {
+        if (!isTextActive(focusWin)) {
+            startText(focusWin);
+        }
+    }
 }
 
 JNIEXPORT void JNICALL

@@ -149,7 +149,6 @@ public class MainMenuFragment extends FragmentWithAnim {
                 ((net.kdt.pojavlaunch.LauncherActivity) getActivity()).toggleLauncherOrientation();
             }
         });
-        binding.performanceButton.setOnClickListener(v -> binding.settingsButton.performClick());
 
         // No always-running text marquee on the low-end home screen.
     }
@@ -198,7 +197,6 @@ public class MainMenuFragment extends FragmentWithAnim {
         String renderer = version != null ? version.getRenderer() : AllSettings.getRenderer().getValue();
         binding.rendererSummary.setText(getString(R.string.mc_renderer, Renderers.INSTANCE.getDisplayName(renderer)));
         binding.memorySummary.setText(getString(R.string.mc_memory, AllSettings.getRamAllocation().getValue().getValue()));
-        binding.lowEndStatus.setText(AllSettings.getLowEndMode().getValue() ? R.string.mc_low_end_on : R.string.mc_low_end_off);
         boolean isPortrait = getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT;
         binding.orientationToggleButton.setText(isPortrait ? R.string.modern_switch_landscape : R.string.modern_switch_portrait);
         binding.modsButton.setEnabled(version != null);

@@ -24,6 +24,23 @@ void bytehook_pop_stack(void* return_address) {
     (void) return_address;
 }
 
+static int sRecordedFrames = 0;
+static int sExplicitSwapMarked = 0;
+
+void pojavRecordFrame(void) {
+    sRecordedFrames++;
+}
+
+void pojavMarkExplicitFrameSwap(void) {
+    sExplicitSwapMarked = 1;
+}
+
+void pojavRecordFrameIfNoExplicitSwap(void) {
+    if (!sExplicitSwapMarked) {
+        sRecordedFrames++;
+    }
+}
+
 #define SDL_WINDOW_OPENGL 0x0000000000000002ULL
 #define SDL_WINDOW_HIDDEN 0x0000000000000008ULL
 #define SDL_WINDOW_VULKAN 0x0000000010000000ULL

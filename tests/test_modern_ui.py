@@ -73,13 +73,16 @@ class ModernUiTests(unittest.TestCase):
         for directory in ('layout', 'layout-port'):
             root = ET.parse(RES / directory / 'fragment_launcher.xml').getroot()
             ids = [e.get(A + 'id', '').split('/')[-1] for e in root.iter() if A + 'id' in e.attrib]
-            for removed in ('quick_versions', 'quick_mods', 'quick_tools'):
+            for removed in ('quick_versions', 'quick_mods', 'quick_tools', 'low_end_status', 'performance_button'):
                 self.assertNotIn(removed, ids)
             self.assertIn('orientation_toggle_button', ids)
         landscape_root = ET.parse(RES / 'layout/fragment_launcher.xml').getroot()
         play_layout = next(e for e in landscape_root.iter() if e.get(A + 'id') == '@+id/play_layout')
         main_row = list(play_layout)[1]
         self.assertEqual('@+id/play_buttons_layout', list(main_row)[-1].get(A + 'id'))
+        main_menu_java = (SRC / 'net/kdt/pojavlaunch/fragments/MainMenuFragment.java').read_text()
+        self.assertNotIn('performanceButton', main_menu_java)
+        self.assertNotIn('lowEndStatus', main_menu_java)
         activity_root = ET.parse(RES / 'layout/activity_launcher.xml').getroot()
         activity_ids = [e.get(A + 'id', '').split('/')[-1] for e in activity_root.iter() if A + 'id' in e.attrib]
         self.assertIn('orientation_button', activity_ids)

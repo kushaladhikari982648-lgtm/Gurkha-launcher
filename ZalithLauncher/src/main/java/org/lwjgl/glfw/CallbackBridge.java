@@ -76,22 +76,26 @@ public class CallbackBridge {
             nativeSendCharMods(keychar,modifiers);
             nativeSendChar(keychar);
         }
-        if (!MinecraftGLSurface.sdlEnabled || keycode == 0) return;
-        int androidKeycode = EfficientAndroidLWJGLKeycode.getAndroidKeycode(keycode);
-        if (androidKeycode == KeyEvent.KEYCODE_UNKNOWN) return;
-        if (isDown) SDLActivity.onNativeKeyDown(androidKeycode);
-        else SDLActivity.onNativeKeyUp(androidKeycode);
+        if (!MinecraftGLSurface.sdlEnabled) return;
+        nativeEnsureSdlKeyboardFocus(false);
+        if (keycode != 0) {
+            int androidKeycode = EfficientAndroidLWJGLKeycode.getAndroidKeycode(keycode);
+            if (androidKeycode != KeyEvent.KEYCODE_UNKNOWN) {
+                if (isDown) SDLActivity.onNativeKeyDown(androidKeycode);
+                else SDLActivity.onNativeKeyUp(androidKeycode);
+            }
+        }
+        if (isDown && keychar >= 32 && keychar != 127 && (modifiers & LwjglGlfwKeycode.GLFW_MOD_CONTROL) == 0) {
+            org.libsdl.app.SDLInputConnection.nativeCommitText(String.valueOf(keychar), 1);
+        }
     }
 
     public static void sendChar(char keychar, int modifiers){
         nativeSendCharMods(keychar,modifiers);
         nativeSendChar(keychar);
         if (!MinecraftGLSurface.sdlEnabled) return;
-        // Normally SDL gets text through its own input connection (TouchCharInput switches to it)
-        int androidKeycode = EfficientAndroidLWJGLKeycode.getAndroidKeycode(keychar);
-        if (androidKeycode == KeyEvent.KEYCODE_UNKNOWN) return;
-        SDLActivity.onNativeKeyDown(androidKeycode);
-        SDLActivity.onNativeKeyUp(androidKeycode);
+        nativeEnsureSdlKeyboardFocus(true);
+        org.libsdl.app.SDLInputConnection.nativeCommitText(String.valueOf(keychar), 1);
     }
 
     public static void sendKeyPress(int keyCode, int modifiers, boolean status) {
@@ -297,6 +301,7 @@ public class CallbackBridge {
     @Keep @CriticalNative private static native void nativeSendScroll(double xoffset, double yoffset);
     @Keep @CriticalNative private static native void nativeSendScreenSize(int width, int height);
     @Keep public static native void nativeSetWindowAttrib(int attrib, int value);
+    @Keep public static native void nativeEnsureSdlKeyboardFocus(boolean ensureTextInputActive);
     @Keep public static native int getCurrentFps();
 
     static {

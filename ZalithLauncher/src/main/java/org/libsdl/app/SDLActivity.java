@@ -385,9 +385,14 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     }
 
     public static boolean isUsingSDLTextEdit(){
-        return mTextEdit != null;
+        return false;
     }
     public static void enableSDLEditKeyboard(){
+        if (net.kdt.pojavlaunch.MainActivity.touchCharInput != null) {
+            net.kdt.pojavlaunch.MainActivity.touchCharInput.showKeyboard();
+            onNativeScreenKeyboardShown();
+            return;
+        }
         if (mTextEdit == null) return;
 
         mTextEdit.setInputType(TYPE_CLASS_TEXT | TYPE_TEXT_VARIATION_NORMAL);
@@ -403,6 +408,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         }
     }
     public static void disableSDLEditKeyboard(){
+        if (net.kdt.pojavlaunch.MainActivity.touchCharInput != null) {
+            net.kdt.pojavlaunch.MainActivity.touchCharInput.hideKeyboard();
+            onNativeScreenKeyboardHidden();
+            if (mSurface != null) mSurface.requestFocus();
+            return;
+        }
+        if (mTextEdit == null) return;
         mTextEdit.setLayoutParams(new FrameLayout.LayoutParams(0, 0));
 
         InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -1039,6 +1051,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 //                }
                 break;
             case COMMAND_TEXTEDIT_HIDE:
+                if (net.kdt.pojavlaunch.MainActivity.touchCharInput != null) {
+                    net.kdt.pojavlaunch.MainActivity.touchCharInput.hideKeyboard();
+                }
                 if (mTextEdit != null) {
                     // Note: On some devices setting view to GONE creates a flicker in landscape.
                     // Setting the View's sizes to 0 is similar to GONE but without the flicker.
@@ -1047,9 +1062,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
                     InputMethodManager imm = (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
                     imm.hideSoftInputFromWindow(mTextEdit.getWindowToken(), 0);
-
-                    onNativeScreenKeyboardHidden();
-
+                }
+                onNativeScreenKeyboardHidden();
+                if (mSurface != null) {
                     mSurface.requestFocus();
                 }
                 break;
@@ -1471,6 +1486,11 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         @Override
         public void run() {
             if (!MinecraftGLSurface.sdlEnabled) return;
+            if (net.kdt.pojavlaunch.MainActivity.touchCharInput != null) {
+                net.kdt.pojavlaunch.MainActivity.touchCharInput.showKeyboard();
+                onNativeScreenKeyboardShown();
+                return;
+            }
             FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(w, h + HEIGHT_PADDING);
             params.leftMargin = x;
             params.topMargin = y;

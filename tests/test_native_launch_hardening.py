@@ -216,6 +216,22 @@ class NativeLaunchHardeningTests(unittest.TestCase):
         self.assertIn('nativeInitializeGLFWNativeBridge();', glfw_java)
         self.assertLess(glfw_java.index('Library.initialize();'), glfw_java.index('mGLFWErrorCallback = GLFWErrorCallback.createPrint();'))
         self.assertIn('if (mainContext == window) {', glfw_java)
+        self.assertIn('findPreferredShowingWindow()', glfw_java)
+
+        callback_bridge = (SRC/'org/lwjgl/glfw/CallbackBridge.java').read_text()
+        self.assertIn('nativeEnsureSdlKeyboardFocus(true);', callback_bridge)
+        self.assertIn('SDLInputConnection.nativeCommitText(String.valueOf(keychar), 1);', callback_bridge)
+
+        touch_char_input = (SRC/'net/kdt/pojavlaunch/customcontrols/keyboard/TouchCharInput.java').read_text()
+        self.assertIn('public void showKeyboard()', touch_char_input)
+        self.assertIn('public void hideKeyboard()', touch_char_input)
+
+        environ_h = (JNI/'environ/environ.h').read_text()
+        self.assertIn('atomic_int currentFps;', environ_h)
+        self.assertIn('void pojavRecordFrame(void);', environ_h)
+
+        all_settings = (SRC/'com/movtery/zalithlauncher/setting/AllSettings.kt').read_text()
+        self.assertIn('val gameMenuShowFPS = BooleanSettingUnit("gameMenuShowFPS", true)', all_settings)
 
 
 

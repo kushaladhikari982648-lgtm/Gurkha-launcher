@@ -1116,6 +1116,16 @@ public class GLFW
         //Return our context
     }
 
+    private static long findPreferredShowingWindow() {
+        for (int i = mGLFWWindowMap.size() - 1; i >= 0; i--) {
+            GLFWWindowProperties win = mGLFWWindowMap.valueAt(i);
+            if (win != null && !win.state.hidden) {
+                return mGLFWWindowMap.keyAt(i);
+            }
+        }
+        return mGLFWWindowMap.size() == 0 ? 0L : mGLFWWindowMap.keyAt(mGLFWWindowMap.size() - 1);
+    }
+
     public static void glfwDestroyWindow(long window) {
         // Check window exists
         try {
@@ -1125,11 +1135,11 @@ public class GLFW
             System.out.println("GLFW: Warning: failed to remove window " + window);
             e.printStackTrace();
         }
-        long nextWindow = mGLFWWindowMap.size() == 0 ? 0L : mGLFWWindowMap.keyAt(mGLFWWindowMap.size() - 1);
+        long lastContextWindow = mGLFWWindowMap.size() == 0 ? 0L : mGLFWWindowMap.keyAt(mGLFWWindowMap.size() - 1);
         if (mainContext == window) {
-            mainContext = nextWindow;
+            mainContext = lastContextWindow;
         }
-        nglfwSetShowingWindow(nextWindow);
+        nglfwSetShowingWindow(findPreferredShowingWindow());
     }
 
     public static String glfwGetWindowTitle(long window) {
@@ -1240,7 +1250,20 @@ public class GLFW
             }
             callV(Functions.StartPumping);
             try {
-                for (Long ptr : mGLFWWindowMap.keySet()) callJV(ptr, Functions.PumpEvents);
+                boolean anyVisible = false;
+                for (int i = 0; i < mGLFWWindowMap.size(); i++) {
+                    GLFWWindowProperties win = mGLFWWindowMap.valueAt(i);
+                    if (win != null && !win.state.hidden) {
+                        anyVisible = true;
+                        break;
+                    }
+                }
+                for (int i = 0; i < mGLFWWindowMap.size(); i++) {
+                    GLFWWindowProperties win = mGLFWWindowMap.valueAt(i);
+                    if (!anyVisible || (win != null && !win.state.hidden)) {
+                        callJV(mGLFWWindowMap.keyAt(i), Functions.PumpEvents);
+                    }
+                }
             } finally {
                 callV(Functions.StopPumping);
             }

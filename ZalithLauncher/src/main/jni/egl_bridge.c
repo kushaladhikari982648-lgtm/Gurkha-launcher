@@ -179,6 +179,7 @@ EXTERNAL_API void pojavSetWindowHint(int hint, int value) {
 
 EXTERNAL_API void pojavSwapBuffers() {
     if (bridge_is_sdl() || !br_swap_buffers) return;
+    pojavMarkExplicitFrameSwap();
     calculateFPS();
 
     if (pojav_environ->config_renderer == RENDERER_VK_ZINK
@@ -217,24 +218,61 @@ void* maybe_load_vulkan() {
     return (void*) strtoul(getenv("VULKAN_PTR"), NULL, 0x10);
 }
 
-static int frameCount = 0;
-static int fps = 0;
-static time_t lastTime = 0;
+static inline uint64_t monotonic_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t) ts.tv_sec * 1000ULL + (uint64_t) (ts.tv_nsec / 1000000ULL);
+}
+
+EXTERNAL_API void pojavMarkExplicitFrameSwap(void) {
+    if (pojav_environ == NULL) return;
+    atomic_store_explicit(&pojav_environ->hasExplicitFrameSwap, 1, memory_order_relaxed);
+}
+
+EXTERNAL_API void pojavRecordFrameIfNoExplicitSwap(void) {
+    if (pojav_environ == NULL) return;
+    if (atomic_load_explicit(&pojav_environ->hasExplicitFrameSwap, memory_order_relaxed) == 0) {
+        pojavRecordFrame();
+    }
+}
+
+EXTERNAL_API void pojavRecordFrame(void) {
+    if (pojav_environ == NULL) return;
+    uint64_t now = monotonic_ms();
+    uint64_t last = atomic_load_explicit(&pojav_environ->lastFpsTimestampMs, memory_order_relaxed);
+    if (last == 0) {
+        atomic_store_explicit(&pojav_environ->lastFpsTimestampMs, now, memory_order_relaxed);
+        atomic_store_explicit(&pojav_environ->fpsFrameCount, 1, memory_order_relaxed);
+        return;
+    }
+    int frames = atomic_fetch_add_explicit(&pojav_environ->fpsFrameCount, 1, memory_order_relaxed) + 1;
+    uint64_t elapsed = now > last ? (now - last) : 0ULL;
+    if (elapsed >= 1000ULL) {
+        int computed = (int) ((frames * 1000ULL + (elapsed / 2ULL)) / elapsed);
+        atomic_store_explicit(&pojav_environ->currentFps, computed, memory_order_relaxed);
+        atomic_store_explicit(&pojav_environ->fpsFrameCount, 0, memory_order_relaxed);
+        atomic_store_explicit(&pojav_environ->lastFpsTimestampMs, now, memory_order_relaxed);
+    } else if (atomic_load_explicit(&pojav_environ->currentFps, memory_order_relaxed) == 0 &&
+               elapsed >= 200ULL && frames > 0) {
+        int initial = (int) ((frames * 1000ULL) / elapsed);
+        atomic_store_explicit(&pojav_environ->currentFps, initial, memory_order_relaxed);
+    }
+}
 
 void calculateFPS() {
-    frameCount++;
-    time_t currentTime = time(NULL);
-
-    if (currentTime != lastTime) {
-        lastTime = currentTime;
-        fps = frameCount;
-        frameCount = 0;
-    }
+    pojavRecordFrame();
 }
 
 EXTERNAL_API JNIEXPORT jint JNICALL
 Java_org_lwjgl_glfw_CallbackBridge_getCurrentFps(JNIEnv *env, jclass clazz) {
-    return fps;
+    if (pojav_environ == NULL) return 0;
+    uint64_t last = atomic_load_explicit(&pojav_environ->lastFpsTimestampMs, memory_order_relaxed);
+    if (last == 0) return 0;
+    uint64_t now = monotonic_ms();
+    if (now > last && (now - last) > 3000ULL) {
+        return 0;
+    }
+    return atomic_load_explicit(&pojav_environ->currentFps, memory_order_relaxed);
 }
 
 EXTERNAL_API JNIEXPORT jlong JNICALL

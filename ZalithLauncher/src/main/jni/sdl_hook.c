@@ -14,6 +14,10 @@
 #include <string.h>
 #include <strings.h>
 
+extern void pojavRecordFrame(void);
+extern void pojavMarkExplicitFrameSwap(void);
+extern void pojavRecordFrameIfNoExplicitSwap(void);
+
 #define TAG "SdlHook"
 #define VULKAN_PTR ((void*) 0x6f756768)
 
@@ -74,6 +78,7 @@ typedef bool (*SDL_SetWindowTitle_t)(void* window, const char* title);
 typedef bool (*SDL_ShowWindow_t)(void* window);
 typedef bool (*SDL_HideWindow_t)(void* window);
 typedef bool (*SDL_GL_MakeCurrent_t)(void* window, void* context);
+typedef bool (*SDL_GL_SwapWindow_t)(void* window);
 typedef void* (*SDL_GetWindowFromEvent_t)(const void* event);
 typedef void* (*SDL_GetWindowFromID_t)(uint32_t id);
 typedef bool (*SDL_PollEvent_t)(void* event);
@@ -135,6 +140,7 @@ static SDL_SetWindowTitle_t sRealSdlSetWindowTitle = NULL;
 static SDL_ShowWindow_t sRealSdlShowWindow = NULL;
 static SDL_HideWindow_t sRealSdlHideWindow = NULL;
 static SDL_GL_MakeCurrent_t sRealSdlGlMakeCurrent = NULL;
+static SDL_GL_SwapWindow_t sRealSdlGlSwapWindow = NULL;
 static SDL_GetWindowFromEvent_t sRealSdlGetWindowFromEvent = NULL;
 static SDL_GetWindowFromID_t sRealSdlGetWindowFromID = NULL;
 static SDL_PollEvent_t sRealSdlPollEvent = NULL;
@@ -331,7 +337,13 @@ static void* proxyEglCreateWindowSurface(void* dpy, void* config, void* win, con
     return surface;
 }
 
+static __thread int sInSdlGlSwapWindow = 0;
+
 static unsigned int proxyEglSwapBuffers(void* dpy, void* surface) {
+    if (sInSdlGlSwapWindow == 0) {
+        pojavMarkExplicitFrameSwap();
+        pojavRecordFrame();
+    }
     return sRealEglSwapBuffers != NULL ? sRealEglSwapBuffers(dpy, surface) : 0;
 }
 
@@ -775,6 +787,16 @@ static bool proxySdlGlMakeCurrent(void* window, void* context) {
     return sRealSdlGlMakeCurrent(window, context);
 }
 
+static bool proxySdlGlSwapWindow(void* window) {
+    if (sRealSdlGlSwapWindow == NULL) return false;
+    pojavMarkExplicitFrameSwap();
+    pojavRecordFrame();
+    sInSdlGlSwapWindow++;
+    bool ok = sRealSdlGlSwapWindow(window);
+    sInSdlGlSwapWindow--;
+    return ok;
+}
+
 static void* proxySdlGetWindowFromEvent(const void* event) {
     void* win = sRealSdlGetWindowFromEvent != NULL ? sRealSdlGetWindowFromEvent(event) : NULL;
     return resolveEventWindowFallback(win);
@@ -787,7 +809,11 @@ static void* proxySdlGetWindowFromID(uint32_t id) {
 
 static bool proxySdlPollEvent(void* event) {
     bool ok = sRealSdlPollEvent != NULL ? sRealSdlPollEvent(event) : false;
-    if (ok) rememberEventWindow(event);
+    if (ok) {
+        rememberEventWindow(event);
+    } else {
+        pojavRecordFrameIfNoExplicitSwap();
+    }
     return ok;
 }
 
@@ -1010,6 +1036,16 @@ static bool custom_SDL_GL_MakeCurrent_Func(void* window, void* context) {
     return res;
 }
 
+static bool custom_SDL_GL_SwapWindow_Func(void* window) {
+    pojavMarkExplicitFrameSwap();
+    pojavRecordFrame();
+    sInSdlGlSwapWindow++;
+    bool res = BYTEHOOK_CALL_PREV(custom_SDL_GL_SwapWindow_Func, SDL_GL_SwapWindow_t, window);
+    sInSdlGlSwapWindow--;
+    BYTEHOOK_POP_STACK();
+    return res;
+}
+
 static void* custom_SDL_GetWindowFromEvent_Func(const void* event) {
     void* win = BYTEHOOK_CALL_PREV(custom_SDL_GetWindowFromEvent_Func, SDL_GetWindowFromEvent_t, event);
     BYTEHOOK_POP_STACK();
@@ -1025,7 +1061,11 @@ static void* custom_SDL_GetWindowFromID_Func(uint32_t id) {
 static bool custom_SDL_PollEvent_Func(void* event) {
     bool ok = BYTEHOOK_CALL_PREV(custom_SDL_PollEvent_Func, SDL_PollEvent_t, event);
     BYTEHOOK_POP_STACK();
-    if (ok) rememberEventWindow(event);
+    if (ok) {
+        rememberEventWindow(event);
+    } else {
+        pojavRecordFrameIfNoExplicitSwap();
+    }
     return ok;
 }
 
@@ -1139,6 +1179,12 @@ void* sdlDlsymProxy(void* handle, const char* name, void* realPtr) {
         }
         return (void*) &proxySdlGlMakeCurrent;
     }
+    if (strcmp(name, "SDL_GL_SwapWindow") == 0) {
+        if (realPtr != (void*) &proxySdlGlSwapWindow && realPtr != (void*) &custom_SDL_GL_SwapWindow_Func) {
+            sRealSdlGlSwapWindow = (SDL_GL_SwapWindow_t) realPtr;
+        }
+        return (void*) &proxySdlGlSwapWindow;
+    }
     if (strcmp(name, "SDL_GetWindowFromEvent") == 0) {
         if (realPtr != (void*) &proxySdlGetWindowFromEvent && realPtr != (void*) &custom_SDL_GetWindowFromEvent_Func) {
             sRealSdlGetWindowFromEvent = (SDL_GetWindowFromEvent_t) realPtr;
@@ -1194,6 +1240,7 @@ void create_sdl_hooks(void* bytehook_hook_all_p) {
     sBytehookHookAll(NULL, "SDL_SetWindowSize", (void*) &custom_SDL_SetWindowSize_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_HideWindow", (void*) &custom_SDL_HideWindow_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_GL_MakeCurrent", (void*) &custom_SDL_GL_MakeCurrent_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_GL_SwapWindow", (void*) &custom_SDL_GL_SwapWindow_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_GetWindowFromEvent", (void*) &custom_SDL_GetWindowFromEvent_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_GetWindowFromID", (void*) &custom_SDL_GetWindowFromID_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_PollEvent", (void*) &custom_SDL_PollEvent_Func, NULL, NULL);

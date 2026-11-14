@@ -356,6 +356,9 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_FOCUSED, hasFocus);
+        if (MinecraftGLSurface.sdlEnabled) {
+            org.libsdl.app.SDLActivity.nativeFocusChanged(hasFocus);
+        }
     }
 
     @Override
@@ -363,6 +366,9 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         super.onResume();
         if (AllStaticSettings.enableGyro) mGyroControl.enable();
         CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_FOCUSED, hasWindowFocus());
+        if (MinecraftGLSurface.sdlEnabled && hasWindowFocus()) {
+            org.libsdl.app.SDLActivity.nativeFocusChanged(true);
+        }
     }
 
     @Override
@@ -373,6 +379,9 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             sendKeyPress(LwjglGlfwKeycode.GLFW_KEY_ESCAPE);
         }
         CallbackBridge.nativeSetWindowState(CallbackBridge.WINDOW_STATE_FOCUSED, false);
+        if (MinecraftGLSurface.sdlEnabled) {
+            org.libsdl.app.SDLActivity.nativeFocusChanged(false);
+        }
         super.onPause();
     }
 
