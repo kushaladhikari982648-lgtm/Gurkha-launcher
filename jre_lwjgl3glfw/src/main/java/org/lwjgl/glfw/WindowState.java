@@ -9,6 +9,7 @@ final class WindowState {
 
     void show() { shown = true; }
     void hide() { shown = false; }
+    boolean isShown() { return shown; }
     boolean visible(int host) { return shown && (host & HOST_VISIBLE) != 0; }
     boolean focused(int host) { return visible(host) && (host & HOST_FOCUSED) != 0; }
     boolean iconified(int host) { return (host & HOST_VISIBLE) == 0; }

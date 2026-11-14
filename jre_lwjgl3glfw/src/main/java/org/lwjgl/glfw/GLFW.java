@@ -1119,7 +1119,7 @@ public class GLFW
     private static long findPreferredShowingWindow() {
         for (int i = mGLFWWindowMap.size() - 1; i >= 0; i--) {
             GLFWWindowProperties win = mGLFWWindowMap.valueAt(i);
-            if (win != null && !win.state.hidden) {
+            if (win != null && win.state.isShown()) {
                 return mGLFWWindowMap.keyAt(i);
             }
         }
@@ -1253,14 +1253,14 @@ public class GLFW
                 boolean anyVisible = false;
                 for (int i = 0; i < mGLFWWindowMap.size(); i++) {
                     GLFWWindowProperties win = mGLFWWindowMap.valueAt(i);
-                    if (win != null && !win.state.hidden) {
+                    if (win != null && win.state.isShown()) {
                         anyVisible = true;
                         break;
                     }
                 }
                 for (int i = 0; i < mGLFWWindowMap.size(); i++) {
                     GLFWWindowProperties win = mGLFWWindowMap.valueAt(i);
-                    if (!anyVisible || (win != null && !win.state.hidden)) {
+                    if (!anyVisible || (win != null && win.state.isShown())) {
                         callJV(mGLFWWindowMap.keyAt(i), Functions.PumpEvents);
                     }
                 }
