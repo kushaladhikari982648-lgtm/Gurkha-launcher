@@ -1,7 +1,6 @@
 package org.lwjgl.system.linux;
 
 import java.nio.ByteBuffer;
-import javax.annotation.Nullable;
 import org.lwjgl.system.Library;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.NativeType;
@@ -39,7 +38,7 @@ public class DynamicLinkLoader {
     public static native long ndlopen(long filename, int mode);
 
     @NativeType("void *")
-    public static long dlopen(@Nullable @NativeType("char const *") ByteBuffer filename, int mode) {
+    public static long dlopen(@NativeType("char const *") ByteBuffer filename, int mode) {
         if (CHECKS) {
             checkNT1Safe(filename);
         }
@@ -47,7 +46,7 @@ public class DynamicLinkLoader {
     }
 
     @NativeType("void *")
-    public static long dlopen(@Nullable @NativeType("char const *") CharSequence filename, int mode) {
+    public static long dlopen(@NativeType("char const *") CharSequence filename, int mode) {
         MemoryStack stack = stackGet();
         int stackPointer = stack.getPointer();
         try {
@@ -61,7 +60,6 @@ public class DynamicLinkLoader {
 
     public static native long ndlerror();
 
-    @Nullable
     @NativeType("char *")
     public static String dlerror() {
         long __result = ndlerror();
