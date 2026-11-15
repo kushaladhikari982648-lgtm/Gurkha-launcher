@@ -121,8 +121,26 @@ static void* sPrimaryWindow = NULL;
 static int sPrimaryWindowRefs = 0;
 static bool sPrimaryWindowHasOpenGL = false;
 static void* sReplacedVulkanWindow = NULL;
+static void* sRealVulkanHandle = NULL;
 static __thread int sInCreateWindow = 0;
 static __thread void* sdlLastEventWindow = NULL;
+
+static void* resolveRealVulkanHandle(void) {
+    if (sRealVulkanHandle != NULL) return sRealVulkanHandle;
+    const char* vkEnv = getenv("VULKAN_PTR");
+    if (vkEnv != NULL && vkEnv[0] != '\0') {
+        void* ptr = (void*) strtoul(vkEnv, NULL, 16);
+        if (ptr != NULL) {
+            sRealVulkanHandle = ptr;
+            return sRealVulkanHandle;
+        }
+    }
+    sRealVulkanHandle = dlopen("libvulkan.so", RTLD_LAZY | RTLD_LOCAL);
+    if (sRealVulkanHandle == NULL) {
+        sRealVulkanHandle = dlopen("libvulkan.so.1", RTLD_LAZY | RTLD_LOCAL);
+    }
+    return sRealVulkanHandle;
+}
 
 static SDL_LoadObject_t sRealSdlLoadObject = NULL;
 static SDL_LoadFunction_t sRealSdlLoadFunction = NULL;
@@ -468,8 +486,13 @@ static bool windowActuallyHasOpenGL(void* window, uint64_t requestedFlags) {
     return (requestedFlags & SDL_WINDOW_OPENGL) != 0 && (requestedFlags & SDL_WINDOW_VULKAN) == 0;
 }
 
-static void replaceNonOpenGlPrimaryWindowIfNeeded(bool requestsOpenGL, const char* caller) {
-    if (sPrimaryWindow == NULL || sPrimaryWindowHasOpenGL || !requestsOpenGL) {
+static void replaceNonOpenGlPrimaryWindowIfNeeded(bool requestsOpenGL, bool requestsVulkan, const char* caller) {
+    if (sPrimaryWindow == NULL) {
+        return;
+    }
+    bool needReplaceForGl = requestsOpenGL && !sPrimaryWindowHasOpenGL;
+    bool needReplaceForVk = requestsVulkan && !requestsOpenGL && sPrimaryWindowHasOpenGL;
+    if (!needReplaceForGl && !needReplaceForVk) {
         return;
     }
     resolveSdlHelperSymbols();
@@ -481,9 +504,11 @@ static void replaceNonOpenGlPrimaryWindowIfNeeded(bool requestsOpenGL, const cha
     __android_log_print(
         ANDROID_LOG_INFO,
         TAG,
-        "%s replacing non-OpenGL primary window %p before creating OpenGL window",
+        "%s replacing incompatible primary window %p (forGL=%d, forVK=%d)",
         caller,
-        oldWindow
+        oldWindow,
+        needReplaceForGl ? 1 : 0,
+        needReplaceForVk ? 1 : 0
     );
     if (sRealSdlDestroyWindow != NULL) {
         sRealSdlDestroyWindow(oldWindow);
@@ -528,10 +553,11 @@ static void* handleSdlCreateWindow(
         flags = (flags & ~SDL_WINDOW_VULKAN) | SDL_WINDOW_OPENGL;
     }
     bool requestsOpenGL = (flags & SDL_WINDOW_OPENGL) != 0 && (flags & SDL_WINDOW_VULKAN) == 0;
+    bool requestsVulkan = (flags & SDL_WINDOW_VULKAN) != 0;
     bool hidden = (flags & SDL_WINDOW_HIDDEN) != 0;
 
     if (sdlWindowReuseEnabled()) {
-        replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, "SDL_CreateWindow");
+        replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, requestsVulkan, "SDL_CreateWindow");
         if (sPrimaryWindow != NULL) {
             return reusePrimaryWindow("SDL_CreateWindow", title, w, h, hidden);
         }
@@ -605,8 +631,9 @@ static void* handleSdlCreateWindowWithProperties(
     }
 
     bool requestsOpenGL = (propOpenGL || (flags & SDL_WINDOW_OPENGL) != 0) && !propVulkan && (flags & SDL_WINDOW_VULKAN) == 0;
+    bool requestsVulkan = propVulkan || (flags & SDL_WINDOW_VULKAN) != 0;
     if (sdlWindowReuseEnabled()) {
-        replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, "SDL_CreateWindowWithProperties");
+        replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, requestsVulkan, "SDL_CreateWindowWithProperties");
         if (sPrimaryWindow != NULL) {
             return reusePrimaryWindow("SDL_CreateWindowWithProperties", title, 0, 0, propHidden || (flags & SDL_WINDOW_HIDDEN) != 0);
         }
@@ -724,18 +751,30 @@ static bool proxySdlShowMessageBox(const void* messageboxdata, int* buttonid) {
 
 static void* proxySdlLoadObject(const char* sofile) {
     if (sofile != NULL && strstr(sofile, "libvulkan") != NULL) {
+        (void) resolveRealVulkanHandle();
         return VULKAN_PTR;
     }
     return sRealSdlLoadObject != NULL ? sRealSdlLoadObject(sofile) : NULL;
 }
 
 static SDL_FunctionPointer proxySdlLoadFunction(void* handle, const char* name) {
+    if (handle == VULKAN_PTR) {
+        void* realVk = resolveRealVulkanHandle();
+        if (realVk != NULL && name != NULL) {
+            SDL_FunctionPointer vkSym = (SDL_FunctionPointer) dlsym(realVk, name);
+            if (vkSym != NULL) return vkSym;
+            if (sRealSdlLoadFunction != NULL) {
+                vkSym = sRealSdlLoadFunction(realVk, name);
+                if (vkSym != NULL) return vkSym;
+            }
+        }
+    }
     SDL_FunctionPointer realSym = sRealSdlLoadFunction != NULL ? sRealSdlLoadFunction(handle, name) : NULL;
     return wrapEglSymbolIfNeeded(name, realSym);
 }
 
 static void proxySdlUnloadObject(void* handle) {
-    if (handle == VULKAN_PTR) return;
+    if (handle == VULKAN_PTR || (sRealVulkanHandle != NULL && handle == sRealVulkanHandle)) return;
     if (sRealSdlUnloadObject != NULL) sRealSdlUnloadObject(handle);
 }
 
@@ -858,6 +897,7 @@ static bool custom_SDL_ShowMessageBox_Func(const void* messageboxdata, int* butt
 
 static void* custom_SDL_LoadObject_Func(const char* sofile) {
     if (sofile != NULL && strstr(sofile, "libvulkan") != NULL) {
+        (void) resolveRealVulkanHandle();
         BYTEHOOK_POP_STACK();
         return VULKAN_PTR;
     }
@@ -867,13 +907,24 @@ static void* custom_SDL_LoadObject_Func(const char* sofile) {
 }
 
 static SDL_FunctionPointer custom_SDL_LoadFunction_Func(void* handle, const char* name) {
+    if (handle == VULKAN_PTR) {
+        void* realVk = resolveRealVulkanHandle();
+        if (realVk != NULL && name != NULL) {
+            SDL_FunctionPointer vkSym = (SDL_FunctionPointer) dlsym(realVk, name);
+            if (vkSym != NULL) {
+                BYTEHOOK_POP_STACK();
+                return vkSym;
+            }
+            handle = realVk;
+        }
+    }
     SDL_FunctionPointer realSym = BYTEHOOK_CALL_PREV(custom_SDL_LoadFunction_Func, SDL_LoadFunction_t, handle, name);
     BYTEHOOK_POP_STACK();
     return wrapEglSymbolIfNeeded(name, realSym);
 }
 
 static void custom_SDL_UnloadObject_Func(void* handle) {
-    if (handle != VULKAN_PTR) {
+    if (handle != VULKAN_PTR && (sRealVulkanHandle == NULL || handle != sRealVulkanHandle)) {
         BYTEHOOK_CALL_PREV(custom_SDL_UnloadObject_Func, SDL_UnloadObject_t, handle);
     }
     BYTEHOOK_POP_STACK();
@@ -896,10 +947,11 @@ static void* custom_SDL_CreateWindow_Func(const char* title, int w, int h, uint6
         flags = (flags & ~SDL_WINDOW_VULKAN) | SDL_WINDOW_OPENGL;
     }
     bool requestsOpenGL = (flags & SDL_WINDOW_OPENGL) != 0 && (flags & SDL_WINDOW_VULKAN) == 0;
+    bool requestsVulkan = (flags & SDL_WINDOW_VULKAN) != 0;
     bool hidden = (flags & SDL_WINDOW_HIDDEN) != 0;
 
     if (sdlWindowReuseEnabled()) {
-        replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, "SDL_CreateWindow");
+        replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, requestsVulkan, "SDL_CreateWindow");
         if (sPrimaryWindow != NULL) {
             void* reused = reusePrimaryWindow("SDL_CreateWindow", title, w, h, hidden);
             BYTEHOOK_POP_STACK();
@@ -965,8 +1017,9 @@ static void* custom_SDL_CreateWindowWithProperties_Func(uint32_t props) {
     }
 
     bool requestsOpenGL = (propOpenGL || (flags & SDL_WINDOW_OPENGL) != 0) && !propVulkan && (flags & SDL_WINDOW_VULKAN) == 0;
+    bool requestsVulkan = propVulkan || (flags & SDL_WINDOW_VULKAN) != 0;
     if (sdlWindowReuseEnabled()) {
-        replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, "SDL_CreateWindowWithProperties");
+        replaceNonOpenGlPrimaryWindowIfNeeded(requestsOpenGL, requestsVulkan, "SDL_CreateWindowWithProperties");
         if (sPrimaryWindow != NULL) {
             void* reused = reusePrimaryWindow("SDL_CreateWindowWithProperties", title, 0, 0, propHidden || (flags & SDL_WINDOW_HIDDEN) != 0);
             BYTEHOOK_POP_STACK();

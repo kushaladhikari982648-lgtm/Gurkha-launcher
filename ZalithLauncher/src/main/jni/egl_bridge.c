@@ -100,6 +100,9 @@ void load_vulkan() {
     set_vulkan_ptr(vulkanPtr);
 }
 
+void* maybe_load_vulkan();
+static unsigned int g_configuredOpenGlRenderer = RENDERER_GL4ES;
+
 int pojavInitOpenGL() {
     if (bridge_is_sdl()) {
         fprintf(stderr, "EGLBridge: GLFW initialization refused on SDL backend\n");
@@ -110,9 +113,11 @@ int pojavInitOpenGL() {
     const char *renderer = getenv("POJAV_RENDERER");
     if (!renderer) { fprintf(stderr, "EGLBridge: no renderer selected\n"); return 0; }
     if (!strncmp("opengles", renderer, 8)) {
+        g_configuredOpenGlRenderer = RENDERER_GL4ES;
         pojav_environ->config_renderer = RENDERER_GL4ES;
         set_gl_bridge_tbl();
     } else if (!strcmp(renderer, "custom_gallium") || !strcmp(renderer, "vulkan_zink")) {
+        g_configuredOpenGlRenderer = RENDERER_VK_ZINK;
         pojav_environ->config_renderer = RENDERER_VK_ZINK;
         if (!strcmp(renderer, "vulkan_zink")) {
             load_vulkan();
@@ -164,16 +169,17 @@ EXTERNAL_API void pojavSetWindowHint(int hint, int value) {
     switch (value) {
         case GLFW_NO_API:
             pojav_environ->config_renderer = RENDERER_VULKAN;
-            /* Nothing to do: initialization is handled in Java-side */
-            // pojavInitVulkan();
+            maybe_load_vulkan();
             break;
         case GLFW_OPENGL_API:
-            /* Nothing to do: initialization is called in pojavCreateContext */
-            // pojavInitOpenGL();
+        case 0x30002: /* GLFW_OPENGL_ES_API */
+            if (pojav_environ->config_renderer == RENDERER_VULKAN) {
+                pojav_environ->config_renderer = g_configuredOpenGlRenderer;
+            }
             break;
         default:
             printf("GLFW: Unimplemented API 0x%x\n", value);
-            abort();
+            break;
     }
 }
 
@@ -203,6 +209,8 @@ EXTERNAL_API void pojavMakeCurrent(void* window) {
 EXTERNAL_API void* pojavCreateContext(void* contextSrc) {
     if (bridge_is_sdl()) return NULL;
     if (pojav_environ->config_renderer == RENDERER_VULKAN) {
+        maybe_load_vulkan();
+        gl_release_window_surface_for_vulkan();
         /* Direct Vulkan owns this reference until process exit (legacy GLFW ABI). */
         return bridge_acquire_window(NULL);
     }
@@ -215,7 +223,76 @@ void* maybe_load_vulkan() {
     // 1. it's easier to do that
     // 2. it won't break if something will try to load vulkan and osmesa simultaneously
     if(getenv("VULKAN_PTR") == NULL) load_vulkan();
-    return (void*) strtoul(getenv("VULKAN_PTR"), NULL, 0x10);
+    const char *vk_ptr = getenv("VULKAN_PTR");
+    return vk_ptr ? (void*) strtoul(vk_ptr, NULL, 0x10) : NULL;
+}
+
+EXTERNAL_API void pojavInitVulkanLoader(void* loader) {
+    (void) loader;
+    maybe_load_vulkan();
+}
+
+EXTERNAL_API int pojavVulkanSupported(void) {
+    return maybe_load_vulkan() != NULL ? 1 : 0;
+}
+
+EXTERNAL_API const char** pojavGetRequiredInstanceExtensions(uint32_t* count) {
+    static const char* extensions[] = {
+        "VK_KHR_surface",
+        "VK_KHR_android_surface"
+    };
+    if (count != NULL) {
+        *count = 2;
+    }
+    return extensions;
+}
+
+EXTERNAL_API void* pojavGetInstanceProcAddress(void* instance, const char* procname) {
+    if (!procname) return NULL;
+    void* vk_handle = maybe_load_vulkan();
+    if (!vk_handle) return NULL;
+    typedef void* (*PFN_vkGetInstanceProcAddr)(void*, const char*);
+    PFN_vkGetInstanceProcAddr pfn = (PFN_vkGetInstanceProcAddr) dlsym(vk_handle, "vkGetInstanceProcAddr");
+    if (pfn) {
+        void* sym = pfn(instance, procname);
+        if (sym) return sym;
+    }
+    return dlsym(vk_handle, procname);
+}
+
+EXTERNAL_API int pojavGetPhysicalDevicePresentationSupport(void* instance, void* device, uint32_t queuefamily) {
+    (void) instance;
+    (void) device;
+    (void) queuefamily;
+    return 1;
+}
+
+EXTERNAL_API int pojavCreateWindowSurface(void* instance, void* window, const void* allocator, void* surface) {
+    (void) window;
+    void* vk_handle = maybe_load_vulkan();
+    if (!vk_handle || !instance || !surface) return -1;
+    gl_release_window_surface_for_vulkan();
+    ANativeWindow* native_window = bridge_acquire_window(NULL);
+    if (!native_window) return -1;
+    typedef struct {
+        int sType;
+        const void* pNext;
+        uint32_t flags;
+        ANativeWindow* window;
+    } VkAndroidSurfaceCreateInfoKHR_compat;
+    typedef int (*PFN_vkCreateAndroidSurfaceKHR)(void*, const VkAndroidSurfaceCreateInfoKHR_compat*, const void*, void*);
+    PFN_vkCreateAndroidSurfaceKHR pfn =
+        (PFN_vkCreateAndroidSurfaceKHR) pojavGetInstanceProcAddress(instance, "vkCreateAndroidSurfaceKHR");
+    if (!pfn) {
+        ANativeWindow_release(native_window);
+        return -1;
+    }
+    VkAndroidSurfaceCreateInfoKHR_compat createInfo;
+    createInfo.sType = 1000008000; /* VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR */
+    createInfo.pNext = NULL;
+    createInfo.flags = 0;
+    createInfo.window = native_window;
+    return pfn(instance, &createInfo, allocator, surface);
 }
 
 static inline uint64_t monotonic_ms(void) {

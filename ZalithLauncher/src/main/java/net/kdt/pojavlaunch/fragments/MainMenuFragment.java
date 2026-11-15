@@ -53,6 +53,12 @@ public class MainMenuFragment extends FragmentWithAnim {
     public static final String TAG = "MainMenuFragment";
     private FragmentLauncherBinding binding;
     private AccountViewWrapper accountViewWrapper;
+    private final com.movtery.zalithlauncher.feature.discord.DiscordPresenceManager.StatusListener discordListener =
+            (summary, connected) -> {
+                if (binding != null) {
+                    binding.discordButton.setText(summary);
+                }
+            };
 
     public MainMenuFragment() {
         super(R.layout.fragment_launcher);
@@ -149,6 +155,9 @@ public class MainMenuFragment extends FragmentWithAnim {
                 ((net.kdt.pojavlaunch.LauncherActivity) getActivity()).toggleLauncherOrientation();
             }
         });
+        binding.discordButton.setOnClickListener(v ->
+                com.movtery.zalithlauncher.feature.discord.DiscordLinkDialog.show(requireContext())
+        );
 
         // No always-running text marquee on the low-end home screen.
     }
@@ -157,6 +166,15 @@ public class MainMenuFragment extends FragmentWithAnim {
     public void onResume() {
         super.onResume();
         refreshCurrentVersion();
+        com.movtery.zalithlauncher.feature.discord.DiscordPresenceManager.getInstance(requireContext())
+                .addListener(discordListener);
+    }
+
+    @Override
+    public void onPause() {
+        com.movtery.zalithlauncher.feature.discord.DiscordPresenceManager.getInstance(requireContext())
+                .removeListener(discordListener);
+        super.onPause();
     }
 
     private void compactHomeAccount() {
@@ -164,8 +182,8 @@ public class MainMenuFragment extends FragmentWithAnim {
         set.clone(binding.viewAccount.getRoot());
         int avatar = R.id.user_icon, name = R.id.user_name, type = R.id.account_type;
         for (int id : new int[]{avatar, name, type}) set.clear(id);
-        int size = (int) Tools.dpToPx(40);
-        int gap = (int) Tools.dpToPx(8);
+        int size = (int) Tools.dpToPx(34);
+        int gap = (int) Tools.dpToPx(6);
         set.constrainWidth(avatar, size);
         set.constrainHeight(avatar, size);
         set.connect(avatar, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, gap);
@@ -178,13 +196,13 @@ public class MainMenuFragment extends FragmentWithAnim {
             set.connect(id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, gap);
         }
         set.connect(name, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, gap);
-        set.connect(type, ConstraintSet.TOP, name, ConstraintSet.BOTTOM, gap / 2);
+        set.connect(type, ConstraintSet.TOP, name, ConstraintSet.BOTTOM, 2);
         set.applyTo(binding.viewAccount.getRoot());
         binding.viewAccount.getRoot().setBackgroundResource(R.drawable.mc_button);
         binding.viewAccount.userName.setTextColor(Color.rgb(240, 243, 238));
         binding.viewAccount.accountType.setTextColor(Color.rgb(164, 177, 167));
-        binding.viewAccount.userName.setTextSize(16);
-        binding.viewAccount.accountType.setTextSize(12);
+        binding.viewAccount.userName.setTextSize(14);
+        binding.viewAccount.accountType.setTextSize(11);
         binding.viewAccount.userName.setSingleLine(true);
         binding.viewAccount.userName.setEllipsize(android.text.TextUtils.TruncateAt.END);
         binding.viewAccount.accountType.setSingleLine(true);

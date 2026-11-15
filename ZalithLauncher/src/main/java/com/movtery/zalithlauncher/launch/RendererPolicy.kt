@@ -113,7 +113,13 @@ object RendererPolicy {
             }
         }
 
-        if (Renderers.getCurrentRenderer().getRendererId() == LTWRenderer.ID &&
+        val hasVulkanMod = SdlSupport.hasVulkanMod(gameDir)
+        if (hasVulkanMod) {
+            Logger.appendToLog("Info: VulkanMod detected in ${gameDir.absolutePath}; enabling LWJGL 3.4.1 Vulkan runtime")
+        }
+
+        if (!hasVulkanMod &&
+            Renderers.getCurrentRenderer().getRendererId() == LTWRenderer.ID &&
             releaseDate.before(ADRENO_BUFFER_FIX) && !hasSodium) {
             return checkAdrenoRenderDistance(activity)
         }

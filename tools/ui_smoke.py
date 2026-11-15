@@ -50,9 +50,17 @@ def wait(name,seconds=90):
         time.sleep(2)
     raise AssertionError('Control did not appear: '+name)
 def wait_portrait_home():
-    # Splash forces landscape. Freeze again AFTER it has finished, otherwise its
-    # pending rotation can invalidate coordinates captured on the first home frame.
-    wait('home_button',180)
+    # Launcher defaults to landscape mode; verify the launch button and Discord link button are
+    # immediately visible in landscape without scrolling, then toggle to portrait mode.
+    root,_=wait('home_button',180)
+    assert find(root,'play_button') is not None,'Launch button missing from default landscape home'
+    assert find(root,'discord_button') is not None,'Discord button missing from default landscape home'
+    x1,y1,x2,y2=map(int,re.findall(r'\d+',find(root,'container_fragment').get('bounds')))
+    if x2-x1>=y2-y1:
+        orient_btn=find(root,'orientation_button') or find(root,'orientation_toggle_button')
+        assert orient_btn is not None,'Orientation switch button missing'
+        tap(orient_btn)
+        time.sleep(1)
     lock_rotation(adb,0)
     deadline=time.monotonic()+60
     consecutive=0
@@ -62,7 +70,7 @@ def wait_portrait_home():
         consecutive=consecutive+1 if y2-y1>x2-x1 else 0
         if consecutive>=2:return root
         time.sleep(1)
-    raise AssertionError('Launcher did not settle in portrait after Splash')
+    raise AssertionError('Launcher did not settle in portrait after toggling orientation')
 
 def scroll_to(name, scroll_id, attempts=8):
     for attempt in range(attempts):
@@ -110,6 +118,10 @@ try:
         time.sleep(0.5)
     # Recreate while settings are open; the selected tab and child fragments must survive.
     adb('shell','settings','put','system','font_scale','1.3')
+    orient_btn=find(root,'orientation_button')
+    if orient_btn is not None:
+        tap(orient_btn)
+        time.sleep(1)
     lock_rotation(adb,1)
     deadline=time.monotonic()+45
     while True:

@@ -45,6 +45,17 @@ object GraphicsBackend {
         return if (requested == VULKAN && !isVulkanHardwareSupported()) OPENGL else requested
     }
 
+    @JvmStatic
+    @JvmOverloads
+    fun resolveBackendForLaunch(
+        gameDir: File? = null,
+        selectedBackend: String? = AllSettings.graphicsApi.getValue()
+    ): String {
+        if (!isVulkanHardwareSupported()) return OPENGL
+        if (SdlSupport.hasVulkanMod(gameDir)) return VULKAN
+        return resolveBackend(selectedBackend)
+    }
+
     /** The game arguments to add for a version ([versionInfo]) that runs in [gameDir]. */
     @JvmStatic
     @JvmOverloads
@@ -53,7 +64,7 @@ object GraphicsBackend {
         gameDir: File,
         selectedBackend: String? = AllSettings.graphicsApi.getValue()
     ): List<String> {
-        val backend = resolveBackend(selectedBackend)
+        val backend = resolveBackendForLaunch(gameDir, selectedBackend)
         writeOption(File(gameDir, "options.txt"), backend)
         // The Vulkan renderer comes with LWJGL's Vulkan bindings
         val hasVulkanRenderer = versionInfo?.libraries?.any { it?.name?.startsWith("org.lwjgl:lwjgl-vulkan:") == true } == true

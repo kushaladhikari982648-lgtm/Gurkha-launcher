@@ -27,6 +27,7 @@ void gl_make_current(gl_render_window_t* bundle);
 void gl_swap_buffers();
 void gl_setup_window();
 void gl_swap_interval(int swapInterval);
+void gl_release_window_surface_for_vulkan(void);
 
 
 #endif //POJAVLAUNCHER_GL_BRIDGE_H

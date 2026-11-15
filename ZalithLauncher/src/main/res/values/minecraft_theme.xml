@@ -28,6 +28,7 @@
   <string name="mc_low_end_on">Low-end mode: on</string>
   <string name="mc_low_end_off">Low-end mode: off</string>
   <string name="mc_tools">Tools</string>
+  <string name="mc_discord">Discord</string>
   <string name="mc_java_edition">JAVA EDITION</string>
   <style name="MinecraftGlobalButton" parent="Widget.AppCompat.Button">
     <item name="android:background">@drawable/button_background</item>
@@ -53,15 +54,18 @@
 
   <style name="ModernNav" parent="MinecraftNav">
     <item name="android:gravity">start|center_vertical</item>
-    <item name="android:paddingHorizontal">12dp</item>
-    <item name="android:drawablePadding">10dp</item>
-    <item name="android:textSize">13sp</item>
+    <item name="android:minHeight">32dp</item>
+    <item name="android:paddingHorizontal">8dp</item>
+    <item name="android:paddingVertical">3dp</item>
+    <item name="android:drawablePadding">6dp</item>
+    <item name="android:textSize">11sp</item>
     <item name="android:stateListAnimator">@null</item>
   </style>
   <style name="ModernBottomNav" parent="MinecraftNav">
-    <item name="android:textSize">11sp</item>
-    <item name="android:padding">4dp</item>
-    <item name="android:drawablePadding">4dp</item>
+    <item name="android:minHeight">38dp</item>
+    <item name="android:textSize">10sp</item>
+    <item name="android:padding">3dp</item>
+    <item name="android:drawablePadding">2dp</item>
     <item name="android:stateListAnimator">@null</item>
   </style>
   <style name="ModernPrimary" parent="MinecraftNav">

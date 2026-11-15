@@ -111,7 +111,7 @@ import java.util.Random;
 import java.util.concurrent.Future;
 
 public class LauncherActivity extends BaseActivity {
-    private static int sUserRequestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+    private static int sUserRequestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
     private final AnimPlayer noticeAnimPlayer = new AnimPlayer();
     public final ActivityResultLauncher<Object> modInstallerLauncher =
             registerForActivityResult(new OpenDocumentWithExtension("jar"), (uris) -> {
@@ -511,6 +511,7 @@ public class LauncherActivity extends BaseActivity {
         setPageOpacity(AllSettings.getPageOpacity().getValue());
         VersionsManager.INSTANCE.refresh("LauncherActivity:onResume", false);
         if (videoWallpaper != null) videoWallpaper.resume();
+        com.movtery.zalithlauncher.feature.discord.DiscordPresenceManager.getInstance(this).onLauncherResumed();
     }
 
     @Override

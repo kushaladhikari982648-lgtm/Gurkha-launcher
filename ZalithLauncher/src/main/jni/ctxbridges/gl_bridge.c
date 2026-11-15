@@ -214,6 +214,32 @@ void gl_terminate(void) {
     eglReleaseThread_p();
 }
 
+void gl_release_window_surface_for_vulkan(void) {
+    if (!initialized) return;
+    gl_render_window_t *bundles[2] = {
+        currentBundle,
+        (gl_render_window_t*)pojav_environ->mainWindowBundle
+    };
+    if (currentBundle != NULL) {
+        eglMakeCurrent_p(g_EglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        currentBundle = NULL;
+    }
+    for (int i = 0; i < 2; i++) {
+        gl_render_window_t *b = bundles[i];
+        if (!b) continue;
+        if (i == 1 && b == bundles[0]) continue;
+        if (b->surface != EGL_NO_SURFACE) {
+            eglDestroySurface_p(g_EglDisplay, b->surface);
+            b->surface = EGL_NO_SURFACE;
+        }
+        if (b->nativeSurface) {
+            ANativeWindow_release(b->nativeSurface);
+            b->nativeSurface = NULL;
+        }
+        b->has_window_generation = false;
+    }
+}
+
 #ifndef GURKHA_BRIDGE_TEST
 JNIEXPORT void JNICALL
 Java_org_lwjgl_opengl_PojavRendererInit_nativeInitGl4esInternals(JNIEnv *env, jclass clazz,

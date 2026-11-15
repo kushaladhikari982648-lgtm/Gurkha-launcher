@@ -88,7 +88,31 @@ class ModernUiTests(unittest.TestCase):
         self.assertIn('orientation_button', activity_ids)
         launcher_java = (SRC / 'net/kdt/pojavlaunch/LauncherActivity.java').read_text()
         self.assertIn('public void toggleLauncherOrientation()', launcher_java)
+        self.assertIn('sUserRequestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;', launcher_java)
+        self.assertIn('DiscordPresenceManager.getInstance(this).onLauncherResumed();', launcher_java)
         for drawable in ('background_card', 'mc_button_normal', 'mc_header', 'modern_primary_fill'):
             xml = ET.parse(RES / f'drawable/{drawable}.xml').getroot()
             self.assertIsNotNone(xml.find('gradient'))
+
+    def test_compact_left_sidebar_no_scroll_launch_and_discord_link(self):
+        landscape_root = ET.parse(RES / 'layout/fragment_launcher.xml').getroot()
+        launcher_menu = next(e for e in landscape_root.iter() if e.get(A + 'id') == '@+id/launcher_menu')
+        nav_buttons = [e for e in launcher_menu.findall('Button')]
+        self.assertEqual(6, len(nav_buttons))
+        for btn in nav_buttons:
+            self.assertEqual('31dp', btn.get(A + 'layout_height'))
+            self.assertEqual('31dp', btn.get(A + 'minHeight'))
+        for directory in ('layout', 'layout-port'):
+            root = ET.parse(RES / directory / 'fragment_launcher.xml').getroot()
+            ids = [e.get(A + 'id', '').split('/')[-1] for e in root.iter() if A + 'id' in e.attrib]
+            self.assertIn('discord_button', ids)
+            self.assertIn('play_button', ids)
+        discord_mgr = (SRC / 'com/movtery/zalithlauncher/feature/discord/DiscordPresenceManager.java').read_text()
+        self.assertIn('wss://gateway.discord.gg/?v=10&encoding=json', discord_mgr)
+        self.assertIn('InfoDistributor.APP_NAME', discord_mgr)
+        discord_dlg = (SRC / 'com/movtery/zalithlauncher/feature/discord/DiscordLinkDialog.java').read_text()
+        self.assertIn('https://discord.com/login', discord_dlg)
+        main_menu_java = (SRC / 'net/kdt/pojavlaunch/fragments/MainMenuFragment.java').read_text()
+        self.assertIn('DiscordLinkDialog.show(requireContext())', main_menu_java)
+
 

@@ -53,6 +53,52 @@ object SdlSupport {
         return major > 3 || (major == 3 && minor >= 4)
     }
 
+    /**
+     * Detects whether VulkanMod (`net.vulkanmod`) is installed in the profile's `mods` directory
+     * (or the default game home `mods` directory), so any Minecraft version (1.16.5 through 1.21.11 and 26.x)
+     * automatically receives the LWJGL 3.4.1 Vulkan/VMA/Shaderc/SPVC jars and Android native libraries.
+     */
+    @JvmStatic
+    fun hasVulkanMod(gameDir: File?): Boolean {
+        val candidateDirs = linkedSetOf<File>()
+        if (gameDir != null) {
+            candidateDirs.add(File(gameDir, "mods"))
+        }
+        val defaultGameHome = runCatching {
+            com.movtery.zalithlauncher.feature.customprofilepath.ProfilePathHome.getGameHome()
+        }.getOrNull()
+        if (!defaultGameHome.isNullOrEmpty()) {
+            candidateDirs.add(File(defaultGameHome, "mods"))
+        }
+        for (modsDir in candidateDirs) {
+            val jarFiles = modsDir.listFiles { f -> f.isFile && f.name.endsWith(".jar", ignoreCase = true) } ?: continue
+            for (jar in jarFiles) {
+                val lowerName = jar.name.lowercase()
+                if (lowerName.contains("vulkanmod")) {
+                    return true
+                }
+                val containsVulkanModEntry = runCatching {
+                    java.util.zip.ZipFile(jar).use { zip ->
+                        zip.getEntry("net/vulkanmod/Initializer.class") != null ||
+                            zip.getEntry("net/vulkanmod/vulkan/Vulkan.class") != null ||
+                            zip.getEntry("vulkanmod.mixins.json") != null
+                    }
+                }.getOrDefault(false)
+                if (containsVulkanModEntry) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    @JvmStatic
+    fun usesLwjgl341WithGlfw(versionInfo: JMinecraftVersionList.Version?, gameDir: File?): Boolean {
+        if (usesSdl(versionInfo)) return false
+        if (usesLwjgl341WithGlfw(versionInfo)) return true
+        return hasVulkanMod(gameDir)
+    }
+
     @JvmStatic
     fun validateRequestedVersion(version: JMinecraftVersionList.Version) {
         val requested = version.libraries?.firstOrNull { it?.name?.startsWith("org.lwjgl:lwjgl:") == true }
@@ -136,7 +182,8 @@ object SdlSupport {
      */
     @JvmStatic
     fun getGlfwClassPath(): String {
-        val stub = File(File(PathManager.DIR_GAME_HOME, "lwjgl3"), GLFW_STUB_JAR)
+        val lwjgl3Dir = File(PathManager.DIR_GAME_HOME, "lwjgl3")
+        val stub = File(lwjgl3Dir, GLFW_STUB_JAR)
         check(stub.isFile) { "${stub.name} is missing, restart the launcher to unpack the LWJGL components again" }
         val jars = getComponentDir().listFiles { file ->
             file.name.endsWith(".jar") && file.name != "lwjgl.jar" && file.name != PATCHES_JAR && file.name != "lwjgl-sdl.jar"
@@ -144,7 +191,13 @@ object SdlSupport {
         check(jars.any { it.name == ANDROID_CORE_JAR }) {
             "The $COMPONENT component is incomplete, restart the launcher to unpack it again"
         }
-        return (listOf(stub) + jars).joinToString(":") { it.absolutePath }
+        val legacyFallback = File(lwjgl3Dir, "lwjgl-glfw-classes.jar")
+        val entries = if (legacyFallback.isFile) {
+            listOf(stub) + jars + listOf(legacyFallback)
+        } else {
+            listOf(stub) + jars
+        }
+        return entries.joinToString(":") { it.absolutePath }
     }
 
     /** JVM arguments pointing LWJGL 3.4.1 at its own natives. */
@@ -157,6 +210,8 @@ object SdlSupport {
             "-Dorg.lwjgl.system.SharedLibraryExtractPath=$natives/extracted",
             "-Dorg.lwjgl.freetype.libname=$natives/libfreetype.so",
             "-Dorg.lwjgl.openal.libname=$nativeLibDir/libopenal.so",
+            "-Dorg.lwjgl.vulkan.libname=libvulkan.so",
+            "-Dorg.lwjgl.vma.libname=$natives/liblwjgl_vma.so",
             "-Dorg.lwjgl.shaderc.libname=$natives/libshaderc.so",
             "-Dorg.lwjgl.spvc.libname=$nativeLibDir/libspirv-cross-c-shared.so",
             "-Dorg.lwjgl.sdl.libname=$nativeLibDir/libSDL3.so",
@@ -171,11 +226,14 @@ object SdlSupport {
      * GL4ES, Krypton), the EGL front that translates desktop OpenGL context requests to OpenGL ES (see ltw_sdl_egl.c).
      */
     @JvmStatic
-    fun getRendererEnv(renderer: RendererInterface, nativeLibDir: String): Map<String, String> {
+    @JvmOverloads
+    fun getRendererEnv(renderer: RendererInterface, nativeLibDir: String, gameDir: File? = null): Map<String, String> {
         val rendererLib = "$nativeLibDir/${renderer.getRendererLibrary()}"
         val env = mutableMapOf(
             "SDL_OPENGL_LIBRARY" to rendererLib,
-            "POJAV_GRAPHICS_BACKEND" to GraphicsBackend.resolveBackend(),
+            "POJAV_GRAPHICS_BACKEND" to GraphicsBackend.resolveBackendForLaunch(gameDir),
+            "POJAV_LWJGL_NATIVES_DIR" to getNativesDir().absolutePath,
+            "VK_LAYER_PATH" to nativeLibDir,
             "POJAV_SDL_REUSE_WINDOW" to "1",
             "SDL_OPENGL_FORCE_SRGB_FRAMEBUFFER" to "0",
             "SDL_ORIENTATIONS" to "LandscapeLeft LandscapeRight",

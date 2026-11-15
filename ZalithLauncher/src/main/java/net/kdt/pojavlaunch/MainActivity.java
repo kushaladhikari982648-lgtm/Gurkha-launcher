@@ -258,14 +258,16 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             DriverPluginManager.setDriverByName(minecraftVersion.getDriver());
 
             setTitle("Minecraft " + minecraftVersion.getVersionName());
+            com.movtery.zalithlauncher.feature.discord.DiscordPresenceManager.getInstance(this)
+                    .onGameLaunched(minecraftVersion.getVersionName(), Renderers.INSTANCE.getCurrentRenderer().getRendererName());
 
             // Minecraft 1.13+
             JMinecraftVersionList.Version mVersionInfo = Tools.getVersionInfo(minecraftVersion);
             isInputStackCall = mVersionInfo.arguments != null;
             // Minecraft 26.3+ uses SDL3 instead of GLFW: the surface must host SDL (see SdlSupport)
             MinecraftGLSurface.sdlVersion = SdlSupport.usesSdl(mVersionInfo);
-            // Minecraft 26.2 still uses GLFW but needs LWJGL 3.4.1 (see SdlSupport.usesLwjgl341WithGlfw)
-            SdlSupport.lwjgl341Glfw = SdlSupport.usesLwjgl341WithGlfw(mVersionInfo);
+            // Minecraft 26.2 (and any version with VulkanMod installed) uses GLFW with LWJGL 3.4.1
+            SdlSupport.lwjgl341Glfw = SdlSupport.usesLwjgl341WithGlfw(mVersionInfo, minecraftVersion.getGameDir());
             MinecraftGLSurface.sdlEnabled = false;
             CallbackBridge.nativeSetUseInputStackQueue(isInputStackCall);
 

@@ -207,6 +207,13 @@ public final class JREUtils {
         if (runtimeModDir != null) {
             ldLibraryPath.append(runtimeModDir.getAbsolutePath()).append(":");
         }
+        try {
+            File lwjgl341Natives = SdlSupport.getNativesDir();
+            if (lwjgl341Natives.isDirectory()) {
+                ldLibraryPath.append(lwjgl341Natives.getAbsolutePath()).append(":");
+            }
+        } catch (Throwable ignored) {
+        }
         ldLibraryPath.append(DIR_NATIVE_LIB);
         LD_LIBRARY_PATH = ldLibraryPath.toString();
     }
@@ -221,6 +228,11 @@ public final class JREUtils {
 
     private static void setJavaEnv(Map<String, String> envMap, String jreHome) {
         envMap.put("POJAV_NATIVEDIR", DIR_NATIVE_LIB);
+        envMap.put("VK_LAYER_PATH", DIR_NATIVE_LIB);
+        try {
+            envMap.put("POJAV_LWJGL_NATIVES_DIR", SdlSupport.getNativesDir().getAbsolutePath());
+        } catch (Throwable ignored) {
+        }
         envMap.put("DRIVER_PATH", DriverPluginManager.getDriver().getPath());
         envMap.put("JAVA_HOME", jreHome);
         envMap.put("HOME", PathManager.DIR_GAME_HOME);
@@ -352,6 +364,12 @@ public final class JREUtils {
             if (Renderers.INSTANCE.isCurrentRendererValid()) {
                 setRendererEnv(envMap);
             }
+            if (SdlSupport.hasVulkanMod(gameVersion.getGameDir())) {
+                envMap.put("POJAV_VULKAN_MOD", "1");
+                if (MinecraftGLSurface.sdlVersion) {
+                    envMap.put("POJAV_GRAPHICS_BACKEND", com.movtery.zalithlauncher.launch.GraphicsBackend.resolveBackendForLaunch(gameVersion.getGameDir()));
+                }
+            }
 
             envMap.put("ZALITH_VERSION_CODE", String.valueOf(ZHTools.getVersionCode()));
         }
@@ -424,7 +442,15 @@ public final class JREUtils {
         // that we ship with Java (since it may be older than what's needed)
         lockedNativeProperties.put("org.lwjgl.freetype.libname", DIR_NATIVE_LIB + "/libfreetype.so");
         lockedNativeProperties.put("org.lwjgl.openal.libname", DIR_NATIVE_LIB + "/libopenal.so");
-        // Minecraft 26.3+ (SDL3) and the GLFW versions on LWJGL 3.4.1 (26.2): LWJGL 3.4.1 uses its own natives
+        lockedNativeProperties.put("org.lwjgl.vulkan.libname", "libvulkan.so");
+        lockedNativeProperties.put("org.lwjgl.spvc.libname", DIR_NATIVE_LIB + "/libspirv-cross-c-shared.so");
+        try {
+            String lwjgl341NativesPath = SdlSupport.getNativesDir().getAbsolutePath();
+            lockedNativeProperties.put("org.lwjgl.vma.libname", lwjgl341NativesPath + "/liblwjgl_vma.so");
+            lockedNativeProperties.put("org.lwjgl.shaderc.libname", lwjgl341NativesPath + "/libshaderc.so");
+        } catch (Throwable ignored) {
+        }
+        // Minecraft 26.3+ (SDL3) and the GLFW versions on LWJGL 3.4.1 (26.2 / VulkanMod): LWJGL 3.4.1 uses its own natives
         // (overrides the freetype path above)
         if (gameVersion != null && (MinecraftGLSurface.sdlVersion || SdlSupport.lwjgl341Glfw)) {
             for (String argument : SdlSupport.getJvmArgs(DIR_NATIVE_LIB)) {

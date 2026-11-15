@@ -210,6 +210,23 @@ class NativeLaunchHardeningTests(unittest.TestCase):
 
         egl_bridge = (JNI/'egl_bridge.c').read_text()
         self.assertIn('ensureGlfwRuntimeBridgeInitialized(pojav_environ->runtimeJNIEnvPtr_JRE)', egl_bridge)
+        self.assertIn('pojavInitVulkanLoader', egl_bridge)
+        self.assertIn('pojavCreateWindowSurface', egl_bridge)
+        self.assertIn('gl_release_window_surface_for_vulkan();', egl_bridge)
+
+        gl_bridge = (JNI/'ctxbridges/gl_bridge.c').read_text()
+        self.assertIn('void gl_release_window_surface_for_vulkan(void)', gl_bridge)
+
+        self.assertIn('fun hasVulkanMod(gameDir: File?): Boolean', sdl_support)
+        self.assertIn('fun usesLwjgl341WithGlfw(versionInfo: JMinecraftVersionList.Version?, gameDir: File?): Boolean', sdl_support)
+        self.assertIn('fun resolveBackendForLaunch(', graphics_backend)
+        self.assertIn('SdlSupport.usesLwjgl341WithGlfw(mVersionInfo, minecraftVersion.getGameDir())', main_activity)
+        self.assertIn('dlopen_with_lwjgl_natives_fallback("libshaderc.so"', lwjgl_hook)
+        self.assertIn('dlopen_with_lwjgl_natives_fallback("liblwjgl_vma.so"', lwjgl_hook)
+        for module in ('jre_lwjgl3glfw', 'jre_lwjgl3sdl'):
+            dll_java = (ROOT/module/'src/main/java/org/lwjgl/system/linux/DynamicLinkLoader.java').read_text()
+            self.assertIn('Library.initialize();', dll_java)
+            self.assertIn('System.loadLibrary("pojavexec");', dll_java)
 
         glfw_java = (ROOT/'jre_lwjgl3glfw/src/main/java/org/lwjgl/glfw/GLFW.java').read_text()
         self.assertIn('Library.initialize();', glfw_java)

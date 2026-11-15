@@ -29,6 +29,18 @@ static SdlDlsymProxyFn resolveSdlDlsymProxy(void) {
     return cached;
 }
 
+static void* dlopen_with_lwjgl_natives_fallback(const char* lib_name, int mode) {
+    if (!lib_name || !lib_name[0]) return NULL;
+    const char* natives_dir = getenv("POJAV_LWJGL_NATIVES_DIR");
+    if (natives_dir && natives_dir[0]) {
+        char candidate[512];
+        snprintf(candidate, sizeof(candidate), "%s/%s", natives_dir, lib_name);
+        void* handle = dlopen(candidate, mode);
+        if (handle != NULL) return handle;
+    }
+    return dlopen(lib_name, mode);
+}
+
 /**
  * Basically a verbatim implementation of ndlopen(), found at
  * https://github.com/PojavLauncherTeam/lwjgl3/blob/3.3.1/modules/lwjgl/core/src/generated/c/linux/org_lwjgl_system_linux_DynamicLinkLoader.c#L11
@@ -39,35 +51,68 @@ static jlong ndlopen_bugfix(__attribute__((unused)) JNIEnv *env,
                             jlong filename_ptr,
                             jint jmode) {
     const char* filename = (const char*) (uintptr_t) filename_ptr;
-
-    // Oveeride vulkan loading to let us load vulkan ourselves
-    if(filename && strcmp(filename, "libvulkan.so") == 0) {
-        printf("LWJGL linkerhook: replacing load for libvulkan.so with custom driver\n");
-        return (jlong) (uintptr_t) maybe_load_vulkan();
-    }
+    int mode = (int)jmode;
 
     if (filename != NULL) {
-        size_t len = strlen(filename);
-        if (strcmp(filename, "libglfw.so") == 0 ||
-            (len >= 11 && strcmp(filename + len - 11, "/libglfw.so") == 0)) {
-            void* handle = dlopen("libpojavexec.so", (int) jmode | RTLD_NOLOAD);
+        const char* slash = strrchr(filename, '/');
+        const char* base = slash ? (slash + 1) : filename;
+
+        // Override vulkan loading to let us load vulkan ourselves (libvulkan.so or libvulkan.so.1)
+        if (strstr(base, "libvulkan.so") == base) {
+            printf("LWJGL linkerhook: replacing load for %s with custom driver\n", filename);
+            void* vk = maybe_load_vulkan();
+            if (vk != NULL) {
+                return (jlong) (uintptr_t) vk;
+            }
+        }
+
+        if (strcmp(filename, "libglfw.so") == 0 || strstr(base, "libglfw.so") == base) {
+            void* handle = dlopen("libpojavexec.so", mode | RTLD_NOLOAD);
             if (handle == NULL) {
-                handle = dlopen("libpojavexec.so", (int) jmode);
+                handle = dlopen("libpojavexec.so", mode);
             }
             if (handle != NULL) {
                 return (jlong) (uintptr_t) handle;
             }
         }
+
+        // Redirect desktop/mod-bundled shaderc, vma, and spirv-cross libraries to Android native builds
+        if (strstr(base, "libshaderc") == base || strstr(base, "liblwjgl_shaderc") == base) {
+            void* handle = dlopen_with_lwjgl_natives_fallback("libshaderc.so", mode);
+            if (handle != NULL) {
+                printf("LWJGL linkerhook: redirected %s -> libshaderc.so\n", filename);
+                return (jlong) (uintptr_t) handle;
+            }
+        }
+        if (strstr(base, "liblwjgl_vma") == base) {
+            void* handle = dlopen_with_lwjgl_natives_fallback("liblwjgl_vma.so", mode);
+            if (handle != NULL) {
+                printf("LWJGL linkerhook: redirected %s -> liblwjgl_vma.so\n", filename);
+                return (jlong) (uintptr_t) handle;
+            }
+        }
+        if (strstr(base, "libspirv-cross") == base || strstr(base, "liblwjgl_spvc") == base) {
+            void* handle = dlopen_with_lwjgl_natives_fallback("libspirv-cross-c-shared.so", mode);
+            if (handle != NULL) {
+                printf("LWJGL linkerhook: redirected %s -> libspirv-cross-c-shared.so\n", filename);
+                return (jlong) (uintptr_t) handle;
+            }
+        }
+
+        void* direct = dlopen(filename, mode);
+        if (direct != NULL) {
+            return (jlong) (uintptr_t) direct;
+        }
+        if (slash != NULL && base[0] != '\0') {
+            void* fallback = dlopen_with_lwjgl_natives_fallback(base, mode);
+            if (fallback != NULL) {
+                printf("LWJGL linkerhook: fallback loaded %s via %s\n", filename, base);
+                return (jlong) (uintptr_t) fallback;
+            }
+        }
+        return 0;
     }
 
-    // This hook also serves the task of mitigating a bug: the idea is that since, on Android 10 and
-    // earlier, the linker doesn't really do namespace nesting.
-    // It is not a problem as most of the libraries are in the launcher path, but when you try to run
-    // VulkanMod which loads shaderc outside of the default jni libs directory through this method,
-    // it can't load it because the path is not in the allowed paths for the anonymous namesapce.
-    // This method fixes the issue by being in libpojavexec, and thus being in the classloader namespace
-
-    int mode = (int)jmode;
     return (jlong) (uintptr_t) dlopen(filename, mode);
 }
 
