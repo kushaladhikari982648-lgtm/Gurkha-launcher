@@ -43,11 +43,11 @@
       </LinearLayout>
     </LinearLayout>
   </ScrollView>
-  <LinearLayout android:id="@+id/launcher_menu" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:background="@drawable/mc_panel" android:padding="4dp" android:layout_marginTop="4dp">
-    <Button android:id="@+id/home_button" style="@style/ModernBottomNav" android:layout_width="0dp" android:layout_height="38dp" android:layout_weight="1" android:drawableTop="@drawable/modern_home" android:text="@string/mc_home" />
-    <Button android:id="@+id/versions_button" style="@style/ModernBottomNav" android:layout_width="0dp" android:layout_height="38dp" android:layout_weight="1" android:drawableTop="@drawable/modern_versions" android:text="@string/mc_versions" />
-    <Button android:id="@+id/mods_button" style="@style/ModernBottomNav" android:layout_width="0dp" android:layout_height="38dp" android:layout_weight="1" android:drawableTop="@drawable/modern_mods" android:text="@string/mc_mods" />
-    <Button android:id="@+id/settings_button" style="@style/ModernBottomNav" android:layout_width="0dp" android:layout_height="38dp" android:layout_weight="1" android:drawableTop="@drawable/modern_settings" android:text="@string/mc_settings" />
-    <Button android:id="@+id/tools_button" style="@style/ModernBottomNav" android:layout_width="0dp" android:layout_height="38dp" android:layout_weight="1" android:drawableTop="@drawable/modern_tools" android:text="@string/mc_tools" />
+  <LinearLayout android:id="@+id/launcher_menu" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:background="@drawable/mc_panel" android:padding="6dp" android:layout_marginTop="6dp" android:layout_marginBottom="42dp">
+    <Button android:id="@+id/home_button" style="@style/ModernBottomNav" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:drawableTop="@drawable/modern_home" android:text="@string/mc_home" />
+    <Button android:id="@+id/versions_button" style="@style/ModernBottomNav" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:drawableTop="@drawable/modern_versions" android:text="@string/mc_versions" />
+    <Button android:id="@+id/mods_button" style="@style/ModernBottomNav" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:drawableTop="@drawable/modern_mods" android:text="@string/mc_mods" />
+    <Button android:id="@+id/settings_button" style="@style/ModernBottomNav" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:drawableTop="@drawable/modern_settings" android:text="@string/mc_settings" />
+    <Button android:id="@+id/tools_button" style="@style/ModernBottomNav" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:drawableTop="@drawable/modern_tools" android:text="@string/mc_tools" />
   </LinearLayout>
 </LinearLayout>

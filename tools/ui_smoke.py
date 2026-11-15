@@ -44,7 +44,9 @@ def wait(name,seconds=90):
         dismiss=find(root,'notice_got_button')
         if dismiss is not None: tap(dismiss); continue
         node=find(root,name)
-        if node is not None:return root,node
+        if node is not None:
+            bx1,by1,bx2,by2=map(int,re.findall(r'\d+',node.get('bounds','0,0,0,0')))
+            if bx2>bx1 and by2>by1:return root,node
         start=find(root,'start_button')
         if start is not None and start.get('clickable')=='true':tap(start)
         time.sleep(2)
