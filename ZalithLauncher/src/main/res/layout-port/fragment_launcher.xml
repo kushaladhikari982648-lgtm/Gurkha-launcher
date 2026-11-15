@@ -6,7 +6,7 @@
         <TextView style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mc_adventure" android:textSize="18sp" android:fontFamily="sans-serif-medium" />
         <TextView style="@style/MinecraftLabel" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/mc_tagline" android:textSize="11sp" android:textColor="#B8D4C9" android:paddingTop="2dp" android:paddingBottom="6dp" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-          <Button android:id="@+id/discord_button" style="@style/ModernNav" android:layout_width="0dp" android:layout_height="34dp" android:minHeight="34dp" android:layout_weight="1" android:layout_marginEnd="6dp" android:drawableStart="@drawable/ic_chat" android:text="@string/mc_discord" />
+          <Button android:id="@+id/discord_button" style="@style/ModernNav" android:layout_width="0dp" android:layout_height="34dp" android:minHeight="34dp" android:layout_weight="1" android:layout_marginEnd="6dp" android:drawableStart="@drawable/modern_discord" android:text="@string/mc_discord" />
           <Button android:id="@+id/orientation_toggle_button" style="@style/ModernNav" android:layout_width="0dp" android:layout_height="34dp" android:minHeight="34dp" android:layout_weight="1" android:drawableStart="@drawable/modern_rotate" android:text="@string/modern_switch_landscape" />
         </LinearLayout>
       </LinearLayout>
