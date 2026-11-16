@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/discord_dialog_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/mc_panel"
+    android:fillViewport="true"
+    android:padding="12dp"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/background_card"
+            android:gravity="center_vertical"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/modern_discord" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="8dp">
+
+                    <TextView
+                        android:id="@+id/discord_dialog_title"
+                        style="@style/MinecraftLabel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:singleLine="true"
+                        android:text="Discord • Gurkha Launcher"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:id="@+id/discord_app_id_subtitle"
+                        style="@style/MinecraftLabel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:singleLine="true"
+                        android:text="App ID: 1571705435713437726 • Rich Presence"
+                        android:textColor="#B8D4C9"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <Switch
+                    android:id="@+id/discord_enable_switch"
+                    style="@style/MinecraftSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/discord_status_badge"
+                style="@style/MinecraftLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/modern_stat"
+                android:padding="8dp"
+                android:text="Connect with your Discord ID or Login so others see Playing Gurkha Launcher"
+                android:textColor="#B8D4C9"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/background_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <TextView
+                style="@style/MinecraftLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="DISCORD LOGIN &amp; ID (NO TOKEN NEEDED)"
+                android:textColor="@color/settings_category"
+                android:textSize="11sp" />
+
+            <EditText
+                android:id="@+id/discord_id_input"
+                style="@style/MinecraftLabel"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:layout_marginBottom="8dp"
+                android:background="@drawable/modern_stat"
+                android:hint="Enter your Discord ID or Username"
+                android:imeOptions="actionDone"
+                android:importantForAutofill="no"
+                android:inputType="textNoSuggestions"
+                android:paddingHorizontal="10dp"
+                android:singleLine="true"
+                android:textColor="@color/primary_text"
+                android:textColorHint="#80B8D4C9"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/discord_web_login_button"
+                style="@style/ModernNav"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:layout_marginBottom="8dp"
+                android:drawableStart="@drawable/modern_discord"
+                android:gravity="center"
+                android:minHeight="38dp"
+                android:text="Sign in with Discord Account (Auto-Connect)"
+                android:textSize="12sp" />
+
+            <TextView
+                style="@style/MinecraftLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="ONLINE PRESENCE STATUS"
+                android:textColor="@color/settings_category"
+                android:textSize="10sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/status_online_btn"
+                    style="@style/ModernNav"
+                    android:layout_width="0dp"
+                    android:layout_height="34dp"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:minHeight="34dp"
+                    android:text="Online"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/status_idle_btn"
+                    style="@style/ModernNav"
+                    android:layout_width="0dp"
+                    android:layout_height="34dp"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:minHeight="34dp"
+                    android:text="Idle"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/status_dnd_btn"
+                    style="@style/ModernNav"
+                    android:layout_width="0dp"
+                    android:layout_height="34dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:minHeight="34dp"
+                    android:text="Do Not Disturb"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <EditText
+                android:id="@+id/discord_custom_state_input"
+                style="@style/MinecraftLabel"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:layout_marginBottom="6dp"
+                android:background="@drawable/modern_stat"
+                android:hint="Custom activity note (optional, e.g. Playing 1.21.11 / 26.3)"
+                android:imeOptions="actionNext"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:paddingHorizontal="10dp"
+                android:singleLine="true"
+                android:textColor="@color/primary_text"
+                android:textColorHint="#80B8D4C9"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/discord_webhook_input"
+                style="@style/MinecraftLabel"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:background="@drawable/modern_stat"
+                android:hint="Optional Discord Server Webhook URL"
+                android:imeOptions="actionDone"
+                android:importantForAutofill="no"
+                android:inputType="textUri"
+                android:paddingHorizontal="10dp"
+                android:singleLine="true"
+                android:textColor="@color/primary_text"
+                android:textColorHint="#80B8D4C9"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/background_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <TextView
+                style="@style/MinecraftLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="2dp"
+                android:text="OFFICIAL COMMUNITY • HELP, BUGS &amp; FEATURES"
+                android:textColor="@color/settings_category"
+                android:textSize="10sp" />
+
+            <TextView
+                style="@style/MinecraftLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="6dp"
+                android:text="Need help, found bugs, or want us to add a feature? Join our Discord server:"
+                android:textColor="#B8D4C9"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/discord_join_server_button"
+                style="@style/ModernNav"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:drawableStart="@drawable/modern_discord"
+                android:gravity="center_vertical|start"
+                android:minHeight="36dp"
+                android:text="Join Gurkha Launcher Discord (discord.gg/7FaUJf4R9)"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/discord_unlink_button"
+                style="@style/MinecraftNav"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginEnd="6dp"
+                android:minHeight="40dp"
+                android:paddingHorizontal="12dp"
+                android:text="Unlink"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/discord_cancel_button"
+                style="@style/MinecraftNav"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginEnd="8dp"
+                android:minHeight="40dp"
+                android:paddingHorizontal="12dp"
+                android:text="@string/generic_cancel"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/discord_save_button"
+                style="@style/ModernPrimary"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:minHeight="40dp"
+                android:text="Connect Discord"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

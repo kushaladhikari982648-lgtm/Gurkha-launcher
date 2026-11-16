@@ -1,6 +1,7 @@
 package com.movtery.zalithlauncher.feature.discord;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
@@ -12,6 +13,7 @@ import com.movtery.zalithlauncher.InfoDistributor;
 import com.movtery.zalithlauncher.feature.accounts.AccountsManager;
 import com.movtery.zalithlauncher.feature.log.Logging;
 import com.movtery.zalithlauncher.utils.ZHTools;
+import com.movtery.zalithlauncher.utils.path.UrlManager;
 
 import net.kdt.pojavlaunch.value.MinecraftAccount;
 
@@ -37,20 +39,28 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
 /**
- * Manages Discord account linking and Rich Presence ("Playing Gurkha Launcher") over the Discord Gateway
- * WebSocket (v10) as well as optional Discord Webhook status broadcasts.
+ * Manages Discord account linking and Rich Presence ("Playing Gurkha Launcher",
+ * Application ID 1571705435713437726) via Discord ID / Account Sign-In,
+ * Android Discord RPC broadcasts, Gateway v10 WebSocket, Headless Sessions API,
+ * and optional Discord Webhook status broadcasts.
  */
 public final class DiscordPresenceManager {
     private static final String TAG = "DiscordPresence";
+    public static final String DISCORD_APPLICATION_ID = "1571705435713437726";
+
     private static final String PREFS_NAME = "gurkha_discord_presence";
     private static final String KEY_ENABLED = "enabled";
+    private static final String KEY_USER_ID = "linked_user_id";
+    private static final String KEY_USERNAME = "linked_username";
     private static final String KEY_TOKEN = "discord_token";
+    private static final String KEY_HEADLESS_TOKEN = "headless_session_token";
     private static final String KEY_WEBHOOK_URL = "webhook_url";
     private static final String KEY_ONLINE_STATUS = "online_status";
     private static final String KEY_CUSTOM_STATE = "custom_state";
-    private static final String KEY_USERNAME = "linked_username";
 
     private static final String GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json";
+    private static final String HEADLESS_SESSIONS_URL = "https://discord.com/api/v10/users/@me/headless-sessions";
+    private static final String USER_ME_URL = "https://discord.com/api/v10/users/@me";
     private static final MediaType JSON_MEDIA = MediaType.parse("application/json; charset=utf-8");
 
     public interface StatusListener {
@@ -83,7 +93,7 @@ public final class DiscordPresenceManager {
     private volatile boolean mConnected = false;
     private volatile boolean mConnecting = false;
     private volatile long mSessionStartTimestamp;
-    private volatile String mCurrentDetails = "In Launcher Menu";
+    private volatile String mCurrentDetails = "In " + InfoDistributor.APP_NAME + " Menu";
     private volatile String mCurrentState = "Ready to Play";
 
     private DiscordPresenceManager(@NonNull Context appContext) {
@@ -113,8 +123,24 @@ public final class DiscordPresenceManager {
             disconnect();
         } else if (isConfigured()) {
             connectIfNeeded();
+            broadcastLocalDiscordRpc();
         }
         notifyListeners();
+    }
+
+    @NonNull
+    public String getLinkedUserId() {
+        String id = mPrefs.getString(KEY_USER_ID, "");
+        return id != null ? id.trim() : "";
+    }
+
+    @NonNull
+    public String getLinkedUsername() {
+        String name = mPrefs.getString(KEY_USERNAME, "");
+        if (name != null && !name.trim().isEmpty()) {
+            return name.trim();
+        }
+        return getLinkedUserId();
     }
 
     @NonNull
@@ -143,18 +169,61 @@ public final class DiscordPresenceManager {
         return custom != null ? custom.trim() : "";
     }
 
-    @NonNull
-    public String getLinkedUsername() {
-        String name = mPrefs.getString(KEY_USERNAME, "");
-        return name != null ? name.trim() : "";
-    }
-
     public boolean isConfigured() {
-        return !getToken().isEmpty() || !getWebhookUrl().isEmpty();
+        return !getLinkedUserId().isEmpty() || !getLinkedUsername().isEmpty()
+                || !getToken().isEmpty() || !getWebhookUrl().isEmpty();
     }
 
     public boolean isConnected() {
-        return mConnected || (isEnabled() && getToken().isEmpty() && !getWebhookUrl().isEmpty());
+        if (!isEnabled()) return false;
+        if (mConnected) return true;
+        return !getLinkedUserId().isEmpty() || !getLinkedUsername().isEmpty() || !getWebhookUrl().isEmpty();
+    }
+
+    public void saveConfiguration(
+            @Nullable String discordIdOrUsername,
+            @Nullable String rawToken,
+            @Nullable String webhookUrl,
+            @Nullable String onlineStatus,
+            @Nullable String customState,
+            boolean enabled
+    ) {
+        String cleanIdOrName = discordIdOrUsername != null ? discordIdOrUsername.trim() : "";
+        if (cleanIdOrName.startsWith("@")) {
+            cleanIdOrName = cleanIdOrName.substring(1).trim();
+        }
+        String cleanToken = normalizeToken(rawToken);
+        if (cleanToken.isEmpty()) {
+            cleanToken = getToken();
+        }
+        String cleanWebhook = webhookUrl != null ? webhookUrl.trim() : "";
+        String cleanStatus = ("idle".equals(onlineStatus) || "dnd".equals(onlineStatus)) ? onlineStatus : "online";
+        String cleanCustomState = customState != null ? customState.trim() : "";
+
+        SharedPreferences.Editor editor = mPrefs.edit()
+                .putString(KEY_USER_ID, cleanIdOrName)
+                .putString(KEY_TOKEN, cleanToken)
+                .putString(KEY_WEBHOOK_URL, cleanWebhook)
+                .putString(KEY_ONLINE_STATUS, cleanStatus)
+                .putString(KEY_CUSTOM_STATE, cleanCustomState)
+                .putBoolean(KEY_ENABLED, enabled);
+        if (!cleanIdOrName.isEmpty() && getLinkedUsername().isEmpty()) {
+            editor.putString(KEY_USERNAME, cleanIdOrName);
+        } else if (!cleanIdOrName.isEmpty() && !cleanIdOrName.matches("\\d{15,22}")) {
+            editor.putString(KEY_USERNAME, cleanIdOrName);
+        }
+        editor.apply();
+
+        disconnect();
+        if (enabled && isConfigured()) {
+            connectIfNeeded();
+            broadcastLocalDiscordRpc();
+            postHeadlessSessionActivity();
+            postWebhookStatus(mCurrentDetails, resolveEffectiveState());
+            notifyListeners();
+        } else {
+            notifyListeners();
+        }
     }
 
     public void saveConfiguration(
@@ -164,33 +233,49 @@ public final class DiscordPresenceManager {
             @Nullable String customState,
             boolean enabled
     ) {
-        String cleanToken = normalizeToken(rawToken);
-        String cleanWebhook = webhookUrl != null ? webhookUrl.trim() : "";
-        String cleanStatus = ("idle".equals(onlineStatus) || "dnd".equals(onlineStatus)) ? onlineStatus : "online";
-        String cleanCustomState = customState != null ? customState.trim() : "";
+        saveConfiguration(getLinkedUserId(), rawToken, webhookUrl, onlineStatus, customState, enabled);
+    }
 
-        mPrefs.edit()
-                .putString(KEY_TOKEN, cleanToken)
-                .putString(KEY_WEBHOOK_URL, cleanWebhook)
-                .putString(KEY_ONLINE_STATUS, cleanStatus)
-                .putString(KEY_CUSTOM_STATE, cleanCustomState)
-                .putBoolean(KEY_ENABLED, enabled)
-                .apply();
+    public void onWebSessionAuthenticated(
+            @Nullable String userId,
+            @Nullable String username,
+            @Nullable String sessionToken,
+            @Nullable String onlineStatus,
+            @Nullable String customState,
+            @Nullable String webhookUrl
+    ) {
+        String cleanId = userId != null ? userId.trim() : "";
+        String cleanUser = username != null ? username.trim() : "";
+        String cleanToken = normalizeToken(sessionToken);
+
+        SharedPreferences.Editor editor = mPrefs.edit().putBoolean(KEY_ENABLED, true);
+        if (!cleanId.isEmpty()) editor.putString(KEY_USER_ID, cleanId);
+        if (!cleanUser.isEmpty()) editor.putString(KEY_USERNAME, cleanUser);
+        if (!cleanToken.isEmpty()) editor.putString(KEY_TOKEN, cleanToken);
+        if (onlineStatus != null && !onlineStatus.isEmpty()) editor.putString(KEY_ONLINE_STATUS, onlineStatus);
+        if (customState != null) editor.putString(KEY_CUSTOM_STATE, customState.trim());
+        if (webhookUrl != null) editor.putString(KEY_WEBHOOK_URL, webhookUrl.trim());
+        editor.apply();
+
+        if (!cleanToken.isEmpty() && (cleanId.isEmpty() || cleanUser.isEmpty())) {
+            fetchDiscordIdentityAsync(cleanToken);
+        }
 
         disconnect();
-        if (enabled && (!cleanToken.isEmpty() || !cleanWebhook.isEmpty())) {
-            connectIfNeeded();
-            postWebhookStatus(mCurrentDetails, resolveEffectiveState());
-        } else {
-            notifyListeners();
-        }
+        connectIfNeeded();
+        broadcastLocalDiscordRpc();
+        postHeadlessSessionActivity();
+        postWebhookStatus(mCurrentDetails, resolveEffectiveState());
+        notifyListeners();
     }
 
     public void unlink() {
         mPrefs.edit()
-                .remove(KEY_TOKEN)
-                .remove(KEY_WEBHOOK_URL)
+                .remove(KEY_USER_ID)
                 .remove(KEY_USERNAME)
+                .remove(KEY_TOKEN)
+                .remove(KEY_HEADLESS_TOKEN)
+                .remove(KEY_WEBHOOK_URL)
                 .putBoolean(KEY_ENABLED, false)
                 .apply();
         disconnect();
@@ -214,16 +299,13 @@ public final class DiscordPresenceManager {
             return "Discord";
         }
         String username = getLinkedUsername();
-        if (mConnected) {
+        if (mConnected || !username.isEmpty()) {
             return username.isEmpty() ? "Discord: On" : "Discord: @" + username;
         }
         if (mConnecting) {
             return "Discord: ...";
         }
-        if (!getWebhookUrl().isEmpty() && getToken().isEmpty()) {
-            return "Discord: Linked";
-        }
-        return username.isEmpty() ? "Discord: Ready" : "Discord: @" + username;
+        return "Discord: Linked";
     }
 
     public void updateActivity(@NonNull String details, @Nullable String state) {
@@ -236,6 +318,8 @@ public final class DiscordPresenceManager {
         }
         connectIfNeeded();
         sendPresenceUpdate();
+        broadcastLocalDiscordRpc();
+        postHeadlessSessionActivity();
     }
 
     public void onGameLaunched(@NonNull String versionName, @Nullable String rendererName) {
@@ -277,7 +361,7 @@ public final class DiscordPresenceManager {
         mWebSocket = mHttpClient.newWebSocket(request, new WebSocketListener() {
             @Override
             public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
-                Logging.i(TAG, "Discord Gateway WebSocket opened");
+                Logging.i(TAG, "Discord Gateway WebSocket opened for app " + DISCORD_APPLICATION_ID);
             }
 
             @Override
@@ -355,10 +439,12 @@ public final class DiscordPresenceManager {
                     if ("READY".equals(eventType) && data != null) {
                         JSONObject user = data.optJSONObject("user");
                         if (user != null) {
+                            String id = user.optString("id", "");
                             String username = user.optString("username", "");
-                            if (!username.isEmpty()) {
-                                mPrefs.edit().putString(KEY_USERNAME, username).apply();
-                            }
+                            SharedPreferences.Editor editor = mPrefs.edit();
+                            if (!id.isEmpty()) editor.putString(KEY_USER_ID, id);
+                            if (!username.isEmpty()) editor.putString(KEY_USERNAME, username);
+                            editor.apply();
                         }
                         mConnected = true;
                         mConnecting = false;
@@ -446,19 +532,24 @@ public final class DiscordPresenceManager {
     }
 
     @NonNull
-    private JSONObject buildPresenceObject() throws Exception {
+    private JSONObject buildActivityObject() throws Exception {
         JSONObject timestamps = new JSONObject();
         timestamps.put("start", mSessionStartTimestamp);
 
         JSONObject activity = new JSONObject();
+        activity.put("application_id", DISCORD_APPLICATION_ID);
         activity.put("name", InfoDistributor.APP_NAME);
         activity.put("type", 0); // Playing
         activity.put("details", mCurrentDetails);
         activity.put("state", resolveEffectiveState());
         activity.put("timestamps", timestamps);
+        return activity;
+    }
 
+    @NonNull
+    private JSONObject buildPresenceObject() throws Exception {
         JSONArray activities = new JSONArray();
-        activities.put(activity);
+        activities.put(buildActivityObject());
 
         JSONObject presence = new JSONObject();
         presence.put("status", getOnlineStatus());
@@ -468,6 +559,116 @@ public final class DiscordPresenceManager {
         return presence;
     }
 
+    /**
+     * Broadcasts Rich Presence activity for Application ID 1571705435713437726 locally on Android
+     * so the Discord mobile client / Samsung Game Launcher bridge can detect Gurkha Launcher
+     * without requiring a user token.
+     */
+    private void broadcastLocalDiscordRpc() {
+        if (!isEnabled() || !isConfigured()) return;
+        try {
+            Intent intent = new Intent("com.discord.intent.action.RPC");
+            intent.putExtra("application_id", DISCORD_APPLICATION_ID);
+            intent.putExtra("app_id", DISCORD_APPLICATION_ID);
+            intent.putExtra("name", InfoDistributor.APP_NAME);
+            intent.putExtra("details", mCurrentDetails);
+            intent.putExtra("state", resolveEffectiveState());
+            intent.putExtra("start_timestamp", mSessionStartTimestamp);
+            String userId = getLinkedUserId();
+            if (!userId.isEmpty()) {
+                intent.putExtra("user_id", userId);
+            }
+            mAppContext.sendBroadcast(intent);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Publishes Rich Presence via Discord's Headless Sessions endpoint for Application ID 1571705435713437726
+     * when an OAuth2/Web session token is available.
+     */
+    private void postHeadlessSessionActivity() {
+        String token = getToken();
+        if (!isEnabled() || token.isEmpty()) return;
+        try {
+            JSONArray activities = new JSONArray();
+            activities.put(buildActivityObject());
+
+            JSONObject payload = new JSONObject();
+            payload.put("activities", activities);
+            String existingHeadless = mPrefs.getString(KEY_HEADLESS_TOKEN, "");
+            if (existingHeadless != null && !existingHeadless.isEmpty()) {
+                payload.put("token", existingHeadless);
+            }
+
+            String authHeader = token.contains(".") ? token : ("Bearer " + token);
+            Request request = new Request.Builder()
+                    .url(HEADLESS_SESSIONS_URL)
+                    .header("Authorization", authHeader)
+                    .header("User-Agent", "Discord-Android/124000")
+                    .post(RequestBody.create(payload.toString(), JSON_MEDIA))
+                    .build();
+            mHttpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                }
+
+                @Override
+                public void onResponse(@NonNull Call call, @NonNull Response response) {
+                    try {
+                        if (response.isSuccessful() && response.body() != null) {
+                            JSONObject res = new JSONObject(response.body().string());
+                            String sessionTok = res.optString("token", "");
+                            if (!sessionTok.isEmpty()) {
+                                mPrefs.edit().putString(KEY_HEADLESS_TOKEN, sessionTok).apply();
+                            }
+                            mConnected = true;
+                            notifyListeners();
+                        }
+                    } catch (Throwable ignored) {
+                    } finally {
+                        response.close();
+                    }
+                }
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void fetchDiscordIdentityAsync(@NonNull String token) {
+        String authHeader = token.contains(".") ? token : ("Bearer " + token);
+        Request request = new Request.Builder()
+                .url(USER_ME_URL)
+                .header("Authorization", authHeader)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124.0.0.0 Mobile Safari/537.36")
+                .get()
+                .build();
+        mHttpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) {
+                try {
+                    if (response.isSuccessful() && response.body() != null) {
+                        JSONObject user = new JSONObject(response.body().string());
+                        String id = user.optString("id", "");
+                        String username = user.optString("username", "");
+                        SharedPreferences.Editor editor = mPrefs.edit();
+                        if (!id.isEmpty()) editor.putString(KEY_USER_ID, id);
+                        if (!username.isEmpty()) editor.putString(KEY_USERNAME, username);
+                        editor.apply();
+                        notifyListeners();
+                    }
+                } catch (Throwable ignored) {
+                } finally {
+                    response.close();
+                }
+            }
+        });
+    }
+
     public void postWebhookStatus(@NonNull String details, @NonNull String state) {
         String webhook = getWebhookUrl();
         if (!isEnabled() || webhook.isEmpty() || !webhook.startsWith("https://")) {
@@ -475,15 +676,23 @@ public final class DiscordPresenceManager {
         }
         try {
             String mcUser = getActiveMinecraftUsername();
+            String discordId = getLinkedUserId();
+            String userLine = "";
+            if (!discordId.isEmpty()) {
+                userLine = discordId.matches("\\d{15,22}")
+                        ? ("Discord: <@" + discordId + "> (`" + discordId + "`)\n")
+                        : ("Discord: **" + discordId + "**\n");
+            }
             JSONObject embed = new JSONObject();
             embed.put("title", "Playing " + InfoDistributor.APP_NAME);
-            embed.put("description", "**" + details + "**\n" + state);
+            embed.put("url", UrlManager.URL_DISCORD);
+            embed.put("description", userLine + "**" + details + "**\n" + state);
             embed.put("color", 0x5865F2);
-            if (!mcUser.isEmpty()) {
-                JSONObject footer = new JSONObject();
-                footer.put("text", "Player: " + mcUser + " • " + InfoDistributor.APP_NAME + " " + ZHTools.getVersionName());
-                embed.put("footer", footer);
-            }
+
+            JSONObject footer = new JSONObject();
+            footer.put("text", (mcUser.isEmpty() ? "" : ("Player: " + mcUser + " • "))
+                    + InfoDistributor.APP_NAME + " • App ID: " + DISCORD_APPLICATION_ID);
+            embed.put("footer", footer);
 
             JSONArray embeds = new JSONArray();
             embeds.put(embed);
