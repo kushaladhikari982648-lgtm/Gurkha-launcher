@@ -6,10 +6,15 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -21,26 +26,35 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.movtery.zalithlauncher.InfoDistributor;
 import com.movtery.zalithlauncher.R;
 import com.movtery.zalithlauncher.utils.ZHTools;
 import com.movtery.zalithlauncher.utils.path.UrlManager;
 
+import java.util.Map;
+
 /**
  * Liquid-Glass Discord Linking Dialog styled identically to the Gurkha Launcher UI.
- * Connects via Discord Application ID 1571705435713437726 using the user's Discord ID/Username
- * or one-step Discord Account Sign-In without ever requiring the user to manually paste a token.
+ * Connects via Discord Application ID 1571705435713437726 using one-step Discord Account Sign-In
+ * (capturing the authenticated session via native WebViewClient.shouldInterceptRequest + JS hooks)
+ * so others on Discord see "Playing Gurkha Launcher" on the user's profile.
  */
 public final class DiscordLinkDialog {
     public static final String DISCORD_INVITE_URL = UrlManager.URL_DISCORD;
     public static final String DISCORD_APPLICATION_ID = DiscordPresenceManager.DISCORD_APPLICATION_ID;
+
+    private static final String DESKTOP_CHROME_UA =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
     private DiscordLinkDialog() {
     }
 
     public static void show(@NonNull Context context) {
         final DiscordPresenceManager manager = DiscordPresenceManager.getInstance(context);
+        manager.syncFromDiskFile();
         final View view = LayoutInflater.from(context).inflate(R.layout.dialog_discord_link, null, false);
 
         final TextView statusBadge = view.findViewById(R.id.discord_status_badge);
@@ -60,7 +74,7 @@ public final class DiscordLinkDialog {
         enableSwitch.setChecked(manager.isEnabled());
         String existingUser = manager.getLinkedUsername();
         String existingId = manager.getLinkedUserId();
-        discordIdInput.setText(!existingId.isEmpty() ? existingId : existingUser);
+        discordIdInput.setText(!existingUser.isEmpty() ? existingUser : existingId);
         customStateInput.setText(manager.getCustomState());
         webhookInput.setText(manager.getWebhookUrl());
 
@@ -90,17 +104,30 @@ public final class DiscordLinkDialog {
 
         final Runnable refreshBanner = () -> {
             String user = manager.getLinkedUsername();
+            if (! user.isEmpty() && discordIdInput.getText().toString().trim().isEmpty()) {
+                discordIdInput.setText(user);
+            }
             if (manager.isConnected()) {
-                statusBadge.setText("Connected" + (user.isEmpty() ? "" : (" as @" + user))
+                statusBadge.setText("● LIVE on Discord" + (user.isEmpty() ? "" : (" as @" + user))
                         + " • Playing " + InfoDistributor.APP_NAME + " (App ID: " + DISCORD_APPLICATION_ID + ")");
                 statusBadge.setTextColor(Color.parseColor("#A8F0C6"));
+                saveBtn.setText("Save & Update RPC");
+            } else if (manager.isConnecting()) {
+                statusBadge.setText("Connecting to Discord Gateway (App ID: " + DISCORD_APPLICATION_ID + ")...");
+                statusBadge.setTextColor(Color.parseColor("#F5E09B"));
+            } else if (!manager.getLastError().isEmpty()) {
+                statusBadge.setText(manager.getLastError());
+                statusBadge.setTextColor(Color.parseColor("#FFB4B4"));
             } else {
-                statusBadge.setText("Enter your Discord ID or Sign In below so others on Discord see \"Playing "
-                        + InfoDistributor.APP_NAME + "\"");
+                statusBadge.setText("Sign in with Discord below so friends & servers see \"Playing "
+                        + InfoDistributor.APP_NAME + "\" on your profile");
                 statusBadge.setTextColor(Color.parseColor("#B8D4C9"));
             }
         };
         refreshBanner.run();
+
+        final DiscordPresenceManager.StatusListener liveListener = (summary, connected) -> refreshBanner.run();
+        manager.addListener(liveListener);
 
         joinServerBtn.setOnClickListener(v -> ZHTools.openLink(context, DISCORD_INVITE_URL));
 
@@ -113,8 +140,11 @@ public final class DiscordLinkDialog {
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         }
 
-        webLoginBtn.setOnClickListener(v -> showWebLoginDialog(
+        dialog.setOnDismissListener(d -> manager.removeListener(liveListener));
+
+        final Runnable launchWebSignIn = () -> showWebLoginDialog(
                 context,
+                discordIdInput.getText().toString().trim(),
                 (userId, username, token) -> {
                     String displayId = (username != null && !username.isEmpty()) ? username : userId;
                     if (displayId != null && !displayId.isEmpty()) {
@@ -132,12 +162,13 @@ public final class DiscordLinkDialog {
                     refreshBanner.run();
                     Toast.makeText(
                             context,
-                            "Connected to Discord" + (displayId != null && !displayId.isEmpty() ? (" as @" + displayId) : "")
-                                    + " • Playing " + InfoDistributor.APP_NAME,
+                            "Discord RPC connected! Now showing Playing " + InfoDistributor.APP_NAME,
                             Toast.LENGTH_SHORT
                     ).show();
                 }
-        ));
+        );
+
+        webLoginBtn.setOnClickListener(v -> launchWebSignIn.run());
 
         unlinkBtn.setOnClickListener(v -> {
             manager.unlink();
@@ -150,14 +181,33 @@ public final class DiscordLinkDialog {
         saveBtn.setOnClickListener(v -> {
             String enteredId = discordIdInput.getText().toString().trim();
             String enteredWebhook = webhookInput.getText().toString().trim();
-            if (enteredId.isEmpty() && manager.getToken().isEmpty() && enteredWebhook.isEmpty()) {
+
+            // If the user pasted a token directly into the box, accept it immediately
+            if (DiscordPresenceManager.looksLikeDiscordToken(enteredId)) {
+                manager.saveConfiguration(
+                        "",
+                        enteredId,
+                        enteredWebhook,
+                        selectedStatus[0],
+                        customStateInput.getText().toString(),
+                        enableSwitch.isChecked()
+                );
                 Toast.makeText(
                         context,
-                        "Enter your Discord ID / Username or tap Sign in with Discord",
+                        "Connecting to Discord Gateway • Playing " + InfoDistributor.APP_NAME,
                         Toast.LENGTH_SHORT
                 ).show();
+                dialog.dismiss();
                 return;
             }
+
+            // If no Discord session is authenticated yet and no webhook is set,
+            // open the Discord Sign-In dialog so the user logs into Discord to activate RPC!
+            if (!manager.hasAuthenticatedSession() && enteredWebhook.isEmpty()) {
+                launchWebSignIn.run();
+                return;
+            }
+
             manager.saveConfiguration(
                     enteredId,
                     manager.getToken(),
@@ -169,8 +219,8 @@ public final class DiscordLinkDialog {
             Toast.makeText(
                     context,
                     enableSwitch.isChecked()
-                            ? ("Discord connected! Showing Playing " + InfoDistributor.APP_NAME)
-                            : "Discord settings saved",
+                            ? ("Discord RPC updated! Showing Playing " + InfoDistributor.APP_NAME)
+                            : "Discord RPC paused",
                     Toast.LENGTH_SHORT
             ).show();
             dialog.dismiss();
@@ -185,15 +235,61 @@ public final class DiscordLinkDialog {
 
     private static final String JS_INSTALL_INTERCEPTOR =
             "(function(){"
-            + "if(window.__gurkhaHooked)return;"
-            + "window.__gurkhaHooked=true;"
-            + "window.__gurkhaToken='';"
             + "try{"
-            + "var origSet=XMLHttpRequest.prototype.setRequestHeader;"
-            + "XMLHttpRequest.prototype.setRequestHeader=function(k,v){"
-            + "if(k&&k.toLowerCase()==='authorization'&&v){window.__gurkhaToken=v;}"
-            + "return origSet.apply(this,arguments);"
+            + "var report=function(tk){"
+            + "if(!tk||typeof tk!=='string')return;"
+            + "tk=tk.replace(/^\"|\"$/g,'').replace(/^Bearer\\s+/i,'').trim();"
+            + "if(tk.length>25&&tk!=='null'&&tk!=='undefined'&&tk.indexOf('Basic ')!==0){"
+            + "window.__gurkhaToken=tk;"
+            + "if(window.GurkhaDiscordBridge&&window.GurkhaDiscordBridge.onTokenCaptured){"
+            + "window.GurkhaDiscordBridge.onTokenCaptured(tk);"
+            + "}"
+            + "}"
             + "};"
+            + "if(!window.__gurkhaHooked){"
+            + "window.__gurkhaHooked=true;"
+            + "var origSetItem=Storage.prototype.setItem;"
+            + "Storage.prototype.setItem=function(k,v){"
+            + "if(k==='token'&&v)report(String(v));"
+            + "return origSetItem.apply(this,arguments);"
+            + "};"
+            + "var origGetItem=Storage.prototype.getItem;"
+            + "Storage.prototype.getItem=function(k){"
+            + "var v=origGetItem.apply(this,arguments);"
+            + "if(k==='token'&&v)report(String(v));"
+            + "return v;"
+            + "};"
+            + "var origSetHeader=XMLHttpRequest.prototype.setRequestHeader;"
+            + "XMLHttpRequest.prototype.setRequestHeader=function(k,v){"
+            + "if(k&&k.toLowerCase()==='authorization'&&v)report(String(v));"
+            + "return origSetHeader.apply(this,arguments);"
+            + "};"
+            + "var origSend=XMLHttpRequest.prototype.send;"
+            + "XMLHttpRequest.prototype.send=function(){"
+            + "this.addEventListener('load',function(){"
+            + "try{"
+            + "if(this.responseText&&this.responseText.indexOf('\"token\"')!==-1){"
+            + "var j=JSON.parse(this.responseText);"
+            + "if(j&&j.token&&!j.mfa)report(String(j.token));"
+            + "}"
+            + "}catch(e){}"
+            + "});"
+            + "return origSend.apply(this,arguments);"
+            + "};"
+            + "if(window.fetch){"
+            + "var origFetch=window.fetch;"
+            + "window.fetch=function(input,init){"
+            + "try{"
+            + "if(init&&init.headers){"
+            + "var h=init.headers;"
+            + "var a=(typeof h.get==='function')?(h.get('Authorization')||h.get('authorization')):(h.Authorization||h.authorization);"
+            + "if(a)report(String(a));"
+            + "}"
+            + "}catch(e){}"
+            + "return origFetch.apply(this,arguments);"
+            + "};"
+            + "}"
+            + "}"
             + "}catch(e){}"
             + "})();";
 
@@ -220,12 +316,57 @@ public final class DiscordLinkDialog {
             + "}"
             + "}]);"
             + "}"
+            + "if(t&&window.GurkhaDiscordBridge&&window.GurkhaDiscordBridge.onTokenCaptured){"
+            + "window.GurkhaDiscordBridge.onTokenCaptured(String(t));"
+            + "}"
             + "return t||'';"
             + "}catch(e){return '';}"
             + "})();";
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private static void showWebLoginDialog(@NonNull Context context, @NonNull WebAuthCallback callback) {
+    private static final class JsBridge {
+        private final Handler mMainHandler = new Handler(Looper.getMainLooper());
+        private final Runnable mOnComplete;
+        private final WebAuthCallback mCallback;
+        private volatile boolean mDone = false;
+
+        JsBridge(WebAuthCallback callback, Runnable onComplete) {
+            this.mCallback = callback;
+            this.mOnComplete = onComplete;
+        }
+
+        @JavascriptInterface
+        public void onTokenCaptured(String rawToken) {
+            deliverToken(rawToken);
+        }
+
+        void deliverToken(@Nullable String rawToken) {
+            if (mDone || rawToken == null) return;
+            final String clean = DiscordPresenceManager.normalizeToken(cleanJsString(rawToken));
+            if (clean.length() < 25 || "null".equalsIgnoreCase(clean) || "undefined".equalsIgnoreCase(clean)
+                    || clean.startsWith("Basic ")) {
+                return;
+            }
+            synchronized (this) {
+                if (mDone) return;
+                mDone = true;
+            }
+            mMainHandler.post(() -> {
+                mCallback.onAuthenticated("", "", clean);
+                mOnComplete.run();
+            });
+        }
+
+        boolean isDone() {
+            return mDone;
+        }
+    }
+
+    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    private static void showWebLoginDialog(
+            @NonNull Context context,
+            @Nullable String initialLoginHint,
+            @NonNull WebAuthCallback callback
+    ) {
         final float density = context.getResources().getDisplayMetrics().density;
         final int pad = (int) (10 * density);
 
@@ -235,7 +376,8 @@ public final class DiscordLinkDialog {
         container.setPadding(pad, pad, pad, pad);
 
         TextView header = new TextView(context);
-        header.setText("Sign in with Discord • App ID: " + DISCORD_APPLICATION_ID + "\nLog in with your Discord account; it will connect automatically.");
+        header.setText("Sign in with Discord • App ID: " + DISCORD_APPLICATION_ID
+                + "\nLog in with your Discord account below — Rich Presence connects automatically as soon as you sign in.");
         header.setTextColor(Color.parseColor("#F0F3EE"));
         header.setTextSize(12f);
         header.setPadding(pad, pad / 2, pad, pad);
@@ -246,6 +388,8 @@ public final class DiscordLinkDialog {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
+        // Desktop Chrome UA prevents Discord from redirecting to the mobile "Download Discord App" page
+        settings.setUserAgentString(DESKTOP_CHROME_UA);
         webView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 (int) (360 * density)
@@ -290,27 +434,49 @@ public final class DiscordLinkDialog {
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         }
 
-        final boolean[] completed = new boolean[]{false};
+        final JsBridge bridge = new JsBridge(callback, () -> {
+            if (loginDialog.isShowing()) {
+                loginDialog.dismiss();
+            }
+        });
+        webView.addJavascriptInterface(bridge, "GurkhaDiscordBridge");
+
         final Runnable pollTokenRunnable = new Runnable() {
             @Override
             public void run() {
-                if (completed[0] || !loginDialog.isShowing()) return;
+                if (bridge.isDone() || !loginDialog.isShowing()) return;
                 webView.evaluateJavascript(JS_INSTALL_INTERCEPTOR, null);
                 webView.evaluateJavascript(JS_POLL_AUTH, value -> {
-                    if (completed[0] || !loginDialog.isShowing()) return;
+                    if (bridge.isDone() || !loginDialog.isShowing()) return;
                     String token = cleanJsString(value);
-                    if (!token.isEmpty() && token.length() > 16 && !"null".equalsIgnoreCase(token) && !"undefined".equalsIgnoreCase(token)) {
-                        completed[0] = true;
-                        callback.onAuthenticated("", "", token);
-                        loginDialog.dismiss();
+                    if (!token.isEmpty() && token.length() > 25) {
+                        bridge.deliverToken(token);
                     } else {
-                        webView.postDelayed(this, 900L);
+                        webView.postDelayed(this, 800L);
                     }
                 });
             }
         };
 
         webView.setWebViewClient(new WebViewClient() {
+            @Nullable
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                try {
+                    Map<String, String> headers = request.getRequestHeaders();
+                    if (headers != null) {
+                        for (Map.Entry<String, String> entry : headers.entrySet()) {
+                            if ("authorization".equalsIgnoreCase(entry.getKey()) && entry.getValue() != null) {
+                                bridge.deliverToken(entry.getValue());
+                                break;
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+                return super.shouldInterceptRequest(view, request);
+            }
+
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
@@ -318,19 +484,24 @@ public final class DiscordLinkDialog {
             }
 
             @Override
+            public void onLoadResource(WebView view, String url) {
+                super.onLoadResource(view, url);
+                view.evaluateJavascript(JS_INSTALL_INTERCEPTOR, null);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 view.evaluateJavascript(JS_INSTALL_INTERCEPTOR, null);
-                if (url != null && url.contains("access_token=")) {
-                    int idx = url.indexOf("access_token=");
-                    String sub = url.substring(idx + "access_token=".length());
-                    int amp = sub.indexOf('&');
-                    String accessToken = amp >= 0 ? sub.substring(0, amp) : sub;
-                    if (!accessToken.isEmpty() && !completed[0]) {
-                        completed[0] = true;
-                        callback.onAuthenticated("", "", accessToken);
-                        loginDialog.dismiss();
-                    }
+                view.evaluateJavascript(JS_POLL_AUTH, null);
+                if (initialLoginHint != null && !initialLoginHint.isEmpty() && url != null && url.contains("/login")) {
+                    String safeHint = initialLoginHint.replace("\\", "\\\\").replace("'", "\\'");
+                    view.evaluateJavascript(
+                            "(function(){var el=document.querySelector('input[name=\"email\"]');"
+                            + "if(el&&!el.value){el.focus();document.execCommand('insertText',false,'" + safeHint + "');}"
+                            + "})();",
+                            null
+                    );
                 }
             }
         });
@@ -338,27 +509,22 @@ public final class DiscordLinkDialog {
         cancelBtn.setOnClickListener(v -> loginDialog.dismiss());
         connectNowBtn.setOnClickListener(v -> webView.evaluateJavascript(JS_POLL_AUTH, value -> {
             String token = cleanJsString(value);
-            if (!token.isEmpty() && !"null".equalsIgnoreCase(token) && !"undefined".equalsIgnoreCase(token)) {
-                completed[0] = true;
-                callback.onAuthenticated("", "", token);
-                loginDialog.dismiss();
+            if (!token.isEmpty() && token.length() > 25 && !"null".equalsIgnoreCase(token) && !"undefined".equalsIgnoreCase(token)) {
+                bridge.deliverToken(token);
             } else {
                 Toast.makeText(
                         context,
-                        "Finish signing in on the Discord page above, or close and enter your Discord ID directly",
+                        "Please sign in with your Discord account in the window above first",
                         Toast.LENGTH_LONG
                 ).show();
             }
         }));
 
-        loginDialog.setOnDismissListener(d -> {
-            completed[0] = true;
-            webView.destroy();
-        });
+        loginDialog.setOnDismissListener(d -> webView.destroy());
 
         loginDialog.show();
         webView.loadUrl("https://discord.com/login");
-        webView.postDelayed(pollTokenRunnable, 1000L);
+        webView.postDelayed(pollTokenRunnable, 800L);
     }
 
     @NonNull

@@ -81,6 +81,7 @@ public class ContextAwareDoneListener implements AsyncMinecraftDownloader.DoneLi
     @Override
     public void executeWithActivity(Activity activity) {
         try {
+            com.movtery.zalithlauncher.feature.discord.DiscordPresenceManager.getInstance(activity).disconnect();
             Intent gameStartIntent = createGameStartIntent(activity);
             activity.startActivity(gameStartIntent);
             if (AllSettings.getQuitLauncher().getValue()) {

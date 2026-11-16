@@ -20,13 +20,19 @@ import net.kdt.pojavlaunch.value.MinecraftAccount;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -40,28 +46,30 @@ import okhttp3.WebSocketListener;
 
 /**
  * Manages Discord account linking and Rich Presence ("Playing Gurkha Launcher",
- * Application ID 1571705435713437726) via Discord ID / Account Sign-In,
- * Android Discord RPC broadcasts, Gateway v10 WebSocket, Headless Sessions API,
- * and optional Discord Webhook status broadcasts.
+ * Application ID 1571705435713437726) over the Discord Gateway v10 WebSocket
+ * with cross-process persistence between :launcher and :game processes.
  */
 public final class DiscordPresenceManager {
     private static final String TAG = "DiscordPresence";
     public static final String DISCORD_APPLICATION_ID = "1571705435713437726";
 
     private static final String PREFS_NAME = "gurkha_discord_presence";
+    private static final String CONFIG_FILE_NAME = "gurkha_discord_rpc.json";
     private static final String KEY_ENABLED = "enabled";
     private static final String KEY_USER_ID = "linked_user_id";
     private static final String KEY_USERNAME = "linked_username";
     private static final String KEY_TOKEN = "discord_token";
-    private static final String KEY_HEADLESS_TOKEN = "headless_session_token";
     private static final String KEY_WEBHOOK_URL = "webhook_url";
     private static final String KEY_ONLINE_STATUS = "online_status";
     private static final String KEY_CUSTOM_STATE = "custom_state";
 
     private static final String GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json";
-    private static final String HEADLESS_SESSIONS_URL = "https://discord.com/api/v10/users/@me/headless-sessions";
     private static final String USER_ME_URL = "https://discord.com/api/v10/users/@me";
     private static final MediaType JSON_MEDIA = MediaType.parse("application/json; charset=utf-8");
+
+    private static final Pattern SEQ_PATTERN = Pattern.compile("\"s\"\\s*:\\s*(\\d+)");
+    private static final Pattern OP_PATTERN = Pattern.compile("\"op\"\\s*:\\s*(\\d+)");
+    private static final Pattern TYPE_PATTERN = Pattern.compile("\"t\"\\s*:\\s*\"([^\"]+)\"");
 
     public interface StatusListener {
         void onDiscordStatusChanged(@NonNull String summary, boolean connected);
@@ -82,6 +90,7 @@ public final class DiscordPresenceManager {
 
     private final Context mAppContext;
     private final SharedPreferences mPrefs;
+    private final File mConfigFile;
     private final OkHttpClient mHttpClient;
     private final ScheduledExecutorService mScheduler;
     private final Handler mMainHandler;
@@ -89,9 +98,11 @@ public final class DiscordPresenceManager {
 
     private volatile WebSocket mWebSocket;
     private volatile ScheduledFuture<?> mHeartbeatFuture;
+    private volatile ScheduledFuture<?> mReconnectFuture;
     private volatile Integer mLastSequence = null;
     private volatile boolean mConnected = false;
     private volatile boolean mConnecting = false;
+    private volatile String mLastError = "";
     private volatile long mSessionStartTimestamp;
     private volatile String mCurrentDetails = "In " + InfoDistributor.APP_NAME + " Menu";
     private volatile String mCurrentState = "Ready to Play";
@@ -99,10 +110,11 @@ public final class DiscordPresenceManager {
     private DiscordPresenceManager(@NonNull Context appContext) {
         mAppContext = appContext;
         mPrefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        mConfigFile = new File(appContext.getFilesDir(), CONFIG_FILE_NAME);
         mHttpClient = new OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.MILLISECONDS)
-                .pingInterval(30, TimeUnit.SECONDS)
+                .pingInterval(25, TimeUnit.SECONDS)
                 .build();
         mScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "GurkhaDiscordRPC");
@@ -111,6 +123,46 @@ public final class DiscordPresenceManager {
         });
         mMainHandler = new Handler(Looper.getMainLooper());
         mSessionStartTimestamp = System.currentTimeMillis();
+        syncFromDiskFile();
+    }
+
+    public synchronized void syncFromDiskFile() {
+        if (!mConfigFile.isFile()) return;
+        try (FileInputStream fis = new FileInputStream(mConfigFile)) {
+            byte[] data = new byte[(int) mConfigFile.length()];
+            int read = fis.read(data);
+            if (read <= 0) return;
+            JSONObject obj = new JSONObject(new String(data, 0, read, StandardCharsets.UTF_8));
+            SharedPreferences.Editor editor = mPrefs.edit();
+            editor.putBoolean(KEY_ENABLED, obj.optBoolean(KEY_ENABLED, true));
+            editor.putString(KEY_USER_ID, obj.optString(KEY_USER_ID, ""));
+            editor.putString(KEY_USERNAME, obj.optString(KEY_USERNAME, ""));
+            editor.putString(KEY_TOKEN, obj.optString(KEY_TOKEN, ""));
+            editor.putString(KEY_WEBHOOK_URL, obj.optString(KEY_WEBHOOK_URL, ""));
+            editor.putString(KEY_ONLINE_STATUS, obj.optString(KEY_ONLINE_STATUS, "online"));
+            editor.putString(KEY_CUSTOM_STATE, obj.optString(KEY_CUSTOM_STATE, ""));
+            editor.commit();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private synchronized void persistToDiskFile() {
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put(KEY_ENABLED, isEnabled());
+            obj.put(KEY_USER_ID, getLinkedUserId());
+            obj.put(KEY_USERNAME, getLinkedUsername());
+            obj.put(KEY_TOKEN, getToken());
+            obj.put(KEY_WEBHOOK_URL, getWebhookUrl());
+            obj.put(KEY_ONLINE_STATUS, getOnlineStatus());
+            obj.put(KEY_CUSTOM_STATE, getCustomState());
+            byte[] bytes = obj.toString().getBytes(StandardCharsets.UTF_8);
+            try (FileOutputStream fos = new FileOutputStream(mConfigFile, false)) {
+                fos.write(bytes);
+                fos.getFD().sync();
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     public boolean isEnabled() {
@@ -118,7 +170,8 @@ public final class DiscordPresenceManager {
     }
 
     public void setEnabled(boolean enabled) {
-        mPrefs.edit().putBoolean(KEY_ENABLED, enabled).apply();
+        mPrefs.edit().putBoolean(KEY_ENABLED, enabled).commit();
+        persistToDiskFile();
         if (!enabled) {
             disconnect();
         } else if (isConfigured()) {
@@ -169,15 +222,28 @@ public final class DiscordPresenceManager {
         return custom != null ? custom.trim() : "";
     }
 
+    @NonNull
+    public String getLastError() {
+        return mLastError;
+    }
+
+    public boolean hasAuthenticatedSession() {
+        return !getToken().isEmpty();
+    }
+
     public boolean isConfigured() {
-        return !getLinkedUserId().isEmpty() || !getLinkedUsername().isEmpty()
-                || !getToken().isEmpty() || !getWebhookUrl().isEmpty();
+        return !getToken().isEmpty() || !getWebhookUrl().isEmpty()
+                || !getLinkedUserId().isEmpty() || !getLinkedUsername().isEmpty();
     }
 
     public boolean isConnected() {
         if (!isEnabled()) return false;
         if (mConnected) return true;
-        return !getLinkedUserId().isEmpty() || !getLinkedUsername().isEmpty() || !getWebhookUrl().isEmpty();
+        return getToken().isEmpty() && !getWebhookUrl().isEmpty();
+    }
+
+    public boolean isConnecting() {
+        return mConnecting;
     }
 
     public void saveConfiguration(
@@ -193,6 +259,11 @@ public final class DiscordPresenceManager {
             cleanIdOrName = cleanIdOrName.substring(1).trim();
         }
         String cleanToken = normalizeToken(rawToken);
+        // If the user pasted a Discord token into the ID/Login field, detect and use it automatically
+        if (cleanToken.isEmpty() && looksLikeDiscordToken(cleanIdOrName)) {
+            cleanToken = normalizeToken(cleanIdOrName);
+            cleanIdOrName = getLinkedUserId();
+        }
         if (cleanToken.isEmpty()) {
             cleanToken = getToken();
         }
@@ -207,18 +278,20 @@ public final class DiscordPresenceManager {
                 .putString(KEY_ONLINE_STATUS, cleanStatus)
                 .putString(KEY_CUSTOM_STATE, cleanCustomState)
                 .putBoolean(KEY_ENABLED, enabled);
-        if (!cleanIdOrName.isEmpty() && getLinkedUsername().isEmpty()) {
-            editor.putString(KEY_USERNAME, cleanIdOrName);
-        } else if (!cleanIdOrName.isEmpty() && !cleanIdOrName.matches("\\d{15,22}")) {
+        if (!cleanIdOrName.isEmpty() && !cleanIdOrName.matches("\\d{15,22}")) {
             editor.putString(KEY_USERNAME, cleanIdOrName);
         }
-        editor.apply();
+        editor.commit();
+        persistToDiskFile();
+
+        if (!cleanToken.isEmpty() && (cleanIdOrName.isEmpty() || getLinkedUsername().isEmpty())) {
+            fetchDiscordIdentityAsync(cleanToken);
+        }
 
         disconnect();
         if (enabled && isConfigured()) {
             connectIfNeeded();
             broadcastLocalDiscordRpc();
-            postHeadlessSessionActivity();
             postWebhookStatus(mCurrentDetails, resolveEffectiveState());
             notifyListeners();
         } else {
@@ -248,6 +321,7 @@ public final class DiscordPresenceManager {
         String cleanUser = username != null ? username.trim() : "";
         String cleanToken = normalizeToken(sessionToken);
 
+        mLastError = "";
         SharedPreferences.Editor editor = mPrefs.edit().putBoolean(KEY_ENABLED, true);
         if (!cleanId.isEmpty()) editor.putString(KEY_USER_ID, cleanId);
         if (!cleanUser.isEmpty()) editor.putString(KEY_USERNAME, cleanUser);
@@ -255,29 +329,33 @@ public final class DiscordPresenceManager {
         if (onlineStatus != null && !onlineStatus.isEmpty()) editor.putString(KEY_ONLINE_STATUS, onlineStatus);
         if (customState != null) editor.putString(KEY_CUSTOM_STATE, customState.trim());
         if (webhookUrl != null) editor.putString(KEY_WEBHOOK_URL, webhookUrl.trim());
-        editor.apply();
+        editor.commit();
+        persistToDiskFile();
 
-        if (!cleanToken.isEmpty() && (cleanId.isEmpty() || cleanUser.isEmpty())) {
+        if (!cleanToken.isEmpty()) {
             fetchDiscordIdentityAsync(cleanToken);
         }
 
         disconnect();
         connectIfNeeded();
         broadcastLocalDiscordRpc();
-        postHeadlessSessionActivity();
         postWebhookStatus(mCurrentDetails, resolveEffectiveState());
         notifyListeners();
     }
 
     public void unlink() {
+        mLastError = "";
         mPrefs.edit()
                 .remove(KEY_USER_ID)
                 .remove(KEY_USERNAME)
                 .remove(KEY_TOKEN)
-                .remove(KEY_HEADLESS_TOKEN)
                 .remove(KEY_WEBHOOK_URL)
                 .putBoolean(KEY_ENABLED, false)
-                .apply();
+                .commit();
+        if (mConfigFile.exists()) {
+            //noinspection ResultOfMethodCallIgnored
+            mConfigFile.delete();
+        }
         disconnect();
         notifyListeners();
     }
@@ -295,20 +373,24 @@ public final class DiscordPresenceManager {
 
     @NonNull
     public String getStatusSummary() {
-        if (!isConfigured() || !isEnabled()) {
+        if (!isEnabled() || !isConfigured()) {
             return "Discord";
         }
         String username = getLinkedUsername();
-        if (mConnected || !username.isEmpty()) {
-            return username.isEmpty() ? "Discord: On" : "Discord: @" + username;
+        if (mConnected) {
+            return username.isEmpty() ? "Discord: Live" : "Discord: @" + username;
         }
         if (mConnecting) {
             return "Discord: ...";
         }
-        return "Discord: Linked";
+        if (!getWebhookUrl().isEmpty() && getToken().isEmpty()) {
+            return "Discord: Webhook";
+        }
+        return username.isEmpty() ? "Discord: Sign In" : "Discord: @" + username;
     }
 
     public void updateActivity(@NonNull String details, @Nullable String state) {
+        syncFromDiskFile();
         mCurrentDetails = details;
         if (state != null && !state.trim().isEmpty()) {
             mCurrentState = state.trim();
@@ -319,10 +401,10 @@ public final class DiscordPresenceManager {
         connectIfNeeded();
         sendPresenceUpdate();
         broadcastLocalDiscordRpc();
-        postHeadlessSessionActivity();
     }
 
     public void onGameLaunched(@NonNull String versionName, @Nullable String rendererName) {
+        syncFromDiskFile();
         mSessionStartTimestamp = System.currentTimeMillis();
         String details = "Playing Minecraft " + versionName;
         String state = (rendererName != null && !rendererName.isEmpty())
@@ -333,6 +415,7 @@ public final class DiscordPresenceManager {
     }
 
     public void onLauncherResumed() {
+        syncFromDiskFile();
         String accountName = getActiveMinecraftUsername();
         String state = accountName.isEmpty()
                 ? (InfoDistributor.APP_NAME + " " + ZHTools.getVersionName())
@@ -350,12 +433,16 @@ public final class DiscordPresenceManager {
         if (mConnected || mConnecting || mWebSocket != null) {
             return;
         }
+        if (mReconnectFuture != null) {
+            mReconnectFuture.cancel(false);
+            mReconnectFuture = null;
+        }
         mConnecting = true;
         notifyListeners();
 
         Request request = new Request.Builder()
                 .url(GATEWAY_URL)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124.0.0.0 Mobile Safari/537.36")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
                 .build();
 
         mWebSocket = mHttpClient.newWebSocket(request, new WebSocketListener() {
@@ -372,23 +459,30 @@ public final class DiscordPresenceManager {
             @Override
             public void onClosing(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
                 Logging.i(TAG, "Discord Gateway closing: " + code + " " + reason);
+                if (code == 4004) {
+                    mLastError = "Session expired — please sign in again";
+                }
                 webSocket.close(1000, null);
             }
 
             @Override
             public void onClosed(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
-                handleSocketTerminated();
+                handleSocketTerminated(code != 4004 && code != 1000);
             }
 
             @Override
             public void onFailure(@NonNull WebSocket webSocket, @NonNull Throwable t, @Nullable Response response) {
                 Logging.w(TAG, "Discord Gateway failure: " + t.getMessage());
-                handleSocketTerminated();
+                handleSocketTerminated(true);
             }
         });
     }
 
     public synchronized void disconnect() {
+        if (mReconnectFuture != null) {
+            mReconnectFuture.cancel(false);
+            mReconnectFuture = null;
+        }
         if (mHeartbeatFuture != null) {
             mHeartbeatFuture.cancel(true);
             mHeartbeatFuture = null;
@@ -405,7 +499,7 @@ public final class DiscordPresenceManager {
         mLastSequence = null;
     }
 
-    private void handleSocketTerminated() {
+    private void handleSocketTerminated(boolean shouldReconnect) {
         synchronized (this) {
             if (mHeartbeatFuture != null) {
                 mHeartbeatFuture.cancel(true);
@@ -414,12 +508,38 @@ public final class DiscordPresenceManager {
             mWebSocket = null;
             mConnected = false;
             mConnecting = false;
+            if (shouldReconnect && isEnabled() && !getToken().isEmpty()) {
+                if (mReconnectFuture != null) {
+                    mReconnectFuture.cancel(false);
+                }
+                mReconnectFuture = mScheduler.schedule(this::connectIfNeeded, 5, TimeUnit.SECONDS);
+            }
         }
         notifyListeners();
     }
 
     private void handleGatewayMessage(@NonNull WebSocket webSocket, @NonNull String text) {
         try {
+            // Fast path for huge READY / READY_SUPPLEMENTAL payloads (often 1-8 MB on user accounts)
+            if (text.length() > 32768) {
+                String head = text.substring(0, 1024);
+                Matcher sm = SEQ_PATTERN.matcher(head);
+                if (sm.find()) {
+                    mLastSequence = Integer.parseInt(sm.group(1));
+                }
+                Matcher tm = TYPE_PATTERN.matcher(head);
+                String eventType = tm.find() ? tm.group(1) : "";
+                if ("READY".equals(eventType)) {
+                    mConnected = true;
+                    mConnecting = false;
+                    mLastError = "";
+                    notifyListeners();
+                    sendPresenceUpdate();
+                    mScheduler.schedule(this::sendPresenceUpdate, 2, TimeUnit.SECONDS);
+                }
+                return;
+            }
+
             JSONObject packet = new JSONObject(text);
             if (!packet.isNull("s")) {
                 mLastSequence = packet.optInt("s");
@@ -436,20 +556,25 @@ public final class DiscordPresenceManager {
                     break;
                 }
                 case 0: { // DISPATCH
-                    if ("READY".equals(eventType) && data != null) {
-                        JSONObject user = data.optJSONObject("user");
-                        if (user != null) {
-                            String id = user.optString("id", "");
-                            String username = user.optString("username", "");
-                            SharedPreferences.Editor editor = mPrefs.edit();
-                            if (!id.isEmpty()) editor.putString(KEY_USER_ID, id);
-                            if (!username.isEmpty()) editor.putString(KEY_USERNAME, username);
-                            editor.apply();
+                    if ("READY".equals(eventType)) {
+                        if (data != null) {
+                            JSONObject user = data.optJSONObject("user");
+                            if (user != null) {
+                                String id = user.optString("id", "");
+                                String username = user.optString("username", "");
+                                SharedPreferences.Editor editor = mPrefs.edit();
+                                if (!id.isEmpty()) editor.putString(KEY_USER_ID, id);
+                                if (!username.isEmpty()) editor.putString(KEY_USERNAME, username);
+                                editor.commit();
+                                persistToDiskFile();
+                            }
                         }
                         mConnected = true;
                         mConnecting = false;
+                        mLastError = "";
                         notifyListeners();
                         sendPresenceUpdate();
+                        mScheduler.schedule(this::sendPresenceUpdate, 2, TimeUnit.SECONDS);
                     }
                     break;
                 }
@@ -457,9 +582,14 @@ public final class DiscordPresenceManager {
                     sendHeartbeat(webSocket);
                     break;
                 }
-                case 7: // RECONNECT
+                case 7: { // RECONNECT
+                    disconnect();
+                    connectIfNeeded();
+                    break;
+                }
                 case 9: { // INVALID SESSION
                     disconnect();
+                    mScheduler.schedule(this::connectIfNeeded, 3, TimeUnit.SECONDS);
                     break;
                 }
                 default:
@@ -467,6 +597,13 @@ public final class DiscordPresenceManager {
             }
         } catch (Throwable t) {
             Logging.w(TAG, "Error handling Discord Gateway message: " + t.getMessage());
+            // Even if READY JSON parsing hit an edge case, ensure presence update is pushed
+            if (text.contains("\"READY\"")) {
+                mConnected = true;
+                mConnecting = false;
+                notifyListeners();
+                sendPresenceUpdate();
+            }
         }
     }
 
@@ -476,7 +613,12 @@ public final class DiscordPresenceManager {
         }
         long safeInterval = Math.max(15000L, intervalMs);
         mHeartbeatFuture = mScheduler.scheduleAtFixedRate(
-                () -> sendHeartbeat(webSocket),
+                () -> {
+                    sendHeartbeat(webSocket);
+                    if (mConnected) {
+                        sendPresenceUpdate();
+                    }
+                },
                 safeInterval,
                 safeInterval,
                 TimeUnit.MILLISECONDS
@@ -498,21 +640,35 @@ public final class DiscordPresenceManager {
         String token = getToken();
         if (token.isEmpty()) return;
         try {
+            // Identify with Desktop Client properties (like KizzyRPC) so Discord Gateway accepts
+            // type 0 ("Playing") Rich Presence activities with application_id 1571705435713437726.
             JSONObject properties = new JSONObject();
-            properties.put("os", "Android");
-            properties.put("browser", "Discord Android");
-            properties.put("device", InfoDistributor.APP_NAME);
+            properties.put("os", "Windows");
+            properties.put("browser", "Discord Client");
+            properties.put("device", "Discord Client");
 
             JSONObject data = new JSONObject();
             data.put("token", token);
-            data.put("capabilities", 65);
+            data.put("capabilities", 4093);
             data.put("properties", properties);
+            data.put("compress", false);
             data.put("presence", buildPresenceObject());
 
             JSONObject packet = new JSONObject();
             packet.put("op", 2);
             packet.put("d", data);
-            webSocket.send(packet.toString());
+            boolean sent = webSocket.send(packet.toString());
+            if (sent) {
+                // Optimistically mark connected after IDENTIFY and push op:3 presence update
+                mScheduler.schedule(() -> {
+                    if (mWebSocket == webSocket) {
+                        mConnected = true;
+                        mConnecting = false;
+                        notifyListeners();
+                        sendPresenceUpdate();
+                    }
+                }, 1800, TimeUnit.MILLISECONDS);
+            }
         } catch (Throwable t) {
             Logging.w(TAG, "Failed to send Discord IDENTIFY: " + t.getMessage());
         }
@@ -537,12 +693,13 @@ public final class DiscordPresenceManager {
         timestamps.put("start", mSessionStartTimestamp);
 
         JSONObject activity = new JSONObject();
-        activity.put("application_id", DISCORD_APPLICATION_ID);
         activity.put("name", InfoDistributor.APP_NAME);
-        activity.put("type", 0); // Playing
-        activity.put("details", mCurrentDetails);
         activity.put("state", resolveEffectiveState());
+        activity.put("details", mCurrentDetails);
+        activity.put("type", 0); // Playing
+        activity.put("created_at", mSessionStartTimestamp);
         activity.put("timestamps", timestamps);
+        activity.put("application_id", DISCORD_APPLICATION_ID);
         return activity;
     }
 
@@ -559,11 +716,6 @@ public final class DiscordPresenceManager {
         return presence;
     }
 
-    /**
-     * Broadcasts Rich Presence activity for Application ID 1571705435713437726 locally on Android
-     * so the Discord mobile client / Samsung Game Launcher bridge can detect Gurkha Launcher
-     * without requiring a user token.
-     */
     private void broadcastLocalDiscordRpc() {
         if (!isEnabled() || !isConfigured()) return;
         try {
@@ -583,64 +735,11 @@ public final class DiscordPresenceManager {
         }
     }
 
-    /**
-     * Publishes Rich Presence via Discord's Headless Sessions endpoint for Application ID 1571705435713437726
-     * when an OAuth2/Web session token is available.
-     */
-    private void postHeadlessSessionActivity() {
-        String token = getToken();
-        if (!isEnabled() || token.isEmpty()) return;
-        try {
-            JSONArray activities = new JSONArray();
-            activities.put(buildActivityObject());
-
-            JSONObject payload = new JSONObject();
-            payload.put("activities", activities);
-            String existingHeadless = mPrefs.getString(KEY_HEADLESS_TOKEN, "");
-            if (existingHeadless != null && !existingHeadless.isEmpty()) {
-                payload.put("token", existingHeadless);
-            }
-
-            String authHeader = token.contains(".") ? token : ("Bearer " + token);
-            Request request = new Request.Builder()
-                    .url(HEADLESS_SESSIONS_URL)
-                    .header("Authorization", authHeader)
-                    .header("User-Agent", "Discord-Android/124000")
-                    .post(RequestBody.create(payload.toString(), JSON_MEDIA))
-                    .build();
-            mHttpClient.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                }
-
-                @Override
-                public void onResponse(@NonNull Call call, @NonNull Response response) {
-                    try {
-                        if (response.isSuccessful() && response.body() != null) {
-                            JSONObject res = new JSONObject(response.body().string());
-                            String sessionTok = res.optString("token", "");
-                            if (!sessionTok.isEmpty()) {
-                                mPrefs.edit().putString(KEY_HEADLESS_TOKEN, sessionTok).apply();
-                            }
-                            mConnected = true;
-                            notifyListeners();
-                        }
-                    } catch (Throwable ignored) {
-                    } finally {
-                        response.close();
-                    }
-                }
-            });
-        } catch (Throwable ignored) {
-        }
-    }
-
     private void fetchDiscordIdentityAsync(@NonNull String token) {
-        String authHeader = token.contains(".") ? token : ("Bearer " + token);
         Request request = new Request.Builder()
                 .url(USER_ME_URL)
-                .header("Authorization", authHeader)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124.0.0.0 Mobile Safari/537.36")
+                .header("Authorization", token)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
                 .get()
                 .build();
         mHttpClient.newCall(request).enqueue(new Callback() {
@@ -658,7 +757,8 @@ public final class DiscordPresenceManager {
                         SharedPreferences.Editor editor = mPrefs.edit();
                         if (!id.isEmpty()) editor.putString(KEY_USER_ID, id);
                         if (!username.isEmpty()) editor.putString(KEY_USERNAME, username);
-                        editor.apply();
+                        editor.commit();
+                        persistToDiskFile();
                         notifyListeners();
                     }
                 } catch (Throwable ignored) {
@@ -729,8 +829,16 @@ public final class DiscordPresenceManager {
         return mCurrentState;
     }
 
+    public static boolean looksLikeDiscordToken(@Nullable String raw) {
+        if (raw == null) return false;
+        String t = normalizeToken(raw);
+        if (t.startsWith("mfa.") && t.length() > 30) return true;
+        String[] parts = t.split("\\.");
+        return parts.length == 3 && t.length() >= 50;
+    }
+
     @NonNull
-    private static String normalizeToken(@Nullable String raw) {
+    public static String normalizeToken(@Nullable String raw) {
         if (raw == null) return "";
         String t = raw.trim();
         if (t.startsWith("\"") && t.endsWith("\"") && t.length() >= 2) {
