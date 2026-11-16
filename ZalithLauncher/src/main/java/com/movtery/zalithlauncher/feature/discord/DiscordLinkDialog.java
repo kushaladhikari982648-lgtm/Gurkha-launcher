@@ -260,7 +260,7 @@ public final class DiscordLinkDialog {
         cancelBtn.setBackgroundResource(R.drawable.mc_button);
         cancelBtn.setTextColor(Color.parseColor("#F0F3EE"));
         cancelBtn.setAllCaps(false);
-        cancelBtn.setText(R.string.generic_cancel);
+        cancelBtn.setText(android.R.string.cancel);
         LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
                 0,
                 (int) (38 * density),
