@@ -57,12 +57,14 @@ def wait_portrait_home():
     root,_=wait('home_button',180)
     assert find(root,'play_button') is not None,'Launch button missing from default landscape home'
     assert find(root,'discord_button') is not None,'Discord button missing from default landscape home'
-    x1,y1,x2,y2=map(int,re.findall(r'\d+',find(root,'container_fragment').get('bounds')))
-    if x2-x1>=y2-y1:
-        orient_btn=find(root,'orientation_button') or find(root,'orientation_toggle_button')
+    for _ in range(6):
+        x1,y1,x2,y2=map(int,re.findall(r'\d+',find(root,'container_fragment').get('bounds')))
+        if y2-y1>x2-x1:break
+        orient_btn=find(root,'orientation_toggle_button') or find(root,'orientation_button')
         assert orient_btn is not None,'Orientation switch button missing'
         tap(orient_btn)
-        time.sleep(1)
+        time.sleep(2)
+        root,_=wait('home_button')
     lock_rotation(adb,0)
     deadline=time.monotonic()+60
     consecutive=0
@@ -120,10 +122,14 @@ try:
         time.sleep(0.5)
     # Recreate while settings are open; the selected tab and child fragments must survive.
     adb('shell','settings','put','system','font_scale','1.3')
-    orient_btn=find(root,'orientation_button')
-    if orient_btn is not None:
-        tap(orient_btn)
-        time.sleep(1)
+    for _ in range(6):
+        x1,y1,x2,y2=map(int,re.findall(r'\d+',find(root,'container_fragment').get('bounds')))
+        if x2-x1>y2-y1:break
+        orient_btn=find(root,'orientation_button')
+        if orient_btn is not None:
+            tap(orient_btn)
+            time.sleep(2)
+        root,_=wait('tab_game')
     lock_rotation(adb,1)
     deadline=time.monotonic()+45
     while True:
