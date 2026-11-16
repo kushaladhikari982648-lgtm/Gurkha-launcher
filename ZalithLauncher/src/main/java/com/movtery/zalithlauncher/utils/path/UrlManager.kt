@@ -27,6 +27,8 @@ class UrlManager {
         const val URL_MINECRAFT: String = "https://www.minecraft.net/"
         const val URL_MINECRAFT_VERSION_REPOS: String = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
         const val URL_HOME: String = "https://github.com/$GITHUB_REPOSITORY"
+        /** Official Gurkha Launcher Discord invite for help, bug reports, and feature requests. */
+        const val URL_DISCORD: String = "https://discord.gg/7FaUJf4R9"
         /** Gurkha Launcher has no donation page yet; the "support" entry points are hidden in the UI. */
         const val URL_SUPPORT: String = URL_HOME
         /** The project this launcher is forked from (credited on the About page). */

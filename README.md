@@ -8,6 +8,7 @@
 
 [![Android CI](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/workflows/android.yml/badge.svg)](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/actions/workflows/android.yml)
 [![Latest release](https://img.shields.io/github/v/release/kushaladhikari982648-lgtm/Gurkha-launcher?include_prereleases)](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Server-5865F2?logo=discord&logoColor=white)](https://discord.gg/7FaUJf4R9)
 
 </div>
 
@@ -18,6 +19,7 @@ under the [GPL-3.0](LICENSE) license.
 
 - **Download:** [Releases](https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher/releases). Pick the `arm64-v8a` APK for most phones, `armeabi-v7a`
   for 32-bit phones, or the universal APK if you are not sure.
+- **Discord (Help, Bug Reports & Feature Requests):** [https://discord.gg/7FaUJf4R9](https://discord.gg/7FaUJf4R9) — Join our official Discord community if you need help, found a bug to report, or want to ask us to add any features!
 - It installs as its own app (`com.gurkha.launcher`) next to Zalith Launcher, with its own settings and
   game files.
 - **Differences from Zalith Launcher:** includes LTW and Krypton Wrapper renderers, LWJGL 3.4.1/SDL3

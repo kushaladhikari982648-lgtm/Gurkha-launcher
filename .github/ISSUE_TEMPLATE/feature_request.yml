@@ -1,7 +1,11 @@
 name: Feature Request / 功能建议
-description: 'Share your thoughts with me / 将你的想法分享给我'
+description: 'Request a feature (or ask on Discord: https://discord.gg/7FaUJf4R9) / 将你的想法分享给我'
 labels: [Suggestion]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Want us to add a feature, need help, or found a bug? You can also ask directly in the official **Gurkha Launcher Discord**: https://discord.gg/7FaUJf4R9
   - type: textarea
     id: description
     attributes:

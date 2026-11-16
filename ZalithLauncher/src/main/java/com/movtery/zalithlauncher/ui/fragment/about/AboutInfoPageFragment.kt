@@ -84,8 +84,8 @@ class AboutInfoPageFragment() : Fragment(R.layout.fragment_about_info_page) {
                 qqGroupButton.visibility = View.GONE
             }
 
-            discordButton.visibility = if (SHOW_UPSTREAM_COMMUNITY) View.VISIBLE else View.GONE
-            discordButton.setOnClickListener { ZHTools.openLink(requireActivity(), "https://discord.gg/yDDkTHp4cJ") }
+            discordButton.visibility = View.VISIBLE
+            discordButton.setOnClickListener { ZHTools.openLink(requireActivity(), UrlManager.URL_DISCORD) }
         }
     }
 

@@ -31,6 +31,8 @@ import com.movtery.zalithlauncher.InfoDistributor;
  * Server Webhook) so others on Discord see "Playing Gurkha Launcher" on their profile and/or channel.
  */
 public final class DiscordLinkDialog {
+    public static final String DISCORD_INVITE_URL = com.movtery.zalithlauncher.utils.path.UrlManager.URL_DISCORD;
+
     private DiscordLinkDialog() {
     }
 
@@ -48,6 +50,17 @@ public final class DiscordLinkDialog {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
+
+        TextView communityBanner = new TextView(context);
+        communityBanner.setText("Need help, found a bug, or want to request a feature?\nJoin our official Discord: " + DISCORD_INVITE_URL);
+        communityBanner.setPadding(0, 0, 0, smallPad);
+        root.addView(communityBanner);
+
+        Button joinServerBtn = new Button(context);
+        joinServerBtn.setAllCaps(false);
+        joinServerBtn.setText("Join Gurkha Launcher Discord (Help, Bugs & Features)");
+        joinServerBtn.setOnClickListener(v -> com.movtery.zalithlauncher.utils.ZHTools.openLink(context, DISCORD_INVITE_URL));
+        root.addView(joinServerBtn);
 
         TextView statusBanner = new TextView(context);
         String linkedUser = manager.getLinkedUsername();

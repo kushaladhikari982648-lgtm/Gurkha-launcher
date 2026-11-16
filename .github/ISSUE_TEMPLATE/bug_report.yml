@@ -1,7 +1,11 @@
 name: BUG Report / BUG 反馈
-description: 'Report a bug / 反馈一个 Bug'
+description: 'Report a bug (or join Discord: https://discord.gg/7FaUJf4R9) / 反馈一个 Bug'
 labels: [Bug]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Need help, found a bug, or want to request a feature? Join the official **Gurkha Launcher Discord**: https://discord.gg/7FaUJf4R9
   - type: dropdown
     id: issue-type
     attributes:

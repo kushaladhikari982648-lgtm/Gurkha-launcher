@@ -34,6 +34,7 @@ class ErrorActivity : BaseActivity() {
             startActivity(Intent(this@ErrorActivity, SplashActivity::class.java))
         }
         binding.shareLog.setOnClickListener { ZHTools.shareLogs(this) }
+        binding.discordReport.setOnClickListener { ZHTools.openLink(this, com.movtery.zalithlauncher.utils.path.UrlManager.URL_DISCORD) }
 
         if (extras.getBoolean(BUNDLE_IS_LAUNCHER_CRASH, false)) {
             showLauncherCrash(extras)
@@ -57,7 +58,7 @@ class ErrorActivity : BaseActivity() {
         val throwable = extras.getSerializable(BUNDLE_THROWABLE) as Throwable?
         val stackTrace = if (throwable != null) Tools.printToString(throwable) else "<null>"
         val strSavePath = extras.getString(BUNDLE_SAVE_PATH)
-        val errorText = "$strSavePath :\r\n\r\n$stackTrace"
+        val errorText = "Need help or found a bug? Report it on our Discord: ${com.movtery.zalithlauncher.utils.path.UrlManager.URL_DISCORD}\r\n\r\n$strSavePath :\r\n\r\n$stackTrace"
 
         binding.apply {
             this.errorTitle.text = InfoCenter.replaceName(context, R.string.error_fatal)
@@ -79,6 +80,8 @@ class ErrorActivity : BaseActivity() {
         val context = this
         val crashDetails = buildString {
             append(getString(errorText, code))
+            append("\n\nNeed help, found a bug, or want to request a feature? Join our Discord: ")
+            append(com.movtery.zalithlauncher.utils.path.UrlManager.URL_DISCORD)
             readLogSnippet(File(PathManager.DIR_GAME_HOME, "jvm_crash_report.log"), head = true, maxBytes = 2048)?.let {
                 append("\n\n--- jvm_crash_report.log ---\n").append(it)
             }
@@ -124,6 +127,7 @@ class ErrorActivity : BaseActivity() {
             this.topView.visibility = View.GONE
             this.scrollView.visibility = View.GONE
             this.shareLog.visibility = View.GONE
+            this.discordReport.visibility = View.GONE
             this.centerText.visibility = View.VISIBLE
 
             this.centerText.text = InfoCenter.replaceName(context, R.string.error_fatal)
