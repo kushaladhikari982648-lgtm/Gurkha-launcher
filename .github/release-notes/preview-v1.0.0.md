@@ -1,13 +1,14 @@
-# Gurkha Launcher 1.0.0
+# Orbit Launcher — ver 1.0.0
 
 ## Highlights
-- **Phone Soft Keyboard in Chat Fixed Across All Versions (1.21.11, 26.1/26.2 GLFW, and 26.3+ SDL3)**:
-  - **Minecraft 26.3+ (SDL3)**: Unified Android soft-keyboard text entry through `TouchCharInput` (`showKeyboard()` / `hideKeyboard()`), routed `SDL_StartTextInput` (`showTextInput`) and `COMMAND_TEXTEDIT_HIDE` directly to `TouchCharInput`, synchronized `SDLActivity.nativeFocusChanged` across `MainActivity` focus/resume/pause events, and updated `CallbackBridge.sendChar` / `sendKeycode` to ensure SDL keyboard focus and active text input (`nativeEnsureSdlKeyboardFocus`) before committing characters via `SDLInputConnection.nativeCommitText` (`SDL_EVENT_TEXT_INPUT`).
-  - **Minecraft 26.1 / 26.2 (RenderPearl GLFW) & 1.21.11**: Updated `GLFW.glfwDestroyWindow` and `GLFW.glfwPollEvents` (`findPreferredShowingWindow()`) to prefer visible (`!win.state.hidden`) windows so hidden RenderPearl utility windows never steal `showingWindow` or drop chat/keyboard callbacks, and handled soft-keyboard newline (`\n`/`\r`) as Enter in `TouchCharInput`.
-- **In-Game FPS Meter Fixed Across All Renderers & Window Backends**:
-  - Moved FPS state (`currentFps`, `fpsFrameCount`, `lastFpsTimestampMs`, `hasExplicitFrameSwap`) into shared `pojav_environ` (`environ.h`) with monotonic millisecond timing (`pojavRecordFrame`) so `CallbackBridge.getCurrentFps()` reads live FPS across linker namespaces.
-  - Added frame counting across GLFW OpenGL (`pojavSwapBuffers`), GLFW Vulkan (`pojavStopPumping`), SDL3 OpenGL (`SDL_GL_SwapWindow` / `eglSwapBuffers`), and SDL3 Vulkan (`SDL_PollEvent` frame boundary).
-  - Enabled the floating FPS counter by default (`AllSettings.gameMenuShowFPS = true`) and fixed `GameMenuViewWrapper` initialization and elevation ordering.
-- **Desktop-Style Launcher Front UI (Performance Card Removed)**:
-  - Removed the front-screen performance setting card (`low_end_status` / `performance_button`) from both landscape and portrait home layouts (`fragment_launcher.xml`).
-  - Styled the launcher home screen as a clean Liquid Glass desktop workspace with a dedicated navigation rail, top header bar, and right-hand instance/launch dock.
+- **Orbit Launcher Rebrand & New Logo**:
+  - Updated launcher name and repository branding to **Orbit Launcher** (`kushaladhikari982648-lgtm/Orbit-Launcher`) while preserving package ID (`com.gurkha.launcher`) for seamless in-place upgrades.
+  - Replaced adaptive, legacy, round, notification, and splash/header title banner icons with the new Orbit Launcher artwork.
+- **Sleek Black Liquid-Glass Theme**:
+  - Replaced all green theme accents, panels, buttons, headers, sliders, toggles, and outlines with a cohesive obsidian-black liquid-glass theme (`#050507` app background, `#0D0E12`–`#16181D` cards/panels, crisp `#F4F5F7` primary controls and typography).
+- **Fixed Escape & All Custom/Keyboard/Mouse Buttons in Minecraft 26.3 and Other Versions**:
+  - **Keycode Mapping (`EfficientAndroidLWJGLKeycode.java`)**: Prioritized PC keyboard mappings in `getAndroidKeycode(int)` so `GLFW_KEY_ESCAPE` maps to `KEYCODE_ESCAPE` (`111`) instead of `KEYCODE_BACK` (`4`) and `GLFW_KEY_HOME` maps to `KEYCODE_MOVE_HOME` (`122`) instead of `KEYCODE_HOME` (`3`); added missing GLFW keys (`DELETE`, `PRINT_SCREEN`, `SCROLL_LOCK`, `KP_EQUAL`, `LEFT_SUPER`, `RIGHT_SUPER`, `MENU`).
+  - **SDL3 Single-Window Size & Focus (`sdl_hook.c` & `input_bridge_v3.c`)**: Created `sPrimaryWindow` at the full Android surface resolution (`savedWidth x savedHeight`) instead of the `320x480` RenderPearl hidden utility window size, stripped `SDL_WINDOW_HIDDEN` on `sPrimaryWindow`, hooked `SDL_SetWindowPosition` and `SDL_SetWindowRelativeMouseMode`, and synced `SDL_ShowWindow`, `SDL_OnApplicationDidEnterForeground`, `SDLActivity.onNativeResize`, `SDLActivity.nativeFocusChanged(true)`, and `SDLActivity.onNativeMouse` so keyboard and mouse focus are never lost in Minecraft 26.3+.
+  - **GLFW Window Promotion & Back Button (`GLFW.java`, `Callbacks.java`, `MainActivity.java`)**: Promoted input-callback target windows to `showingWindow`, guarded `Callbacks.glfwFreeCallbacks` against non-primary utility windows, and wired Android Back navigation to dispatch `GLFW_KEY_ESCAPE` in-game.
+- **Official Discord Community & Rich Presence**:
+  - Discord Rich Presence (`1571705435713437726`) and official community server: **https://discord.gg/7FaUJf4R9**.

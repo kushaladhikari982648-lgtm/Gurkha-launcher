@@ -1,5 +1,5 @@
 <resources>
-  <color name="launcher_outline">#58D4F5E6</color>
-  <color name="launcher_outline_active">#DDA8F9CD</color>
-  <color name="launcher_outline_disabled">#2E8CA89B</color>
+  <color name="launcher_outline">#44FFFFFF</color>
+  <color name="launcher_outline_active">#CCFFFFFF</color>
+  <color name="launcher_outline_disabled">#24888E99</color>
 </resources>

@@ -17,6 +17,9 @@
 extern void pojavRecordFrame(void);
 extern void pojavMarkExplicitFrameSwap(void);
 extern void pojavRecordFrameIfNoExplicitSwap(void);
+__attribute__((weak)) int pojavGetSavedWidth(void);
+__attribute__((weak)) int pojavGetSavedHeight(void);
+__attribute__((weak)) void pojavSyncSdlWindowAndFocus(void);
 
 #define TAG "SdlHook"
 #define VULKAN_PTR ((void*) 0x6f756768)
@@ -56,6 +59,8 @@ extern void pojavRecordFrameIfNoExplicitSwap(void);
 
 // SDL3 window creation property names
 #define SDL_PROP_WINDOW_CREATE_TITLE_STRING "SDL.window.create.title"
+#define SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER "SDL.window.create.width"
+#define SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER "SDL.window.create.height"
 #define SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER "SDL.window.create.flags"
 #define SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN "SDL.window.create.opengl"
 #define SDL_PROP_WINDOW_CREATE_VULKAN_BOOLEAN "SDL.window.create.vulkan"
@@ -91,6 +96,13 @@ typedef bool (*SDL_SetNumberProperty_t)(uint32_t props, const char* name, int64_
 typedef bool (*SDL_GetBooleanProperty_t)(uint32_t props, const char* name, bool default_value);
 typedef bool (*SDL_SetBooleanProperty_t)(uint32_t props, const char* name, bool value);
 typedef const char* (*SDL_GetStringProperty_t)(uint32_t props, const char* name, const char* default_value);
+typedef bool (*SDL_SetKeyboardFocus_t)(void* window);
+typedef bool (*SDL_SetMouseFocus_t)(void* window);
+typedef void* (*SDL_GetKeyboardFocus_t)(void);
+typedef void* (*SDL_GetMouseFocus_t)(void);
+typedef bool (*SDL_SetWindowRelativeMouseMode_t)(void* window, bool enabled);
+typedef bool (*SDL_SetWindowPosition_t)(void* window, int x, int y);
+typedef void (*SDL_OnApplicationDidEnterForeground_t)(void);
 
 typedef struct {
     uint32_t flags;
@@ -171,6 +183,13 @@ static SDL_SetNumberProperty_t sRealSdlSetNumberProperty = NULL;
 static SDL_GetBooleanProperty_t sRealSdlGetBooleanProperty = NULL;
 static SDL_SetBooleanProperty_t sRealSdlSetBooleanProperty = NULL;
 static SDL_GetStringProperty_t sRealSdlGetStringProperty = NULL;
+static SDL_SetKeyboardFocus_t sRealSdlSetKeyboardFocus = NULL;
+static SDL_SetMouseFocus_t sRealSdlSetMouseFocus = NULL;
+static SDL_GetKeyboardFocus_t sRealSdlGetKeyboardFocus = NULL;
+static SDL_GetMouseFocus_t sRealSdlGetMouseFocus = NULL;
+static SDL_SetWindowRelativeMouseMode_t sRealSdlSetWindowRelativeMouseMode = NULL;
+static SDL_SetWindowPosition_t sRealSdlSetWindowPosition = NULL;
+static SDL_OnApplicationDidEnterForeground_t sRealSdlOnApplicationDidEnterForeground = NULL;
 
 static EglChooseConfig_t sRealEglChooseConfig = NULL;
 static EglCreateContext_t sRealEglCreateContext = NULL;
@@ -221,6 +240,50 @@ static void resolveSdlHelperSymbols(void) {
     }
     if (sRealSdlGetStringProperty == NULL) {
         sRealSdlGetStringProperty = (SDL_GetStringProperty_t) dlsym(sdl, "SDL_GetStringProperty");
+    }
+    if (sRealSdlSetKeyboardFocus == NULL) {
+        sRealSdlSetKeyboardFocus = (SDL_SetKeyboardFocus_t) dlsym(sdl, "SDL_SetKeyboardFocus");
+    }
+    if (sRealSdlSetMouseFocus == NULL) {
+        sRealSdlSetMouseFocus = (SDL_SetMouseFocus_t) dlsym(sdl, "SDL_SetMouseFocus");
+    }
+    if (sRealSdlGetKeyboardFocus == NULL) {
+        sRealSdlGetKeyboardFocus = (SDL_GetKeyboardFocus_t) dlsym(sdl, "SDL_GetKeyboardFocus");
+    }
+    if (sRealSdlGetMouseFocus == NULL) {
+        sRealSdlGetMouseFocus = (SDL_GetMouseFocus_t) dlsym(sdl, "SDL_GetMouseFocus");
+    }
+    if (sRealSdlSetWindowRelativeMouseMode == NULL) {
+        sRealSdlSetWindowRelativeMouseMode = (SDL_SetWindowRelativeMouseMode_t) dlsym(sdl, "SDL_SetWindowRelativeMouseMode");
+    }
+    if (sRealSdlSetWindowPosition == NULL) {
+        sRealSdlSetWindowPosition = (SDL_SetWindowPosition_t) dlsym(sdl, "SDL_SetWindowPosition");
+    }
+    if (sRealSdlOnApplicationDidEnterForeground == NULL) {
+        sRealSdlOnApplicationDidEnterForeground =
+            (SDL_OnApplicationDidEnterForeground_t) dlsym(sdl, "SDL_OnApplicationDidEnterForeground");
+    }
+}
+
+static void ensureWindowShownAndFocused(void* window) {
+    if (window == NULL) return;
+    resolveSdlHelperSymbols();
+    if (sRealSdlShowWindow != NULL) {
+        sRealSdlShowWindow(window);
+    }
+    if (sRealSdlSetKeyboardFocus != NULL) {
+        sRealSdlSetKeyboardFocus(window);
+    }
+    if (sRealSdlSetMouseFocus != NULL) {
+        sRealSdlSetMouseFocus(window);
+    }
+    if (sRealSdlGetKeyboardFocus != NULL &&
+        sRealSdlGetKeyboardFocus() == NULL &&
+        sRealSdlOnApplicationDidEnterForeground != NULL) {
+        sRealSdlOnApplicationDidEnterForeground();
+    }
+    if (pojavSyncSdlWindowAndFocus != NULL) {
+        pojavSyncSdlWindowAndFocus();
     }
 }
 
@@ -524,9 +587,7 @@ static void* reusePrimaryWindow(const char* caller, const char* title, int w, in
     if (!hidden && w > 64 && h > 64 && sRealSdlSetWindowSize != NULL) {
         sRealSdlSetWindowSize(sPrimaryWindow, w, h);
     }
-    if (!hidden && sRealSdlShowWindow != NULL) {
-        sRealSdlShowWindow(sPrimaryWindow);
-    }
+    ensureWindowShownAndFocused(sPrimaryWindow);
     __android_log_print(
         ANDROID_LOG_INFO,
         TAG,
@@ -561,6 +622,9 @@ static void* handleSdlCreateWindow(
         if (sPrimaryWindow != NULL) {
             return reusePrimaryWindow("SDL_CreateWindow", title, w, h, hidden);
         }
+        // Single-window Android reuse: the primary surface window must never be created with
+        // SDL_WINDOW_HIDDEN, otherwise SDL_SetKeyboardFocus and SDL_UpdateRelativeMouseMode fail.
+        flags &= ~SDL_WINDOW_HIDDEN;
     }
 
     if (requestsOpenGL) {
@@ -571,6 +635,12 @@ static void* handleSdlCreateWindow(
     // so SDL's Android backend never infers a portrait window orientation.
     int createW = (hidden && w > 0 && w <= h) ? (h + 1) : w;
     int createH = h;
+    int savedW = pojavGetSavedWidth != NULL ? pojavGetSavedWidth() : 0;
+    int savedH = pojavGetSavedHeight != NULL ? pojavGetSavedHeight() : 0;
+    if (sdlWindowReuseEnabled() && sPrimaryWindow == NULL && savedW > 0 && savedH > 0) {
+        createW = savedW;
+        createH = savedH;
+    }
 
     sInCreateWindow++;
     void* window = realFn != NULL ? realFn(title, createW, createH, flags) : NULL;
@@ -583,6 +653,7 @@ static void* handleSdlCreateWindow(
         if (sReplacedVulkanWindow == window) {
             sReplacedVulkanWindow = NULL;
         }
+        ensureWindowShownAndFocused(sPrimaryWindow);
         __android_log_print(
             ANDROID_LOG_INFO,
             TAG,
@@ -637,6 +708,19 @@ static void* handleSdlCreateWindowWithProperties(
         if (sPrimaryWindow != NULL) {
             return reusePrimaryWindow("SDL_CreateWindowWithProperties", title, 0, 0, propHidden || (flags & SDL_WINDOW_HIDDEN) != 0);
         }
+        flags &= ~SDL_WINDOW_HIDDEN;
+        if (sRealSdlSetNumberProperty != NULL) {
+            sRealSdlSetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, (int64_t) flags);
+            int savedW = pojavGetSavedWidth != NULL ? pojavGetSavedWidth() : 0;
+            int savedH = pojavGetSavedHeight != NULL ? pojavGetSavedHeight() : 0;
+            if (savedW > 0 && savedH > 0) {
+                sRealSdlSetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, (int64_t) savedW);
+                sRealSdlSetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, (int64_t) savedH);
+            }
+        }
+        if (sRealSdlSetBooleanProperty != NULL) {
+            sRealSdlSetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, false);
+        }
     }
 
     if (requestsOpenGL) {
@@ -654,6 +738,7 @@ static void* handleSdlCreateWindowWithProperties(
         if (sReplacedVulkanWindow == window) {
             sReplacedVulkanWindow = NULL;
         }
+        ensureWindowShownAndFocused(sPrimaryWindow);
         __android_log_print(
             ANDROID_LOG_INFO,
             TAG,
@@ -810,8 +895,40 @@ static bool proxySdlSetWindowSize(void* window, int w, int h) {
     return true;
 }
 
+static bool proxySdlSetWindowPosition(void* window, int x, int y) {
+    if (window == NULL) {
+        return sRealSdlSetWindowPosition != NULL ? sRealSdlSetWindowPosition(window, x, y) : false;
+    }
+    if (sRealSdlSetWindowPosition != NULL) {
+        (void) sRealSdlSetWindowPosition(window, x, y);
+    }
+    return true;
+}
+
+static bool proxySdlSetKeyboardFocus(void* window) {
+    if (window == NULL && sdlWindowReuseEnabled() && sPrimaryWindow != NULL) {
+        window = sPrimaryWindow;
+    }
+    return sRealSdlSetKeyboardFocus != NULL ? sRealSdlSetKeyboardFocus(window) : true;
+}
+
+static bool proxySdlSetMouseFocus(void* window) {
+    if (window == NULL && sdlWindowReuseEnabled() && sPrimaryWindow != NULL) {
+        window = sPrimaryWindow;
+    }
+    return sRealSdlSetMouseFocus != NULL ? sRealSdlSetMouseFocus(window) : true;
+}
+
+static bool proxySdlSetWindowRelativeMouseMode(void* window, bool enabled) {
+    void* target = window != NULL ? window : sPrimaryWindow;
+    if (target != NULL) {
+        ensureWindowShownAndFocused(target);
+    }
+    return sRealSdlSetWindowRelativeMouseMode != NULL ? sRealSdlSetWindowRelativeMouseMode(target, enabled) : true;
+}
+
 static bool proxySdlHideWindow(void* window) {
-    if (sdlWindowReuseEnabled() && window == sPrimaryWindow && sPrimaryWindowRefs > 1) {
+    if (sdlWindowReuseEnabled() && window == sPrimaryWindow) {
         return true;
     }
     return sRealSdlHideWindow != NULL ? sRealSdlHideWindow(window) : true;
@@ -957,6 +1074,7 @@ static void* custom_SDL_CreateWindow_Func(const char* title, int w, int h, uint6
             BYTEHOOK_POP_STACK();
             return reused;
         }
+        flags &= ~SDL_WINDOW_HIDDEN;
     }
 
     if (requestsOpenGL) {
@@ -977,6 +1095,7 @@ static void* custom_SDL_CreateWindow_Func(const char* title, int w, int h, uint6
         if (sReplacedVulkanWindow == window) {
             sReplacedVulkanWindow = NULL;
         }
+        ensureWindowShownAndFocused(sPrimaryWindow);
     }
     BYTEHOOK_POP_STACK();
     return window;
@@ -1025,6 +1144,13 @@ static void* custom_SDL_CreateWindowWithProperties_Func(uint32_t props) {
             BYTEHOOK_POP_STACK();
             return reused;
         }
+        flags &= ~SDL_WINDOW_HIDDEN;
+        if (sRealSdlSetNumberProperty != NULL) {
+            sRealSdlSetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, (int64_t) flags);
+        }
+        if (sRealSdlSetBooleanProperty != NULL) {
+            sRealSdlSetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, false);
+        }
     }
 
     if (requestsOpenGL) {
@@ -1042,6 +1168,7 @@ static void* custom_SDL_CreateWindowWithProperties_Func(uint32_t props) {
         if (sReplacedVulkanWindow == window) {
             sReplacedVulkanWindow = NULL;
         }
+        ensureWindowShownAndFocused(sPrimaryWindow);
     }
     BYTEHOOK_POP_STACK();
     return window;
@@ -1065,8 +1192,47 @@ static bool custom_SDL_SetWindowSize_Func(void* window, int w, int h) {
     return true;
 }
 
+static bool custom_SDL_SetWindowPosition_Func(void* window, int x, int y) {
+    if (window == NULL) {
+        bool res = BYTEHOOK_CALL_PREV(custom_SDL_SetWindowPosition_Func, SDL_SetWindowPosition_t, window, x, y);
+        BYTEHOOK_POP_STACK();
+        return res;
+    }
+    (void) BYTEHOOK_CALL_PREV(custom_SDL_SetWindowPosition_Func, SDL_SetWindowPosition_t, window, x, y);
+    BYTEHOOK_POP_STACK();
+    return true;
+}
+
+static bool custom_SDL_SetKeyboardFocus_Func(void* window) {
+    if (window == NULL && sdlWindowReuseEnabled() && sPrimaryWindow != NULL) {
+        window = sPrimaryWindow;
+    }
+    bool res = BYTEHOOK_CALL_PREV(custom_SDL_SetKeyboardFocus_Func, SDL_SetKeyboardFocus_t, window);
+    BYTEHOOK_POP_STACK();
+    return res;
+}
+
+static bool custom_SDL_SetMouseFocus_Func(void* window) {
+    if (window == NULL && sdlWindowReuseEnabled() && sPrimaryWindow != NULL) {
+        window = sPrimaryWindow;
+    }
+    bool res = BYTEHOOK_CALL_PREV(custom_SDL_SetMouseFocus_Func, SDL_SetMouseFocus_t, window);
+    BYTEHOOK_POP_STACK();
+    return res;
+}
+
+static bool custom_SDL_SetWindowRelativeMouseMode_Func(void* window, bool enabled) {
+    void* target = window != NULL ? window : sPrimaryWindow;
+    if (target != NULL) {
+        ensureWindowShownAndFocused(target);
+    }
+    bool res = BYTEHOOK_CALL_PREV(custom_SDL_SetWindowRelativeMouseMode_Func, SDL_SetWindowRelativeMouseMode_t, target, enabled);
+    BYTEHOOK_POP_STACK();
+    return res;
+}
+
 static bool custom_SDL_HideWindow_Func(void* window) {
-    if (sdlWindowReuseEnabled() && window == sPrimaryWindow && sPrimaryWindowRefs > 1) {
+    if (sdlWindowReuseEnabled() && window == sPrimaryWindow) {
         BYTEHOOK_POP_STACK();
         return true;
     }
@@ -1220,6 +1386,31 @@ void* sdlDlsymProxy(void* handle, const char* name, void* realPtr) {
         }
         return (void*) &proxySdlSetWindowSize;
     }
+    if (strcmp(name, "SDL_SetWindowPosition") == 0) {
+        if (realPtr != (void*) &proxySdlSetWindowPosition && realPtr != (void*) &custom_SDL_SetWindowPosition_Func) {
+            sRealSdlSetWindowPosition = (SDL_SetWindowPosition_t) realPtr;
+        }
+        return (void*) &proxySdlSetWindowPosition;
+    }
+    if (strcmp(name, "SDL_SetKeyboardFocus") == 0) {
+        if (realPtr != (void*) &proxySdlSetKeyboardFocus && realPtr != (void*) &custom_SDL_SetKeyboardFocus_Func) {
+            sRealSdlSetKeyboardFocus = (SDL_SetKeyboardFocus_t) realPtr;
+        }
+        return (void*) &proxySdlSetKeyboardFocus;
+    }
+    if (strcmp(name, "SDL_SetMouseFocus") == 0) {
+        if (realPtr != (void*) &proxySdlSetMouseFocus && realPtr != (void*) &custom_SDL_SetMouseFocus_Func) {
+            sRealSdlSetMouseFocus = (SDL_SetMouseFocus_t) realPtr;
+        }
+        return (void*) &proxySdlSetMouseFocus;
+    }
+    if (strcmp(name, "SDL_SetWindowRelativeMouseMode") == 0) {
+        if (realPtr != (void*) &proxySdlSetWindowRelativeMouseMode &&
+            realPtr != (void*) &custom_SDL_SetWindowRelativeMouseMode_Func) {
+            sRealSdlSetWindowRelativeMouseMode = (SDL_SetWindowRelativeMouseMode_t) realPtr;
+        }
+        return (void*) &proxySdlSetWindowRelativeMouseMode;
+    }
     if (strcmp(name, "SDL_HideWindow") == 0) {
         if (realPtr != (void*) &proxySdlHideWindow && realPtr != (void*) &custom_SDL_HideWindow_Func) {
             sRealSdlHideWindow = (SDL_HideWindow_t) realPtr;
@@ -1291,6 +1482,10 @@ void create_sdl_hooks(void* bytehook_hook_all_p) {
     sBytehookHookAll(NULL, "SDL_CreateWindowWithProperties", (void*) &custom_SDL_CreateWindowWithProperties_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_DestroyWindow", (void*) &custom_SDL_DestroyWindow_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_SetWindowSize", (void*) &custom_SDL_SetWindowSize_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_SetWindowPosition", (void*) &custom_SDL_SetWindowPosition_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_SetKeyboardFocus", (void*) &custom_SDL_SetKeyboardFocus_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_SetMouseFocus", (void*) &custom_SDL_SetMouseFocus_Func, NULL, NULL);
+    sBytehookHookAll(NULL, "SDL_SetWindowRelativeMouseMode", (void*) &custom_SDL_SetWindowRelativeMouseMode_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_HideWindow", (void*) &custom_SDL_HideWindow_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_GL_MakeCurrent", (void*) &custom_SDL_GL_MakeCurrent_Func, NULL, NULL);
     sBytehookHookAll(NULL, "SDL_GL_SwapWindow", (void*) &custom_SDL_GL_SwapWindow_Func, NULL, NULL);

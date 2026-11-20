@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Background layer of the launcher icon: crimson, the colour of the khukuri logo (branding/gurkha-logo.png) -->
+<!-- Background layer of the Orbit Launcher adaptive icon (#1E1F23 dark obsidian background) -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#C42425" />
+    <solid android:color="#1E1F23" />
 </shape>

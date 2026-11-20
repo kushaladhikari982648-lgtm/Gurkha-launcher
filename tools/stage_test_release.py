@@ -80,7 +80,7 @@ def main():
                 for library in ('libltw.so', 'libltw_sdl_egl.so', 'libgurkha_core.so', 'librust_gl.so'):
                     require(f'lib/{abi}/{library}' in archive.namelist(), f'Missing {abi}/{library}')
         suffix = {'arm': 'armeabi-v7a', 'arm64': 'arm64-v8a', 'all': 'universal'}.get(arch, arch)
-        dest = out / f'GurkhaLauncher-{version}-debug-{suffix}.apk'
+        dest = out / f"{props.get('launcher_name', 'OrbitLauncher')}-{version}-debug-{suffix}.apk"
         shutil.copyfile(apk, dest)
         records.append(dict(file=dest.name, sha256=digest(dest), bytes=dest.stat().st_size, signer_sha256=next(iter(certificates))))
     require(len({r['signer_sha256'] for r in records}) == 1, 'Inconsistent signing certificates')

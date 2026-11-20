@@ -137,4 +137,25 @@ class ModernUiTests(unittest.TestCase):
         main_menu_java = (SRC / 'net/kdt/pojavlaunch/fragments/MainMenuFragment.java').read_text()
         self.assertIn('DiscordLinkDialog.show(requireContext())', main_menu_java)
 
+    def test_orbit_rebrand_black_theme_and_escape_key_fixes(self):
+        props = (ROOT / 'ZalithLauncher/gradle.properties').read_text()
+        self.assertIn('launcher_name=OrbitLauncher', props)
+        self.assertIn('launcher_app_name=Orbit Launcher', props)
+        self.assertIn('launcher_version_name=1.0.0', props)
+        url_mgr = (SRC / 'com/movtery/zalithlauncher/utils/path/UrlManager.kt').read_text()
+        self.assertIn('kushaladhikari982648-lgtm/Orbit-Launcher', url_mgr)
+        colors = (RES / 'values/colors.xml').read_text()
+        self.assertIn('#050507', colors)
+        self.assertNotIn('#0D1413', colors)
+        self.assertNotIn('#B5E5A7', colors)
+        keycode_java = (SRC / 'net/kdt/pojavlaunch/EfficientAndroidLWJGLKeycode.java').read_text()
+        self.assertIn('sAndroidByLwjgl.put(LwjglGlfwKeycode.GLFW_KEY_ESCAPE, KeyEvent.KEYCODE_ESCAPE);', keycode_java)
+        self.assertIn('sAndroidByLwjgl.put(LwjglGlfwKeycode.GLFW_KEY_HOME, KeyEvent.KEYCODE_MOVE_HOME);', keycode_java)
+        self.assertIn('KEYCODE_FORWARD_DEL', keycode_java)
+        sdl_hook = (ROOT / 'ZalithLauncher/src/main/jni/sdl_hook.c').read_text()
+        self.assertIn('SDL_SetWindowRelativeMouseMode', sdl_hook)
+        self.assertIn('SDL_SetWindowPosition', sdl_hook)
+        self.assertIn('pojavSyncSdlWindowAndFocus', sdl_hook)
+
+
 

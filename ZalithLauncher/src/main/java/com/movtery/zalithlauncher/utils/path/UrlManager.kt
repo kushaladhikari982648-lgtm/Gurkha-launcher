@@ -17,7 +17,7 @@ class UrlManager {
         @JvmField
         val TIME_OUT = Pair(8000, TimeUnit.MILLISECONDS)
         /** GitHub repository of this launcher ("owner/name"): releases, update info and notices come from here. */
-        const val GITHUB_REPOSITORY: String = "kushaladhikari982648-lgtm/Gurkha-launcher"
+        const val GITHUB_REPOSITORY: String = "kushaladhikari982648-lgtm/Orbit-Launcher"
         /**
          * Folder (on the repository's default branch) that holds launcher_version.json and
          * launcher_notice.json, read through the GitHub contents API. See launcher-info/README.md.
@@ -27,9 +27,9 @@ class UrlManager {
         const val URL_MINECRAFT: String = "https://www.minecraft.net/"
         const val URL_MINECRAFT_VERSION_REPOS: String = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
         const val URL_HOME: String = "https://github.com/$GITHUB_REPOSITORY"
-        /** Official Gurkha Launcher Discord invite for help, bug reports, and feature requests. */
+        /** Official Orbit Launcher Discord invite for help, bug reports, and feature requests. */
         const val URL_DISCORD: String = "https://discord.gg/7FaUJf4R9"
-        /** Gurkha Launcher has no donation page yet; the "support" entry points are hidden in the UI. */
+        /** Orbit Launcher has no donation page yet; the "support" entry points are hidden in the UI. */
         const val URL_SUPPORT: String = URL_HOME
         /** The project this launcher is forked from (credited on the About page). */
         const val URL_UPSTREAM: String = "https://github.com/ZalithLauncher/ZalithLauncher"

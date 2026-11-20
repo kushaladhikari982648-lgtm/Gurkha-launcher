@@ -226,6 +226,19 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         //初始化输入监听器，当输入法遮挡了游戏画面时，将设置这个监听器
         mInputWatcher = s -> binding.inputPreview.setText(s.toString().trim());
         getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(this);
+
+        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (isInEditor) {
+                    binding.mainControlLayout.askToExit(MainActivity.this);
+                } else if (binding != null && binding.mainDrawerOptions.isDrawerOpen(binding.mainNavigationView)) {
+                    binding.mainDrawerOptions.closeDrawer(binding.mainNavigationView);
+                } else {
+                    sendKeyPress(LwjglGlfwKeycode.GLFW_KEY_ESCAPE);
+                }
+            }
+        });
     }
 
     protected void initLayout() {

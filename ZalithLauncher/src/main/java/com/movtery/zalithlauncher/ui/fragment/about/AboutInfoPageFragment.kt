@@ -93,7 +93,7 @@ class AboutInfoPageFragment() : Fragment(R.layout.fragment_about_info_page) {
     private fun loadAboutData(resources: Resources) {
         mAboutData.clear()
 
-        //Gurkha Launcher is a fork of Zalith Launcher: keep crediting it
+        //Orbit Launcher is a fork of Zalith Launcher: keep crediting it
         mAboutData.add(
             AboutItemBean(
                 resources.getDrawable(R.drawable.image_about_zalith, requireContext().theme),

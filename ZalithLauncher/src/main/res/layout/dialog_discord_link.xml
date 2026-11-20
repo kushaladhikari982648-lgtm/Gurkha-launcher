@@ -49,7 +49,7 @@
                         android:layout_height="wrap_content"
                         android:fontFamily="sans-serif-medium"
                         android:singleLine="true"
-                        android:text="Discord • Gurkha Launcher"
+                        android:text="Discord • Orbit Launcher"
                         android:textSize="16sp" />
 
                     <TextView
@@ -59,7 +59,7 @@
                         android:layout_height="wrap_content"
                         android:singleLine="true"
                         android:text="App ID: 1571705435713437726 • Rich Presence"
-                        android:textColor="#B8D4C9"
+                        android:textColor="#B8BEC8"
                         android:textSize="11sp" />
                 </LinearLayout>
 
@@ -79,8 +79,8 @@
                 android:layout_marginTop="8dp"
                 android:background="@drawable/modern_stat"
                 android:padding="8dp"
-                android:text="Connect with your Discord ID or Login so others see Playing Gurkha Launcher"
-                android:textColor="#B8D4C9"
+                android:text="Connect with your Discord ID or Login so others see Playing Orbit Launcher"
+                android:textColor="#B8BEC8"
                 android:textSize="11sp" />
         </LinearLayout>
 
@@ -115,7 +115,7 @@
                 android:paddingHorizontal="10dp"
                 android:singleLine="true"
                 android:textColor="@color/primary_text"
-                android:textColorHint="#80B8D4C9"
+                android:textColorHint="#80B8BEC8"
                 android:textSize="13sp" />
 
             <Button
@@ -195,7 +195,7 @@
                 android:paddingHorizontal="10dp"
                 android:singleLine="true"
                 android:textColor="@color/primary_text"
-                android:textColorHint="#80B8D4C9"
+                android:textColorHint="#80B8BEC8"
                 android:textSize="12sp" />
 
             <EditText
@@ -211,7 +211,7 @@
                 android:paddingHorizontal="10dp"
                 android:singleLine="true"
                 android:textColor="@color/primary_text"
-                android:textColorHint="#80B8D4C9"
+                android:textColorHint="#80B8BEC8"
                 android:textSize="12sp" />
         </LinearLayout>
 
@@ -238,7 +238,7 @@
                 android:layout_height="wrap_content"
                 android:paddingBottom="6dp"
                 android:text="Need help, found bugs, or want us to add a feature? Join our Discord server:"
-                android:textColor="#B8D4C9"
+                android:textColor="#B8BEC8"
                 android:textSize="11sp" />
 
             <Button
@@ -249,7 +249,7 @@
                 android:drawableStart="@drawable/modern_discord"
                 android:gravity="center_vertical|start"
                 android:minHeight="36dp"
-                android:text="Join Gurkha Launcher Discord (discord.gg/7FaUJf4R9)"
+                android:text="Join Orbit Launcher Discord (discord.gg/7FaUJf4R9)"
                 android:textSize="11sp" />
         </LinearLayout>
 

@@ -142,7 +142,9 @@ public class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
     public void surfaceChanged(){
         // The first two args are ignored
-        surfaceChanged(null, 0, Tools.currentDisplayMetrics.widthPixels, Tools.currentDisplayMetrics.heightPixels);
+        int w = windowWidth > 0 ? windowWidth : Tools.currentDisplayMetrics.widthPixels;
+        int h = windowHeight > 0 ? windowHeight : Tools.currentDisplayMetrics.heightPixels;
+        surfaceChanged(null, 0, w, h);
     }
 
     // Called when the surface is resized

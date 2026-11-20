@@ -46,7 +46,7 @@ class AboutFragment : FragmentWithAnim(R.layout.fragment_about) {
             appInfo.setOnClickListener{ StringUtils.copyText("text", appInfo.text.toString(), requireContext()) }
 
             returnButton.setOnClickListener { ZHTools.onBackPressed(requireActivity()) }
-            //Gurkha Launcher has no donation page yet (the original one belongs to the Zalith developer)
+            //Orbit Launcher has no donation page yet (the original one belongs to the Zalith developer)
             supportDevelopment.visibility = View.GONE
             supportDevelopment.setOnClickListener {
                 TipDialog.Builder(requireActivity())

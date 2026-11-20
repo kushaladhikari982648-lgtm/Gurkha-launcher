@@ -56,7 +56,27 @@ public class CallbackBridge {
     }
 
 
+    private static float clampMouseX(float x) {
+        int maxW = windowWidth > 0 ? windowWidth : Tools.currentDisplayMetrics.widthPixels;
+        if (maxW <= 1) return 0f;
+        if (x < 0f) return 0f;
+        if (x >= maxW) return maxW - 1f;
+        return x;
+    }
+
+    private static float clampMouseY(float y) {
+        int maxH = windowHeight > 0 ? windowHeight : Tools.currentDisplayMetrics.heightPixels;
+        if (maxH <= 1) return 0f;
+        if (y < 0f) return 0f;
+        if (y >= maxH) return maxH - 1f;
+        return y;
+    }
+
     public static void sendCursorPos(float x, float y) {
+        if (!isGrabbing) {
+            x = clampMouseX(x);
+            y = clampMouseY(y);
+        }
         mouseX = x;
         mouseY = y;
         nativeSendCursorPos(mouseX, mouseY);
@@ -64,6 +84,7 @@ public class CallbackBridge {
         sdlLastX = x;
         sdlLastY = y;
         if (!MinecraftGLSurface.sdlEnabled) return;
+        nativeEnsureSdlKeyboardFocus(false);
         // SDL treats HOVER_MOVE and MOVE the same; while the game grabs the mouse it expects relative motion
         if (isGrabbing) SDLActivity.onNativeMouse(0, MotionEvent.ACTION_MOVE, deltaX, deltaY, true);
         else SDLActivity.onNativeMouse(0, MotionEvent.ACTION_MOVE, x, y, false);
@@ -123,6 +144,7 @@ public class CallbackBridge {
         // if (isGrabbing()) DEBUG_STRING.append("MouseGrabStrace: " + android.util.Log.getStackTraceString(new Throwable()) + "\n");
         nativeSendMouseButton(button, isDown ? 1 : 0, modifiers);
         if (!MinecraftGLSurface.sdlEnabled) return;
+        nativeEnsureSdlKeyboardFocus(false);
         int androidButton;
         switch (button) {
             case LwjglGlfwKeycode.GLFW_MOUSE_BUTTON_LEFT: androidButton = MotionEvent.BUTTON_PRIMARY; break;
@@ -136,7 +158,16 @@ public class CallbackBridge {
         // SDL expects MotionEvent.getButtonState(), i.e. the buttons still held after this event
         if (isDown) sdlMouseButtonState |= androidButton;
         else sdlMouseButtonState &= ~androidButton;
-        SDLActivity.onNativeMouse(sdlMouseButtonState, isDown ? MotionEvent.ACTION_DOWN : MotionEvent.ACTION_UP, mouseX, mouseY, false);
+        int action = isDown ? MotionEvent.ACTION_DOWN : MotionEvent.ACTION_UP;
+        if (isGrabbing) {
+            SDLActivity.onNativeMouse(sdlMouseButtonState, action, 0f, 0f, true);
+        } else {
+            float cx = clampMouseX(mouseX);
+            float cy = clampMouseY(mouseY);
+            mouseX = cx;
+            mouseY = cy;
+            SDLActivity.onNativeMouse(sdlMouseButtonState, action, cx, cy, false);
+        }
     }
 
     public static void sendMouseKeycode(int keycode) {
@@ -147,6 +178,7 @@ public class CallbackBridge {
     public static void sendScroll(double xoffset, double yoffset) {
         nativeSendScroll(xoffset, yoffset);
         if (!MinecraftGLSurface.sdlEnabled) return;
+        nativeEnsureSdlKeyboardFocus(false);
         SDLActivity.onNativeMouse(0, MotionEvent.ACTION_SCROLL, (float) xoffset, (float) yoffset, false);
     }
 
@@ -185,9 +217,11 @@ public class CallbackBridge {
             org.libsdl.app.SDL.setupJNI();
             MinecraftGLSurface.sdlEnabled = true;
             if (SDLActivity.getSDLSurface() != null) {
+                int targetW = windowWidth > 0 ? windowWidth : Tools.currentDisplayMetrics.widthPixels;
+                int targetH = windowHeight > 0 ? windowHeight : Tools.currentDisplayMetrics.heightPixels;
                 // SDL needs the size of the native surface to map input coordinates
                 SDLActivity.getSDLSurface().surfaceCreated(null);
-                SDLActivity.getSDLSurface().nativeResize(Tools.currentDisplayMetrics.widthPixels, Tools.currentDisplayMetrics.heightPixels);
+                SDLActivity.getSDLSurface().nativeResize(targetW, targetH);
                 SDLActivity.getSDLSurface().surfaceChanged();
             }
             Logger.appendToLog("Info: SDL launcher integration enabled");
@@ -241,14 +275,17 @@ public class CallbackBridge {
     public static void setModifiers(int keyCode, boolean isDown){
         switch (keyCode){
             case LwjglGlfwKeycode.GLFW_KEY_LEFT_SHIFT:
+            case LwjglGlfwKeycode.GLFW_KEY_RIGHT_SHIFT:
                 CallbackBridge.holdingShift = isDown;
                 return;
 
             case LwjglGlfwKeycode.GLFW_KEY_LEFT_CONTROL:
+            case LwjglGlfwKeycode.GLFW_KEY_RIGHT_CONTROL:
                 CallbackBridge.holdingCtrl = isDown;
                 return;
 
             case LwjglGlfwKeycode.GLFW_KEY_LEFT_ALT:
+            case LwjglGlfwKeycode.GLFW_KEY_RIGHT_ALT:
                 CallbackBridge.holdingAlt = isDown;
                 return;
 
@@ -265,6 +302,14 @@ public class CallbackBridge {
     @SuppressWarnings("unused")
     private static void onGrabStateChanged(final boolean grabbing) {
         isGrabbing = grabbing;
+        int targetW = windowWidth > 0 ? windowWidth : Tools.currentDisplayMetrics.widthPixels;
+        int targetH = windowHeight > 0 ? windowHeight : Tools.currentDisplayMetrics.heightPixels;
+        float centerX = Math.max(0f, targetW / 2f);
+        float centerY = Math.max(0f, targetH / 2f);
+        mouseX = centerX;
+        mouseY = centerY;
+        sdlLastX = centerX;
+        sdlLastY = centerY;
         sChoreographer.postFrameCallbackDelayed((time) -> {
             // If the grab re-changed, skip notify process
             if(isGrabbing != grabbing) return;

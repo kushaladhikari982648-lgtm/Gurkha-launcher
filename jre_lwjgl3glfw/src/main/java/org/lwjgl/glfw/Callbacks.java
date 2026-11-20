@@ -29,14 +29,15 @@ public final class Callbacks {
         if (Checks.CHECKS) {
             check(window);
         }
+        if (GLFW.mainContext != 0L && window != GLFW.mainContext) {
+            return;
+        }
 
         try {
             for (Method callback : GLFW.class.getMethods()) {
                 if (callback.getName().startsWith("glfwSet") && callback.getName().endsWith("Callback")) {
-                    if (callback.getParameterCount() == 1) {
-                        callback.invoke(null, (Object)null);
-                    } else {
-                        callback.invoke(null, GLFW.glfwGetCurrentContext(), null);
+                    if (callback.getParameterCount() == 2) {
+                        callback.invoke(null, window, null);
                     }
                 }
             }

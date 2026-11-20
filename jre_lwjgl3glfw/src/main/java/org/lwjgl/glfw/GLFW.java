@@ -658,8 +658,19 @@ public class GLFW
         return win;
     }
 
+    private static void promoteInputWindow(long window) {
+        if (window == 0L) return;
+        GLFWWindowProperties win = mGLFWWindowMap.get(window);
+        if (win != null) {
+            win.state.show();
+            nglfwSetShowingWindow(window);
+            internalSyncWindowState(window, win, CallbackBridge.nativeGetWindowState());
+        }
+    }
+
     // Generated stub callback methods
     public static GLFWCharCallback glfwSetCharCallback(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("GLFWcharfun") GLFWCharCallbackI cbfun) {
+        if (cbfun != null) promoteInputWindow(window);
         GLFWCharCallback lastCallback = mGLFWCharCallback;
         if (cbfun == null) mGLFWCharCallback = null;
         else mGLFWCharCallback = GLFWCharCallback.createSafe(nglfwSetCharCallback(window, memAddressSafe(cbfun)));
@@ -668,6 +679,7 @@ public class GLFW
     }
 
     public static GLFWCharModsCallback glfwSetCharModsCallback(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("GLFWcharmodsfun") GLFWCharModsCallbackI cbfun) {
+        if (cbfun != null) promoteInputWindow(window);
         GLFWCharModsCallback lastCallback = mGLFWCharModsCallback;
         if (cbfun == null) mGLFWCharModsCallback = null;
         else mGLFWCharModsCallback = GLFWCharModsCallback.createSafe(nglfwSetCharModsCallback(window, memAddressSafe(cbfun)));
@@ -684,6 +696,7 @@ public class GLFW
     }
 
     public static GLFWCursorPosCallback glfwSetCursorPosCallback(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("GLFWcursorposfun") GLFWCursorPosCallbackI cbfun) {
+        if (cbfun != null) promoteInputWindow(window);
         GLFWCursorPosCallback lastCallback = mGLFWCursorPosCallback;
         if (cbfun == null) mGLFWCursorPosCallback = null;
         else mGLFWCursorPosCallback = GLFWCursorPosCallback.createSafe(nglfwSetCursorPosCallback(window, memAddressSafe(cbfun)));
@@ -724,6 +737,7 @@ public class GLFW
     }
 
     public static GLFWKeyCallback glfwSetKeyCallback(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("GLFWkeyfun") GLFWKeyCallbackI cbfun) {
+        if (cbfun != null) promoteInputWindow(window);
         GLFWKeyCallback lastCallback = mGLFWKeyCallback;
         if (cbfun == null) mGLFWKeyCallback = null;
         else mGLFWKeyCallback = GLFWKeyCallback.createSafe(nglfwSetKeyCallback(window, memAddressSafe(cbfun)));
@@ -740,6 +754,7 @@ public class GLFW
     }
 
     public static GLFWMouseButtonCallback glfwSetMouseButtonCallback(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("GLFWmousebuttonfun") GLFWMouseButtonCallbackI cbfun) {
+        if (cbfun != null) promoteInputWindow(window);
         GLFWMouseButtonCallback lastCallback = mGLFWMouseButtonCallback;
         if (cbfun == null) mGLFWMouseButtonCallback = null;
         else mGLFWMouseButtonCallback = GLFWMouseButtonCallback.createSafe(nglfwSetMouseButtonCallback(window, memAddressSafe(cbfun)));
@@ -748,6 +763,7 @@ public class GLFW
     }
 
     public static GLFWScrollCallback glfwSetScrollCallback(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("GLFWscrollfun") GLFWScrollCallbackI cbfun) {
+        if (cbfun != null) promoteInputWindow(window);
         GLFWScrollCallback lastCallback = mGLFWScrollCallback;
         if (cbfun == null) mGLFWScrollCallback = null;
         else mGLFWScrollCallback = GLFWScrollCallback.createSafe(nglfwSetScrollCallback(window, memAddressSafe(cbfun)));
@@ -774,7 +790,16 @@ public class GLFW
     public static GLFWWindowFocusCallback glfwSetWindowFocusCallback(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("GLFWwindowfocusfun") GLFWWindowFocusCallbackI cbfun) {
         GLFWWindowFocusCallback lastCallback = mGLFWWindowFocusCallback;
         if (cbfun == null) mGLFWWindowFocusCallback = null;
-        else mGLFWWindowFocusCallback = GLFWWindowFocusCallback.create(cbfun);
+        else {
+            mGLFWWindowFocusCallback = GLFWWindowFocusCallback.create(cbfun);
+            promoteInputWindow(window);
+            GLFWWindowProperties win = mGLFWWindowMap.get(window);
+            if (win != null) {
+                int host = CallbackBridge.nativeGetWindowState();
+                win.notifiedFocused = !win.state.focused(host);
+                internalSyncWindowState(window, win, host);
+            }
+        }
         return lastCallback;
     }
 

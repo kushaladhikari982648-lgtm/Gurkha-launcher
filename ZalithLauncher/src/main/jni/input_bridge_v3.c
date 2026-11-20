@@ -269,25 +269,113 @@ Java_org_lwjgl_glfw_CallbackBridge_nativeEnsureSdlKeyboardFocus(
     if (sdl == NULL) return;
 
     typedef void* (*SDL_GetKeyboardFocus_t)(void);
+    typedef void* (*SDL_GetMouseFocus_t)(void);
+    typedef void** (*SDL_GetWindows_t)(int* count);
+    typedef bool (*SDL_ShowWindow_t)(void* window);
+    typedef bool (*SDL_GetWindowSize_t)(void* window, int* w, int* h);
+    typedef void (*SDL_free_t)(void* mem);
     typedef void (*SDL_OnApplicationDidEnterForeground_t)(void);
     typedef bool (*SDL_TextInputActive_t)(void* window);
     typedef bool (*SDL_StartTextInput_t)(void* window);
 
     SDL_GetKeyboardFocus_t getFocus = (SDL_GetKeyboardFocus_t) dlsym(sdl, "SDL_GetKeyboardFocus");
+    SDL_GetMouseFocus_t getMouseFocus = (SDL_GetMouseFocus_t) dlsym(sdl, "SDL_GetMouseFocus");
+    SDL_GetWindows_t getWindows = (SDL_GetWindows_t) dlsym(sdl, "SDL_GetWindows");
+    SDL_ShowWindow_t showWindow = (SDL_ShowWindow_t) dlsym(sdl, "SDL_ShowWindow");
+    SDL_GetWindowSize_t getWindowSize = (SDL_GetWindowSize_t) dlsym(sdl, "SDL_GetWindowSize");
+    SDL_free_t sdlFree = (SDL_free_t) dlsym(sdl, "SDL_free");
     SDL_OnApplicationDidEnterForeground_t enterFg =
         (SDL_OnApplicationDidEnterForeground_t) dlsym(sdl, "SDL_OnApplicationDidEnterForeground");
     SDL_TextInputActive_t isTextActive = (SDL_TextInputActive_t) dlsym(sdl, "SDL_TextInputActive");
     SDL_StartTextInput_t startText = (SDL_StartTextInput_t) dlsym(sdl, "SDL_StartTextInput");
 
     void* focusWin = getFocus != NULL ? getFocus() : NULL;
+    void* mouseWin = getMouseFocus != NULL ? getMouseFocus() : NULL;
+    void* firstWin = focusWin != NULL ? focusWin : mouseWin;
+    if ((focusWin == NULL || mouseWin == NULL) && getWindows != NULL && showWindow != NULL) {
+        int count = 0;
+        void** windows = getWindows(&count);
+        if (windows != NULL) {
+            for (int i = 0; i < count; i++) {
+                if (windows[i] != NULL) {
+                    if (firstWin == NULL) firstWin = windows[i];
+                    showWindow(windows[i]);
+                }
+            }
+            if (sdlFree != NULL) {
+                sdlFree(windows);
+            }
+        }
+    }
     if (focusWin == NULL && enterFg != NULL) {
         enterFg();
         focusWin = getFocus != NULL ? getFocus() : NULL;
+        if (firstWin == NULL) firstWin = focusWin;
+    }
+
+    bool needsResizeSync = false;
+    if (firstWin != NULL && getWindowSize != NULL &&
+        pojav_environ != NULL && pojav_environ->savedWidth > 480 && pojav_environ->savedHeight > 0) {
+        int curW = 0, curH = 0;
+        if (getWindowSize(firstWin, &curW, &curH) && (curW <= 480 || curW != pojav_environ->savedWidth || curH != pojav_environ->savedHeight)) {
+            needsResizeSync = true;
+        }
+    }
+
+    mouseWin = getMouseFocus != NULL ? getMouseFocus() : NULL;
+    if (env != NULL && (focusWin == NULL || mouseWin == NULL || needsResizeSync)) {
+        jclass sdlClass = (*env)->FindClass(env, "org/libsdl/app/SDLActivity");
+        if (sdlClass != NULL) {
+            if (needsResizeSync) {
+                jmethodID onNativeResize = (*env)->GetStaticMethodID(env, sdlClass, "onNativeResize", "()V");
+                if (onNativeResize != NULL) {
+                    (*env)->CallStaticVoidMethod(env, sdlClass, onNativeResize);
+                }
+            }
+            if (focusWin == NULL) {
+                jmethodID nativeFocusChanged = (*env)->GetStaticMethodID(env, sdlClass, "nativeFocusChanged", "(Z)V");
+                if (nativeFocusChanged != NULL) {
+                    (*env)->CallStaticVoidMethod(env, sdlClass, nativeFocusChanged, JNI_TRUE);
+                }
+                if (enterFg != NULL) {
+                    enterFg();
+                }
+                focusWin = getFocus != NULL ? getFocus() : NULL;
+            }
+            if (mouseWin == NULL) {
+                jmethodID onNativeMouse = (*env)->GetStaticMethodID(env, sdlClass, "onNativeMouse", "(IIFFZ)V");
+                if (onNativeMouse != NULL) {
+                    (*env)->CallStaticVoidMethod(env, sdlClass, onNativeMouse, 0, 7 /* ACTION_HOVER_MOVE */, 1.0f, 1.0f, JNI_FALSE);
+                }
+            }
+            (*env)->DeleteLocalRef(env, sdlClass);
+        }
+        if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+        }
     }
     if (ensureTextInputActive && focusWin != NULL && isTextActive != NULL && startText != NULL) {
         if (!isTextActive(focusWin)) {
             startText(focusWin);
         }
+    }
+}
+
+int pojavGetSavedWidth(void) {
+    return pojav_environ != NULL ? pojav_environ->savedWidth : 0;
+}
+
+int pojavGetSavedHeight(void) {
+    return pojav_environ != NULL ? pojav_environ->savedHeight : 0;
+}
+
+void pojavSyncSdlWindowAndFocus(void) {
+    if (pojav_environ == NULL || pojav_environ->dalvikJavaVMPtr == NULL) return;
+    JNIEnv* env = NULL;
+    if ((*pojav_environ->dalvikJavaVMPtr)->GetEnv(
+            pojav_environ->dalvikJavaVMPtr, (void**) &env, JNI_VERSION_1_6) == JNI_OK &&
+        env != NULL && !(*env)->ExceptionCheck(env)) {
+        Java_org_lwjgl_glfw_CallbackBridge_nativeEnsureSdlKeyboardFocus(env, NULL, JNI_FALSE);
     }
 }
 

@@ -1,14 +1,14 @@
 {
   "title": {
-    "en_us": "Welcome to Gurkha Launcher 1.0.1",
-    "zh_cn": "欢迎使用 Gurkha Launcher 1.0.1",
-    "zh_tw": "歡迎使用 Gurkha Launcher 1.0.1"
+    "en_us": "Welcome to Orbit Launcher ver 1.0.0",
+    "zh_cn": "欢迎使用 Orbit Launcher ver 1.0.0",
+    "zh_tw": "歡迎使用 Orbit Launcher ver 1.0.0"
   },
   "content": {
-    "en_us": "Thanks for using Gurkha Launcher! If you need help, found a bug, or want to ask us to add any features, join our official Discord server:\nhttps://discord.gg/7FaUJf4R9\n\nNew versions and source code: https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher",
-    "zh_cn": "感谢使用 Gurkha Launcher！如果您需要帮助、发现了 Bug 或希望我们添加新功能，欢迎加入官方 Discord 社区：\nhttps://discord.gg/7FaUJf4R9\n\n新版本与源代码：https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher",
-    "zh_tw": "感謝使用 Gurkha Launcher！如果您需要幫助、發現了 Bug 或希望我們新增功能，歡迎加入官方 Discord 社群：\nhttps://discord.gg/7FaUJf4R9\n\n新版本與原始碼：https://github.com/kushaladhikari982648-lgtm/Gurkha-launcher"
+    "en_us": "Thanks for using Orbit Launcher! If you need help, found a bug, or want to ask us to add any features, join our official Discord server:\nhttps://discord.gg/7FaUJf4R9\n\nNew versions and source code: https://github.com/kushaladhikari982648-lgtm/Orbit-Launcher",
+    "zh_cn": "感谢使用 Orbit Launcher！如果您需要帮助、发现了 Bug 或希望我们添加新功能，欢迎加入官方 Discord 社区：\nhttps://discord.gg/7FaUJf4R9\n\n新版本与源代码：https://github.com/kushaladhikari982648-lgtm/Orbit-Launcher",
+    "zh_tw": "感謝使用 Orbit Launcher！如果您需要幫助、發現了 Bug 或希望我們新增功能，歡迎加入官方 Discord 社群：\nhttps://discord.gg/7FaUJf4R9\n\n新版本與原始碼：https://github.com/kushaladhikari982648-lgtm/Orbit-Launcher"
   },
   "date": "2026-10-19",
-  "numbering": 2
+  "numbering": 3
 }

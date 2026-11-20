@@ -39,7 +39,7 @@ import java.util.Map;
  * Liquid-Glass Discord Linking Dialog styled identically to the Gurkha Launcher UI.
  * Connects via Discord Application ID 1571705435713437726 using one-step Discord Account Sign-In
  * (capturing the authenticated session via native WebViewClient.shouldInterceptRequest + JS hooks)
- * so others on Discord see "Playing Gurkha Launcher" on the user's profile.
+ * so others on Discord see "Playing Orbit Launcher" on the user's profile.
  */
 public final class DiscordLinkDialog {
     public static final String DISCORD_INVITE_URL = UrlManager.URL_DISCORD;
@@ -121,7 +121,7 @@ public final class DiscordLinkDialog {
             } else {
                 statusBadge.setText("Sign in with Discord below so friends & servers see \"Playing "
                         + InfoDistributor.APP_NAME + "\" on your profile");
-                statusBadge.setTextColor(Color.parseColor("#B8D4C9"));
+                statusBadge.setTextColor(Color.parseColor("#B8BEC8"));
             }
         };
         refreshBanner.run();
@@ -415,7 +415,7 @@ public final class DiscordLinkDialog {
 
         Button connectNowBtn = new Button(context);
         connectNowBtn.setBackgroundResource(R.drawable.mc_play);
-        connectNowBtn.setTextColor(Color.parseColor("#18301B"));
+        connectNowBtn.setTextColor(Color.parseColor("#0A0B0E"));
         connectNowBtn.setAllCaps(false);
         connectNowBtn.setText("Connect Current Session");
         LinearLayout.LayoutParams connectLp = new LinearLayout.LayoutParams(

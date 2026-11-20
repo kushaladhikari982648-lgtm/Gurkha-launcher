@@ -1,1 +1,1 @@
-<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#446040"><item><selector><item android:state_enabled="false" android:drawable="@drawable/mc_button_disabled"/><item android:drawable="@drawable/modern_primary_fill"/></selector></item></ripple>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#448890A0"><item><selector><item android:state_enabled="false" android:drawable="@drawable/mc_button_disabled"/><item android:drawable="@drawable/modern_primary_fill"/></selector></item></ripple>
